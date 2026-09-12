@@ -20,6 +20,13 @@ import {
   groupWordsIntoCaptionSegments,
   calculateCaptionCoverage,
 } from './src/utils/captionEngine';
+import {
+  YouTubeDownloader,
+  getYouTubeAuthConfig,
+  extractYouTubeId,
+  normalizeYouTubeUrl,
+  classifyYouTubeError,
+} from './src/utils/youtubeDownloader';
 
 dotenv.config();
 
@@ -71,146 +78,30 @@ app.use('/demo', express.static(path.join(process.cwd(), 'public/demo')));
 app.use('/uploads', express.static(uploadDir));
 app.use('/exports', express.static(exportDir));
 
-// Helper: Locate server-side yt-dlp downloader binary
-let cachedYtDlpPath: string | null | undefined = undefined;
-function findYtDlp(): string | null {
-  if (cachedYtDlpPath !== undefined) return cachedYtDlpPath;
-  const candidates = [
-    'yt-dlp',
-    path.join(process.env.HOME || '', 'Library/Python/3.9/bin/yt-dlp'),
-    path.join(process.env.HOME || '', 'Library/Python/3.10/bin/yt-dlp'),
-    path.join(process.env.HOME || '', 'Library/Python/3.11/bin/yt-dlp'),
-    path.join(process.env.HOME || '', 'Library/Python/3.12/bin/yt-dlp'),
-    path.join(process.env.HOME || '', '.local/bin/yt-dlp'),
-    '/opt/homebrew/bin/yt-dlp',
-    '/usr/local/bin/yt-dlp',
-    '/usr/bin/yt-dlp',
-  ];
-  for (const c of candidates) {
-    try {
-      execSync(`"${c}" --version`, { stdio: 'ignore' });
-      cachedYtDlpPath = c;
-      console.log(`[STARTUP] yt-dlp binary detected at: ${c}`);
-      return c;
-    } catch {
-      // continue
-    }
-  }
-  cachedYtDlpPath = null;
-  console.warn('[STARTUP] yt-dlp binary not found in standard system paths');
-  return null;
-}
+// Initialize server-side YouTube Downloader Service
+const youtubeDownloader = new YouTubeDownloader(ffmpegPath);
 
-// Initial downloader probe at startup
-findYtDlp();
+// Server startup diagnostics
+const ytStatus = youtubeDownloader.getStatus();
+console.log(`[STARTUP] YouTube downloader: ${ytStatus.available ? `READY (${ytStatus.ytDlpVersion || 'yt-dlp detected'})` : 'NOT DETECTED'}`);
+console.log(`[STARTUP] FFmpeg: READY (${ffmpegPath})`);
+console.log(`[STARTUP] FFprobe: READY (${ffprobePath})`);
+console.log(
+  `[STARTUP] Authenticated YouTube access: ${
+    ytStatus.authenticatedAccessConfigured
+      ? `CONFIGURED (${ytStatus.authMethod})`
+      : 'NOT CONFIGURED'
+  }`
+);
 
-// Helper: Extract YouTube video ID from various formats
-function extractYouTubeId(url: string): string | null {
-  if (!url || typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  const regExp = /^.*(?:youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|shorts\/|&v=)([^#&?]*).*/;
-  const match = trimmed.match(regExp);
-  return match && match[1].length === 11 ? match[1] : null;
-}
-
-// Helper: Normalize YouTube URL into canonical watch URL
-function normalizeYouTubeUrl(rawUrl: string): { valid: boolean; videoId: string | null; canonicalUrl: string | null } {
-  const videoId = extractYouTubeId(rawUrl);
-  if (!videoId) return { valid: false, videoId: null, canonicalUrl: null };
-  return {
-    valid: true,
-    videoId,
-    canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-  };
-}
-
-// Helper: Real server-side YouTube media downloader using yt-dlp
-function downloadYouTubeMedia(
-  url: string,
-  targetDir: string
-): Promise<{ success: boolean; filePath?: string; fileUrl?: string; error?: string; code?: string }> {
-  const ytDlpBinary = findYtDlp();
-  if (!ytDlpBinary) {
-    return Promise.resolve({
-      success: false,
-      code: 'YOUTUBE_DOWNLOADER_UNAVAILABLE',
-      error: 'YouTube import is unavailable because the server does not have the required downloader installed.',
-    });
-  }
-
-  const { valid, videoId, canonicalUrl } = normalizeYouTubeUrl(url);
-  if (!valid || !videoId || !canonicalUrl) {
-    return Promise.resolve({
-      success: false,
-      code: 'INVALID_URL',
-      error: 'Invalid YouTube URL. Supported formats: youtube.com/watch?v=..., youtu.be/..., or youtube.com/shorts/...',
-    });
-  }
-
-  const filename = `yt_${videoId}_${Date.now()}.mp4`;
-  const outputPath = path.join(targetDir, filename);
-
-  return new Promise((resolve) => {
-    const args = [
-      '--ffmpeg-location', ffmpegPath,
-      '--extractor-args', 'youtube:player_client=android,ios',
-      '--no-check-certificates',
-      '--no-playlist',
-      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      '--merge-output-format', 'mp4',
-      '-o', outputPath,
-      canonicalUrl,
-    ];
-
-    execFile(ytDlpBinary, args, { maxBuffer: 20 * 1024 * 1024, timeout: 180000 }, (err, _stdout, stderr) => {
-      if (err || !fs.existsSync(outputPath)) {
-        console.error('[YOUTUBE DOWNLOAD ERROR]', err?.message, stderr);
-        let errorMsg = 'Failed to download YouTube video.';
-        if (stderr.includes('Video unavailable') || stderr.includes('Private video') || stderr.includes('This video is unavailable')) {
-          errorMsg = 'YouTube video is unavailable or private. Upload the video file instead.';
-        } else if (stderr.includes('Sign in to confirm you’re not a bot') || stderr.includes('bot')) {
-          errorMsg = 'YouTube requires verification for this video. Upload the video file instead.';
-        } else if (stderr.includes('PO Token') || stderr.includes('HTTP Error 403')) {
-          errorMsg = 'YouTube restricted download for this video stream. Upload the video file instead.';
-        } else if (stderr.length > 0) {
-          const errLine = stderr.split('\n').find((l) => l.includes('ERROR:'));
-          if (errLine) {
-            errorMsg = errLine.replace(/^ERROR:\s*/, '').trim() + ' Upload the video file instead.';
-          }
-        }
-        return resolve({
-          success: false,
-          code: 'YOUTUBE_DOWNLOAD_FAILED',
-          error: errorMsg,
-        });
-      }
-
-      try {
-        const stats = fs.statSync(outputPath);
-        if (stats.size < 2048) {
-          try { fs.unlinkSync(outputPath); } catch {}
-          return resolve({
-            success: false,
-            code: 'YOUTUBE_DOWNLOAD_EMPTY',
-            error: 'Downloaded video file was empty or corrupted. Upload the video file instead.',
-          });
-        }
-      } catch {
-        return resolve({
-          success: false,
-          code: 'YOUTUBE_DOWNLOAD_FAILED',
-          error: 'Could not access downloaded YouTube file.',
-        });
-      }
-
-      return resolve({
-        success: true,
-        filePath: outputPath,
-        fileUrl: `/uploads/${filename}`,
-      });
-    });
+// GET: Status of YouTube Ingestion & Downloader Capability
+app.get('/api/youtube/status', (_req: Request, res: Response) => {
+  const status = youtubeDownloader.getStatus();
+  res.json({
+    success: true,
+    ...status,
   });
-}
+});
 
 // Lazy server-side Gemini client
 let genAIClient: GoogleGenAI | null = null;
@@ -256,6 +147,9 @@ interface ProcessingJob {
   currentStage: string;
   logs: { time: string; message: string; type: 'info' | 'success' | 'warn' | 'error' }[];
   error?: string;
+  errorCode?: string;
+  classifiedError?: any;
+  authConfigured?: boolean;
   createdAt: number;
   completedAt?: number;
   cancelled?: boolean;
@@ -350,11 +244,10 @@ app.post('/api/projects', async (req: Request, res: Response) => {
 
     // Downloader check: verify external downloader capability if YouTube URL
     if (videoId && !isDemo && !isFile) {
-      const ytDlpBinary = findYtDlp();
-      if (!ytDlpBinary) {
+      if (!youtubeDownloader.getStatus().available) {
         return res.status(400).json({
           success: false,
-          code: 'YOUTUBE_DOWNLOADER_UNAVAILABLE',
+          code: 'YOUTUBE_DEPENDENCY_MISSING',
           error: 'YouTube import is unavailable because the server does not have the required downloader installed.',
           message: 'YouTube import is unavailable because the server does not have the required downloader installed.',
         });
@@ -477,11 +370,10 @@ app.post('/api/process', async (req: Request, res: Response) => {
 
       // Downloader check: verify external downloader capability if YouTube URL
       if (videoId && !isDemo && !isFile) {
-        const ytDlpBinary = findYtDlp();
-        if (!ytDlpBinary) {
+        if (!youtubeDownloader.getStatus().available) {
           return res.status(400).json({
             success: false,
-            code: 'YOUTUBE_DOWNLOADER_UNAVAILABLE',
+            code: 'YOUTUBE_DEPENDENCY_MISSING',
             error: 'YouTube import is unavailable because the server does not have the required downloader installed.',
             message: 'YouTube import is unavailable because the server does not have the required downloader installed.',
           });
@@ -715,6 +607,9 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
     message: job.currentStage,
     logs: job.logs,
     error: job.error,
+    errorCode: job.errorCode,
+    classifiedError: job.classifiedError,
+    authConfigured: job.authConfigured,
     clips: project?.shorts || [],
     project,
   });
@@ -801,21 +696,30 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
 
   let localDiskPath = '';
   if (isYouTube) {
-    const ytDlpBinary = findYtDlp();
-    if (!ytDlpBinary) {
+    if (!youtubeDownloader.getStatus().available) {
       job.status = 'failed';
       job.stage = 'failed';
       job.error = 'YouTube import is unavailable because the server does not have the required downloader installed.';
+      job.errorCode = 'YOUTUBE_DEPENDENCY_MISSING';
       job.currentStage = job.error;
       addJobLog(job, job.error, 'error');
       return;
     }
 
-    const dlRes = await downloadYouTubeMedia(project.youtubeUrl, uploadDir);
+    const dlRes = await youtubeDownloader.downloadVideo(project.youtubeUrl, uploadDir, {
+      probeMediaFn: probeMedia,
+      onLog: (msg, type) => {
+        addJobLog(job, msg, type || 'info');
+      },
+    });
+
     if (!dlRes.success || !dlRes.filePath) {
       job.status = 'failed';
       job.stage = 'failed';
       job.error = dlRes.error || 'YouTube download failed. Upload the video file instead.';
+      job.errorCode = dlRes.code;
+      job.classifiedError = dlRes.classifiedError;
+      job.authConfigured = dlRes.authConfigured;
       job.currentStage = job.error;
       addJobLog(job, job.error, 'error');
       return;
@@ -823,7 +727,14 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
 
     localDiskPath = dlRes.filePath;
     project.videoUrl = dlRes.fileUrl;
-    addJobLog(job, 'Successfully downloaded YouTube source video', 'success');
+    if (dlRes.sourceMedia) {
+      project.sourceMedia = dlRes.sourceMedia;
+      project.originalDuration = dlRes.sourceMedia.duration;
+      project.originalWidth = dlRes.sourceMedia.width;
+      project.originalHeight = dlRes.sourceMedia.height;
+      project.originalFps = dlRes.sourceMedia.fps;
+    }
+    addJobLog(job, 'Successfully downloaded YouTube source video with full integrity verification', 'success');
   } else {
     const cleanPath = (project.videoUrl || '').replace(/^\/public\//, '/');
     localDiskPath = cleanPath.startsWith('/uploads/')
@@ -1257,8 +1168,8 @@ Requirements:
   });
 
   finalizedShorts.forEach((s: any) => {
-    s.projectAnalysis = canonicalAnalysis;
     s.language = canonicalAnalysis.language;
+    s.projectAnalysisId = canonicalAnalysis.projectId;
   });
 
   project.projectAnalysis = canonicalAnalysis;

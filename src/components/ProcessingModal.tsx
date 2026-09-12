@@ -98,6 +98,8 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   const [status, setStatus] = useState<string>('validating');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [authConfigured, setAuthConfigured] = useState<boolean>(false);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(jobId || null);
   const isPollingRef = useRef<boolean>(false);
@@ -158,6 +160,8 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
           clearInterval(pollInterval);
           isPollingRef.current = false;
           setErrorMessage(statusData.error || 'The video processing job failed on the backend.');
+          setErrorCode(statusData.errorCode || null);
+          setAuthConfigured(Boolean(statusData.authConfigured));
         } else if (statusData.status === 'cancelled') {
           clearInterval(pollInterval);
           isPollingRef.current = false;
@@ -174,6 +178,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   // Kick off or resume processing
   const initiateProcessing = async () => {
     setErrorMessage(null);
+    setErrorCode(null);
     setProgress(0);
     setStatus('validating');
     setCurrentStageText('Validating source input...');
@@ -196,7 +201,10 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || 'Failed to initiate processing job on backend');
+        setErrorMessage(data.error || data.message || 'Failed to initiate processing job on backend');
+        setErrorCode(data.code || null);
+        setAuthConfigured(Boolean(data.authConfigured));
+        return;
       }
 
       const newJobId = data.jobId;
@@ -309,51 +317,103 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
         {/* Body Content */}
         <div className="p-6 space-y-5">
           {/* Error Banner if Failed */}
-          {errorMessage ? (
-            <div className="p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 space-y-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-6 h-6 text-rose-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <div className="text-sm font-bold text-rose-100">Execution Error</div>
-                  <div className="text-xs text-rose-300 leading-relaxed font-mono">{errorMessage}</div>
+          {errorMessage ? (() => {
+            const isAuthError =
+              errorCode === 'YOUTUBE_AGE_RESTRICTED' ||
+              errorCode === 'YOUTUBE_LOGIN_REQUIRED' ||
+              errorCode === 'YOUTUBE_COOKIE_REQUIRED' ||
+              Boolean(errorMessage && (
+                errorMessage.toLowerCase().includes('age-restricted') ||
+                errorMessage.toLowerCase().includes('confirm your age') ||
+                errorMessage.toLowerCase().includes('requires authentication')
+              ));
+
+            let errorTitle = 'Media Ingestion Error';
+            let errorDisplayMsg = errorMessage;
+
+            if (errorCode === 'YOUTUBE_AGE_RESTRICTED' || (errorMessage && errorMessage.toLowerCase().includes('confirm your age'))) {
+              errorTitle = 'YouTube Video Requires Authentication';
+              errorDisplayMsg = 'This video is age-restricted or requires a signed-in YouTube session. ViralClip Studio could not access it with the current server configuration.';
+            } else if (errorCode === 'YOUTUBE_PRIVATE' || (errorMessage && errorMessage.toLowerCase().includes('private video'))) {
+              errorTitle = 'Private YouTube Video';
+              errorDisplayMsg = 'This video is private or members-only. Upload the video file instead.';
+            } else if (errorCode === 'YOUTUBE_NOT_FOUND' || (errorMessage && (errorMessage.toLowerCase().includes('unavailable') || errorMessage.toLowerCase().includes('not exist')))) {
+              errorTitle = 'Video Unavailable';
+              errorDisplayMsg = 'This YouTube video was not found or has been removed. Check the link or upload the video directly.';
+            } else if (errorCode === 'YOUTUBE_GEO_BLOCKED') {
+              errorTitle = 'Geographically Restricted';
+              errorDisplayMsg = 'This YouTube video is geographically restricted in this server’s region. Upload the video file instead.';
+            } else if (errorCode === 'YOUTUBE_RATE_LIMITED') {
+              errorTitle = 'YouTube Rate Limited';
+              errorDisplayMsg = 'YouTube has temporarily rate-limited requests from this server. Please try again later or upload the video file directly.';
+            } else if (errorCode === 'YOUTUBE_PO_TOKEN_REQUIRED') {
+              errorTitle = 'YouTube Stream Verification Required';
+              errorDisplayMsg = 'YouTube restricted download stream due to Proof-of-Origin token verification. Upload the video file instead.';
+            }
+
+            return (
+              <div className="p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 space-y-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-6 h-6 text-rose-400 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="text-sm font-bold text-rose-100 flex items-center justify-between">
+                      <span>{errorTitle}</span>
+                      {errorCode && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                          {errorCode}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-rose-300 leading-relaxed font-mono">{errorDisplayMsg}</div>
+                    {!authConfigured && isAuthError && (
+                      <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-amber-500/30 text-[11px] text-amber-300/90 font-mono">
+                        Authenticated YouTube import is not configured on this server.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-rose-500/20">
+                  {onUploadVideo && (
+                    <button
+                      onClick={onUploadVideo}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold transition-all shadow-md shadow-amber-400/20 cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Video Instead</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={handleRetry}
+                    disabled={isRetrying || (isAuthError && !authConfigured)}
+                    title={isAuthError && !authConfigured ? 'Authentication is required before retrying.' : 'Retry processing'}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
+                      isAuthError && !authConfigured
+                        ? 'bg-neutral-800/80 text-neutral-500 cursor-not-allowed border border-neutral-700'
+                        : 'bg-rose-500 hover:bg-rose-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                    <span>{isAuthError && !authConfigured ? 'Auth Required to Retry' : 'Retry'}</span>
+                  </button>
+                  {isDemoMode && onRetryWithDemo && (
+                    <button
+                      onClick={onRetryWithDemo}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Try Demo Mode</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={handleCancelJob}
+                    className="px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white text-xs font-bold transition-colors cursor-pointer ml-auto"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-rose-500/20">
-                <button
-                  onClick={handleRetry}
-                  disabled={isRetrying}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
-                  <span>Retry</span>
-                </button>
-                {onUploadVideo && (
-                  <button
-                    onClick={onUploadVideo}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Video Instead</span>
-                  </button>
-                )}
-                {isDemoMode && onRetryWithDemo && (
-                  <button
-                    onClick={onRetryWithDemo}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Try Demo Mode</span>
-                  </button>
-                )}
-                <button
-                  onClick={handleCancelJob}
-                  className="px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white text-xs font-bold transition-colors cursor-pointer ml-auto"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
+            );
+          })() : (
             /* Active Observable Checklist */
             <div className="space-y-2.5 p-4 rounded-xl bg-neutral-950/70 border border-neutral-800">
               <div className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
