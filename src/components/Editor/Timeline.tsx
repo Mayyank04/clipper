@@ -591,6 +591,8 @@ export const Timeline: React.FC<TimelineProps> = ({
               <div className="w-full h-full relative">
                 {short.sfxMarkers?.map((sfx) => {
                   const leftPct = (sfx.timestamp / duration) * 100;
+                  const sfxDur = sfx.duration || 1.5;
+                  const widthPct = Math.max(4, Math.min(25, (sfxDur / duration) * 100));
                   const isNear = Math.abs(currentTime - sfx.timestamp) < 0.4;
                   const isSelected = selectedItemId === sfx.id;
 
@@ -604,17 +606,25 @@ export const Timeline: React.FC<TimelineProps> = ({
                         onSelectSFX?.(sfx);
                         onTimeSeek(sfx.timestamp);
                       }}
-                      style={{ left: `${leftPct}%` }}
-                      className={`absolute top-1 -translate-x-1/2 px-2 py-0.5 rounded-full border text-[10px] font-extrabold flex items-center gap-1 transition-transform shadow-md cursor-pointer ${
+                      style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                      title={`${sfx.soundName} (${sfx.timestamp.toFixed(1)}s - ${(sfx.timestamp + sfxDur).toFixed(1)}s)`}
+                      className={`absolute top-0.5 h-7 rounded-lg border text-[10px] font-extrabold flex items-center justify-between gap-1 px-1.5 transition-transform shadow-md cursor-pointer overflow-hidden ${
                         isSelected
-                          ? 'bg-orange-500 text-white border-white scale-110 ring-2 ring-white shadow-lg'
+                          ? 'bg-amber-400 text-neutral-950 border-white ring-2 ring-amber-400 shadow-lg z-20'
                           : isNear
-                          ? 'bg-orange-500 text-white border-white scale-105'
-                          : 'bg-orange-950/80 text-orange-300 border-orange-500/40 hover:scale-105'
+                          ? 'bg-amber-500 text-neutral-950 border-amber-300 z-10'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-500/40 hover:border-amber-400'
                       }`}
                     >
-                      <Volume2 className="w-2.5 h-2.5" />
-                      <span>{sfx.soundName.split(' ')[0]}</span>
+                      <div className="flex items-center gap-1 min-w-0">
+                        <Volume2 className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{sfx.soundName.split(' ')[0]}</span>
+                      </div>
+                      <div className="flex items-center gap-0.5 h-3 opacity-60 shrink-0">
+                        <div className="w-0.5 h-full bg-current rounded-full" />
+                        <div className="w-0.5 h-2 bg-current rounded-full" />
+                        <div className="w-0.5 h-1.5 bg-current rounded-full" />
+                      </div>
                     </button>
                   );
                 })}

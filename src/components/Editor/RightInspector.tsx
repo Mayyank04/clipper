@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   Layers,
@@ -27,7 +27,13 @@ import {
   RefreshCw,
   Eye,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  Star,
+  Search,
+  Wand2,
+  FolderPlus,
+  Pause,
+  VolumeX,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -36,6 +42,9 @@ import {
   BrandKit,
   HookCategory,
   SFXCategory,
+  SFXMarker,
+  SFXAsset,
+  GeneratedSFXItem,
   VFXMarker,
   BRollSuggestion,
   ApprovalMode,
@@ -43,6 +52,12 @@ import {
 import { sfxEngine } from '../../utils/sfxAudio';
 import { TranscriptEditor } from './TranscriptEditor';
 import { ALL_CAPTION_STYLES, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
+import {
+  BUILTIN_SFX_CATALOG,
+  SFX_CATEGORIES,
+  searchSFXCatalog,
+  buildSmartSFXPrompt,
+} from '../../utils/sfxCatalog';
 
 interface RightInspectorProps {
   short: ShortCandidate;
@@ -54,6 +69,11 @@ interface RightInspectorProps {
   onRegenerateHooks: () => void;
   isRegeneratingHooks: boolean;
   onAddSFXAtCurrentTime: (cat: SFXCategory, name: string) => void;
+  onAddSFXMarker?: (marker: SFXMarker) => void;
+  onUpdateSFXMarker?: (id: string, updates: Partial<SFXMarker>) => void;
+  onRegenerateSingleSFX?: (sfxId: string) => Promise<void>;
+  sfxApprovalMode?: 'auto_apply' | 'balanced' | 'suggest_only';
+  onSFXApprovalModeChange?: (mode: 'auto_apply' | 'balanced' | 'suggest_only') => void;
   onAddVFXAtCurrentTime: (type: 'zoom_punch' | 'shake' | 'glow' | 'motion_blur' | 'glitch' | 'callout', label: string) => void;
   onToggleVFXZoom: (enabled: boolean) => void;
   zoomPunchEnabled: boolean;
@@ -147,6 +167,11 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   onRegenerateHooks,
   isRegeneratingHooks,
   onAddSFXAtCurrentTime,
+  onAddSFXMarker,
+  onUpdateSFXMarker,
+  onRegenerateSingleSFX,
+  sfxApprovalMode = 'auto_apply',
+  onSFXApprovalModeChange,
   onAddVFXAtCurrentTime,
   onToggleVFXZoom,
   zoomPunchEnabled,
@@ -184,6 +209,221 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [autoDucking, setAutoDucking] = useState<boolean>(true);
   const [selectedMusic, setSelectedMusic] = useState<string>('hype_trap');
   const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
+
+  // SFX Studio State
+  const [sfxSubTab, setSfxSubTab] = useState<'catalog' | 'generator' | 'active'>('catalog');
+  const [sfxSearchQuery, setSfxSearchQuery] = useState<string>('');
+  const [sfxCategoryFilter, setSfxCategoryFilter] = useState<string>('all');
+  const [sfxSourceFilter, setSfxSourceFilter] = useState<'all' | 'favorites' | 'user' | 'generated'>('all');
+  const [sfxLibrary, setSfxLibrary] = useState<SFXAsset[]>(BUILTIN_SFX_CATALOG);
+  const [playingSfxId, setPlayingSfxId] = useState<string | null>(null);
+  const [previewVolume, setPreviewVolume] = useState<number>(0.8);
+  const [recentlyUsedSfx, setRecentlyUsedSfx] = useState<string[]>([]);
+  const [isRegeneratingSfxId, setIsRegeneratingSfxId] = useState<string | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  // AI Sound Generator State
+  const [aiPrompt, setAiPrompt] = useState<string>('');
+  const [aiStyle, setAiStyle] = useState<string>('Cinematic');
+  const [aiIntensity, setAiIntensity] = useState<'low' | 'medium' | 'high'>('high');
+  const [aiDuration, setAiDuration] = useState<number>(1.8);
+  const [aiVariations, setAiVariations] = useState<number>(2);
+  const [isGeneratingAiSfx, setIsGeneratingAiSfx] = useState<boolean>(false);
+  const [generatedResults, setGeneratedResults] = useState<GeneratedSFXItem[]>([]);
+  const [aiGenError, setAiGenError] = useState<string | null>(null);
+
+  // Upload & Drive Import State
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
+  const [driveFolderName, setDriveFolderName] = useState<string>('My Drive SFX Vault');
+  const [uploadCategory, setUploadCategory] = useState<SFXCategory>('impact');
+  const [uploadLicense, setUploadLicense] = useState<string>('User-owned');
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isUploadingSfx, setIsUploadingSfx] = useState<boolean>(false);
+
+  // Load full SFX library from server
+  useEffect(() => {
+    fetch('/api/sfx/library')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.assets) && data.assets.length > 0) {
+          setSfxLibrary(data.assets);
+        }
+      })
+      .catch(() => {});
+  }, [activeTab]);
+
+  const handleTogglePlayPreview = (asset: { id: string; file?: string; url?: string; category?: string }) => {
+    const audioUrl = asset.file || (asset as any).url;
+    if (playingSfxId === asset.id) {
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current = null;
+      }
+      setPlayingSfxId(null);
+      return;
+    }
+
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+    }
+
+    if (audioUrl) {
+      const audio = new Audio(audioUrl);
+      audio.volume = previewVolume;
+      audioElementRef.current = audio;
+      setPlayingSfxId(asset.id);
+
+      audio.onended = () => {
+        setPlayingSfxId(null);
+        audioElementRef.current = null;
+      };
+      audio.onerror = () => {
+        sfxEngine.playSound(asset.category || 'impact', previewVolume);
+        setPlayingSfxId(null);
+        audioElementRef.current = null;
+      };
+
+      audio.play().catch(() => {
+        sfxEngine.playSound(asset.category || 'impact', previewVolume);
+        setPlayingSfxId(null);
+      });
+    } else {
+      sfxEngine.playSound(asset.category || 'impact', previewVolume);
+    }
+
+    setRecentlyUsedSfx((prev) => [asset.id, ...prev.filter((id) => id !== asset.id)].slice(0, 10));
+  };
+
+  const handleToggleFavorite = async (assetId: string) => {
+    const asset = sfxLibrary.find((a) => a.id === assetId);
+    const newFav = !asset?.isFavorite;
+    setSfxLibrary((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, isFavorite: newFav } : a))
+    );
+    try {
+      await fetch('/api/sfx/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetId, isFavorite: newFav }),
+      });
+    } catch {}
+  };
+
+  const handlePlaceSFXOnTimeline = (asset: { id: string; name: string; category?: any; file?: string; duration?: number; prompt?: string }) => {
+    const marker: SFXMarker = {
+      id: `sfx_${Date.now()}`,
+      timestamp: Number(currentTime.toFixed(2)),
+      duration: asset.duration || 1.5,
+      category: (asset.category || 'impact') as SFXCategory,
+      soundName: asset.name,
+      volume: 0.8,
+      audioUrl: asset.file,
+      assetId: asset.id,
+      source: asset.prompt ? 'ai_generated' : 'library',
+      prompt: asset.prompt,
+      reason: 'User manual placement at playhead',
+      confidence: 1.0,
+      fadeIn: 0,
+      fadeOut: 0,
+    };
+    if (onAddSFXMarker) {
+      onAddSFXMarker(marker);
+    } else {
+      onAddSFXAtCurrentTime(marker.category, marker.soundName);
+    }
+    handleTogglePlayPreview(asset);
+  };
+
+  const handleGenerateAiSFX = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGeneratingAiSfx(true);
+    setAiGenError(null);
+    try {
+      const res = await fetch('/api/sfx/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          style: aiStyle,
+          intensity: aiIntensity,
+          duration: aiDuration,
+          variations: aiVariations,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        setGeneratedResults(data.items);
+        fetch('/api/sfx/library')
+          .then((r) => r.json())
+          .then((lib) => {
+            if (lib.success) setSfxLibrary(lib.assets);
+          });
+      } else {
+        setAiGenError(data.error || 'AI SFX generation failed. Please retry.');
+      }
+    } catch (err: any) {
+      setAiGenError(err.message || 'Network error during AI SFX generation.');
+    } finally {
+      setIsGeneratingAiSfx(false);
+    }
+  };
+
+  const handleUploadSfxFile = async () => {
+    if (!selectedUploadFile) return;
+    setIsUploadingSfx(true);
+    const formData = new FormData();
+    formData.append('audio', selectedUploadFile);
+    formData.append('category', uploadCategory);
+    formData.append('license', uploadLicense);
+
+    try {
+      const res = await fetch('/api/sfx/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.asset) {
+        setSfxLibrary((prev) => [data.asset, ...prev]);
+        setShowUploadModal(false);
+        setSelectedUploadFile(null);
+      } else {
+        alert(data.error || 'Failed to upload audio');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error uploading file');
+    } finally {
+      setIsUploadingSfx(false);
+    }
+  };
+
+  const handleDriveImport = async () => {
+    try {
+      const res = await fetch('/api/sfx/import-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderName: driveFolderName }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.importedAssets)) {
+        setSfxLibrary((prev) => [...data.importedAssets, ...prev]);
+        setShowDriveModal(false);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to import from Drive');
+    }
+  };
+
+  const handleRegenSingleCue = async (sfxId: string) => {
+    if (onRegenerateSingleSFX) {
+      setIsRegeneratingSfxId(sfxId);
+      try {
+        await onRegenerateSingleSFX(sfxId);
+      } finally {
+        setIsRegeneratingSfxId(null);
+      }
+    }
+  };
 
   const analysis = short.projectAnalysis;
   const rawLang = analysis?.language || short.language || language || 'en';
@@ -681,107 +921,807 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           </div>
         )}
 
-        {/* TAB 3: SFX SOUND EFFECTS */}
+        {/* TAB 3: SFX SOUND EFFECTS & AI GENERATOR */}
         {activeTab === 'sfx' && (
-          <div className="space-y-5 animate-fade-in">
+          <div className="space-y-4 animate-fade-in">
+            {/* Header & Sub-Navigation */}
             <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">Sound Effects Catalog</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Click to test sound or place at playhead ({currentTime.toFixed(1)}s)</p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                    <span>Sound Effects Studio</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-mono border border-amber-500/20">
+                      34 Categories
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Browse library, generate custom sounds, and manage timeline cues
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-tab Navigation */}
+              <div className="flex items-center gap-1.5 p-1 bg-neutral-900 rounded-xl border border-neutral-800 mt-3 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSfxSubTab('catalog')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-all cursor-pointer ${
+                    sfxSubTab === 'catalog'
+                      ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  Library Browser
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSfxSubTab('generator')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    sfxSubTab === 'generator'
+                      ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Wand2 className="w-3 h-3" />
+                  <span>AI Generator</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSfxSubTab('active')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                    sfxSubTab === 'active'
+                      ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <span>Cues</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    sfxSubTab === 'active' ? 'bg-neutral-950/20 text-neutral-950' : 'bg-neutral-800 text-amber-400'
+                  }`}>
+                    {short.sfxMarkers?.length || 0}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {VERIFIED_SFX_CATALOG.map((s) => (
-                <div
-                  key={s.name}
-                  className="p-3 rounded-xl bg-neutral-950/60 border border-neutral-800 flex items-center justify-between gap-2 hover:border-neutral-700 transition-colors"
+            {/* SUBTAB 1: SFX LIBRARY BROWSER */}
+            {sfxSubTab === 'catalog' && (
+              <div className="space-y-3.5">
+                {/* Search Bar & Import Actions */}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={sfxSearchQuery}
+                      onChange={(e) => setSfxSearchQuery(e.target.value)}
+                      placeholder="Semantic search (e.g. 'funny', 'boom', 'transition', 'digital')..."
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 transition-colors"
+                    />
+                    {sfxSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSfxSearchQuery('')}
+                        className="text-neutral-500 hover:text-white text-xs absolute right-3 top-1/2 -translate-y-1/2"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Top Actions: Upload & Drive */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+                      {(['all', 'favorites', 'user', 'generated'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setSfxSourceFilter(mode)}
+                          className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            sfxSourceFilter === mode
+                              ? 'bg-neutral-800 text-amber-400 border border-amber-400/30'
+                              : 'bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800'
+                          }`}
+                        >
+                          {mode === 'all' && 'All Sources'}
+                          {mode === 'favorites' && '★ Favorites'}
+                          {mode === 'user' && '📁 My Uploads'}
+                          {mode === 'generated' && '✨ Generated'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowUploadModal(true)}
+                        className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors cursor-pointer"
+                        title="Upload SFX file (.wav, .mp3, .ogg)"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>Upload</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDriveModal(true)}
+                        className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors cursor-pointer"
+                        title="Import from Google Drive"
+                      >
+                        <FolderPlus className="w-3 h-3" />
+                        <span>Drive</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category Chips Horizontal Carousel */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                  <button
+                    type="button"
+                    onClick={() => setSfxCategoryFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                      sfxCategoryFilter === 'all'
+                        ? 'bg-amber-400 text-neutral-950 font-bold'
+                        : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+                    }`}
+                  >
+                    All ({sfxLibrary.length})
+                  </button>
+                  {SFX_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSfxCategoryFilter(cat.id)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                        sfxCategoryFilter === cat.id
+                          ? 'bg-amber-400 text-neutral-950 font-bold'
+                          : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+                      }`}
+                    >
+                      <span>{cat.icon}</span>
+                      <span>{cat.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sound Cards List */}
+                <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                  {(() => {
+                    const filtered = searchSFXCatalog(
+                      sfxLibrary,
+                      sfxSearchQuery,
+                      sfxCategoryFilter,
+                      sfxSourceFilter
+                    );
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="text-center py-10 bg-neutral-950/60 rounded-xl border border-neutral-800 text-neutral-400 text-xs">
+                          <VolumeX className="w-6 h-6 mx-auto mb-2 opacity-50" />
+                          <p className="font-bold text-white">No sound effects matched</p>
+                          <p className="text-[11px] text-neutral-500 mt-0.5">
+                            Try searching for synonyms or generate with AI
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiPrompt(sfxSearchQuery);
+                              setSfxSubTab('generator');
+                            }}
+                            className="mt-3 px-3 py-1.5 rounded-lg bg-amber-400 text-neutral-950 font-bold text-xs hover:bg-amber-300 transition-colors cursor-pointer"
+                          >
+                            Generate "{sfxSearchQuery}" with AI
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return filtered.map((asset) => {
+                      const isPlaying = playingSfxId === asset.id;
+                      const waveformPoints = asset.waveform || [0.2, 0.5, 0.8, 0.6, 0.9, 0.4, 0.2];
+
+                      return (
+                        <div
+                          key={asset.id}
+                          className="p-3 rounded-xl bg-neutral-950/70 border border-neutral-800 hover:border-neutral-700 transition-all space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePlayPreview(asset)}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer ${
+                                  isPlaying
+                                    ? 'bg-amber-400 text-neutral-950'
+                                    : 'bg-amber-500/10 text-amber-400 hover:bg-amber-400 hover:text-neutral-950'
+                                }`}
+                                title={isPlaying ? 'Pause Preview' : 'Play Preview'}
+                              >
+                                {isPlaying ? (
+                                  <Pause className="w-3.5 h-3.5 fill-current" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                )}
+                              </button>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-white truncate">{asset.name}</span>
+                                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+                                    {asset.duration.toFixed(1)}s
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-neutral-400 mt-0.5">
+                                  <span className="capitalize text-neutral-300 font-medium">{asset.category}</span>
+                                  <span>•</span>
+                                  <span className="text-neutral-500">{asset.license || 'Royalty-free'}</span>
+                                  {asset.source === 'ai_generated' && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="text-amber-400">AI Gen</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleFavorite(asset.id)}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  asset.isFavorite ? 'text-amber-400 hover:text-amber-300' : 'text-neutral-600 hover:text-neutral-300'
+                                }`}
+                                title={asset.isFavorite ? 'Remove Favorite' : 'Add to Favorites'}
+                              >
+                                <Star className={`w-3.5 h-3.5 ${asset.isFavorite ? 'fill-current' : ''}`} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handlePlaceSFXOnTimeline(asset)}
+                                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 transition-colors cursor-pointer"
+                                title={`Place at ${currentTime.toFixed(1)}s`}
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>Place at {currentTime.toFixed(0)}s</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Waveform Visualization Canvas (Interactive Preview) */}
+                          <div
+                            onClick={() => handleTogglePlayPreview(asset)}
+                            className="h-6 w-full bg-neutral-900/90 rounded-lg p-1 flex items-center justify-between gap-0.5 cursor-pointer hover:bg-neutral-900 transition-colors"
+                            title="Click waveform to play preview"
+                          >
+                            {waveformPoints.map((val, pIdx) => {
+                              const heightPct = Math.max(15, Math.min(100, Math.round(val * 100)));
+                              return (
+                                <div
+                                  key={pIdx}
+                                  className={`flex-1 rounded-sm transition-all ${
+                                    isPlaying ? 'bg-amber-400' : 'bg-neutral-600 hover:bg-neutral-400'
+                                  }`}
+                                  style={{ height: `${heightPct}%` }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2: AI TEXT-TO-SFX GENERATOR */}
+            {sfxSubTab === 'generator' && (
+              <div className="space-y-4 p-3.5 bg-neutral-950/70 border border-neutral-800 rounded-xl animate-fade-in">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Text-to-SFX Generator</span>
+                    </h4>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                      Neural Synthesizer Ready
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Describe any custom audio effect tailored for this exact short.
+                  </p>
+                </div>
+
+                {/* Prompt Input Area */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-neutral-300">Sound Description Prompt</label>
+                  <textarea
+                    rows={3}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="E.g. Short dramatic bass impact when speaker reveals a surprising fact..."
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 transition-colors resize-none"
+                  />
+                  {/* Quick Prompts */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10px]">
+                    <span className="text-neutral-500 shrink-0">Try:</span>
+                    {[
+                      'Dramatic reveal bass drop',
+                      'Aerodynamic swift whoosh',
+                      'Digital code glitch interrupt',
+                      'Tension riser pitch sweep',
+                      'Success harmonic chime',
+                    ].map((sample) => (
+                      <button
+                        key={sample}
+                        type="button"
+                        onClick={() => setAiPrompt(sample)}
+                        className="px-2 py-0.5 rounded bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800 whitespace-nowrap cursor-pointer"
+                      >
+                        {sample}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Style & Intensity Controls */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-300">Style</label>
+                    <select
+                      value={aiStyle}
+                      onChange={(e) => setAiStyle(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                    >
+                      {['Cinematic', 'Modern', 'Cartoon', 'Glitch', 'Sci-Fi', 'Horror', 'Gaming', 'Ambient'].map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-neutral-300">Intensity</label>
+                    <div className="grid grid-cols-3 gap-1 p-0.5 bg-neutral-900 rounded-lg border border-neutral-800">
+                      {(['low', 'medium', 'high'] as const).map((int) => (
+                        <button
+                          key={int}
+                          type="button"
+                          onClick={() => setAiIntensity(int)}
+                          className={`py-1 rounded text-[10px] font-bold capitalize transition-colors ${
+                            aiIntensity === int ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {int}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration & Variations */}
+                <div className="grid grid-cols-2 gap-3 items-center">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-neutral-300">Duration</span>
+                      <span className="text-amber-400 font-mono">{aiDuration.toFixed(1)}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={4.0}
+                      step={0.1}
+                      value={aiDuration}
+                      onChange={(e) => setAiDuration(parseFloat(e.target.value))}
+                      className="w-full accent-amber-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-neutral-300">Variations</span>
+                      <span className="text-amber-400 font-mono">{aiVariations}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 p-0.5 bg-neutral-900 rounded-lg border border-neutral-800">
+                      {[1, 2].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setAiVariations(v)}
+                          className={`py-1 rounded text-[10px] font-bold transition-colors ${
+                            aiVariations === v ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {v} {v === 1 ? 'Take' : 'Takes'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  type="button"
+                  onClick={handleGenerateAiSFX}
+                  disabled={isGeneratingAiSfx || !aiPrompt.trim()}
+                  className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-neutral-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
                 >
-                  <div className="flex items-center gap-3">
+                  {isGeneratingAiSfx ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Synthesizing Audio Waveforms...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Generate Sound Effect</span>
+                    </>
+                  )}
+                </button>
+
+                {aiGenError && (
+                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between">
+                    <span>{aiGenError}</span>
                     <button
                       type="button"
-                      onClick={() => sfxEngine.playSound(s.category, 0.8)}
-                      title="Play Sound Preview"
-                      className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-neutral-950 flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer"
+                      onClick={handleGenerateAiSFX}
+                      className="text-white underline font-bold"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                      Retry
                     </button>
-                    <div>
-                      <div className="text-xs font-bold text-white">{s.name}</div>
-                      <div className="text-[11px] text-neutral-500">{s.desc}</div>
+                  </div>
+                )}
+
+                {/* Generated Results List */}
+                {generatedResults.length > 0 && (
+                  <div className="space-y-2 pt-3 border-t border-neutral-800">
+                    <div className="flex items-center justify-between text-xs font-bold text-neutral-300">
+                      <span>Generated Sound Options ({generatedResults.length})</span>
+                      <span className="text-emerald-400 text-[10px]">Saved to Project Assets</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {generatedResults.map((gen, gIdx) => {
+                        const isPlaying = playingSfxId === gen.id;
+                        return (
+                          <div
+                            key={gen.id}
+                            className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePlayPreview(gen as any)}
+                                  className="w-7 h-7 rounded-lg bg-amber-400 text-neutral-950 flex items-center justify-center"
+                                  title="Audition Sound"
+                                >
+                                  {isPlaying ? (
+                                    <Pause className="w-3.5 h-3.5 fill-current" />
+                                  ) : (
+                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                  )}
+                                </button>
+                                <div>
+                                  <div className="text-xs font-bold text-white">Variation #{gIdx + 1}</div>
+                                  <div className="text-[10px] text-neutral-400">{gen.duration.toFixed(1)}s • 44.1kHz WAV</div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handlePlaceSFXOnTimeline({
+                                    id: gen.id,
+                                    name: `AI Sound: ${aiStyle}`,
+                                    category: 'impact',
+                                    file: gen.url,
+                                    duration: gen.duration,
+                                    prompt: gen.prompt,
+                                  })
+                                }
+                                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 transition-colors cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>Use in Timeline</span>
+                              </button>
+                            </div>
+
+                            {/* Waveform */}
+                            <div
+                              onClick={() => handleTogglePlayPreview(gen as any)}
+                              className="h-5 w-full bg-neutral-950 rounded p-1 flex items-center justify-between gap-0.5 cursor-pointer"
+                            >
+                              {(gen.waveform || [0.3, 0.7, 0.9, 0.4, 0.2]).map((val, pIdx) => (
+                                <div
+                                  key={pIdx}
+                                  className={`flex-1 rounded-sm ${isPlaying ? 'bg-amber-400' : 'bg-neutral-600'}`}
+                                  style={{ height: `${Math.max(20, Math.round(val * 100))}%` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUBTAB 3: ACTIVE SFX TIMELINE CUES */}
+            {sfxSubTab === 'active' && (
+              <div className="space-y-3 animate-fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                  <span>Active Timeline Cues ({short.sfxMarkers?.length || 0})</span>
+                  <span className="text-amber-400 text-[10px]">Speech Ducking Enabled</span>
+                </div>
+
+                {(!short.sfxMarkers || short.sfxMarkers.length === 0) ? (
+                  <div className="text-center py-10 bg-neutral-950/60 rounded-xl border border-neutral-800 text-neutral-400 text-xs">
+                    <p className="font-bold text-white">No SFX Cues on Timeline</p>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      Add sound cues from the Library or AI Generator.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSfxSubTab('catalog')}
+                      className="mt-3 px-3 py-1.5 rounded-lg bg-amber-400 text-neutral-950 font-bold text-xs hover:bg-amber-300 transition-colors cursor-pointer"
+                    >
+                      Browse SFX Library
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+                    {short.sfxMarkers.map((sfx) => {
+                      const isPlaying = playingSfxId === sfx.id;
+                      const isRegenerating = isRegeneratingSfxId === sfx.id;
+
+                      return (
+                        <div
+                          key={sfx.id}
+                          className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 transition-colors space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div
+                              className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
+                              onClick={() => {
+                                handleTogglePlayPreview({ id: sfx.id, file: sfx.audioUrl, category: sfx.category });
+                                onSeekToTime?.(sfx.timestamp);
+                              }}
+                            >
+                              <Volume2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                              <span className="text-xs font-bold text-white truncate">{sfx.soundName}</span>
+                              <span className="text-[10px] font-mono text-amber-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                                {sfx.timestamp.toFixed(1)}s
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePlayPreview({ id: sfx.id, file: sfx.audioUrl, category: sfx.category })}
+                                className="p-1 rounded text-neutral-400 hover:text-white"
+                                title="Play SFX Preview"
+                              >
+                                {isPlaying ? (
+                                  <Pause className="w-3 h-3 fill-current text-amber-400" />
+                                ) : (
+                                  <Play className="w-3 h-3 fill-current" />
+                                )}
+                              </button>
+
+                              {/* Section 26: Regenerate selected SFX only */}
+                              <button
+                                type="button"
+                                onClick={() => handleRegenSingleCue(sfx.id)}
+                                disabled={isRegenerating}
+                                className="p-1 rounded text-neutral-400 hover:text-amber-400 transition-colors cursor-pointer"
+                                title="Regenerate this sound with AI"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${isRegenerating ? 'animate-spin text-amber-400' : ''}`} />
+                              </button>
+
+                              {onDeleteSFX && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteSFX(sfx.id)}
+                                  className="text-neutral-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                                  title="Delete SFX"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* AI Justification & Explanation Card (Section 23) */}
+                          <div className="text-[11px] text-neutral-300 bg-neutral-900/80 p-2 rounded-lg border border-neutral-800/80 space-y-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="truncate">
+                                <strong className="text-neutral-400">Trigger:</strong> {sfx.triggerText ? `"${sfx.triggerText}"` : 'Spoken emphasis'}
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                                {sfx.source === 'ai_generated' ? 'AI Gen' : 'Library'} • {Math.round((sfx.confidence || 0.9) * 100)}%
+                              </span>
+                            </div>
+
+                            {sfx.reason && (
+                              <div className="text-[10px] text-neutral-400">
+                                <strong className="text-neutral-500">Reason:</strong> {sfx.reason}
+                              </div>
+                            )}
+
+                            {sfx.prompt && (
+                              <div className="text-[10px] text-neutral-400 font-mono truncate">
+                                <strong className="text-neutral-500">Prompt:</strong> {sfx.prompt}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Volume & Ducking Indicator */}
+                          <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-1">
+                            <span>Speech Ducking: -16 dB dialogue / -10 dB pause</span>
+                            <span className="font-mono text-neutral-300">Vol: {Math.round((sfx.volume || 0.8) * 100)}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MODAL: UPLOAD SFX FILE */}
+            {showUploadModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Upload className="w-4 h-4 text-amber-400" />
+                      <span>Upload Licensed Audio File</span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadModal(false)}
+                      className="text-neutral-400 hover:text-white text-base"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="border-2 border-dashed border-neutral-800 hover:border-amber-400 rounded-xl p-6 text-center transition-colors">
+                      <input
+                        type="file"
+                        accept="audio/*,.wav,.mp3,.m4a,.ogg"
+                        onChange={(e) => setSelectedUploadFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="sfx-upload-input"
+                      />
+                      <label htmlFor="sfx-upload-input" className="cursor-pointer space-y-1 block">
+                        <Upload className="w-8 h-8 text-amber-400 mx-auto opacity-80" />
+                        <div className="text-xs font-bold text-white">
+                          {selectedUploadFile ? selectedUploadFile.name : 'Select or Drop Audio File'}
+                        </div>
+                        <div className="text-[11px] text-neutral-500">
+                          Supports WAV, MP3, M4A, OGG • Verified via FFprobe
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-neutral-300">Category</label>
+                        <select
+                          value={uploadCategory}
+                          onChange={(e) => setUploadCategory(e.target.value as SFXCategory)}
+                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg p-2 text-xs text-white"
+                        >
+                          {SFX_CATEGORIES.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-neutral-300">License Right</label>
+                        <select
+                          value={uploadLicense}
+                          onChange={(e) => setUploadLicense(e.target.value)}
+                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg p-2 text-xs text-white"
+                        >
+                          <option value="User-owned">User-owned</option>
+                          <option value="User-provided">User-provided</option>
+                          <option value="Licensed">Licensed</option>
+                          <option value="Royalty-free">Royalty-free</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => onAddSFXAtCurrentTime(s.category, s.name)}
-                    className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-amber-400 hover:text-neutral-950 text-neutral-200 transition-colors flex-shrink-0 cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Place at {currentTime.toFixed(0)}s</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Active SFX on this clip with semantic justifications */}
-            {short.sfxMarkers && short.sfxMarkers.length > 0 && (
-              <div className="space-y-2 pt-3 border-t border-neutral-800">
-                <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                  <span>Active SFX on Timeline</span>
-                  <span className="text-amber-400 text-[10px]">{short.sfxMarkers.length} cues</span>
-                </div>
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {short.sfxMarkers.map((sfx) => (
-                    <div
-                      key={sfx.id}
-                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 transition-colors space-y-1.5"
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadModal(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-neutral-400 hover:text-white"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div
-                          className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
-                          onClick={() => {
-                            sfxEngine.playSound(sfx.category, sfx.volume);
-                            onSeekToTime?.(sfx.timestamp);
-                          }}
-                        >
-                          <Volume2 className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
-                          <span className="text-xs font-bold text-white truncate">{sfx.soundName}</span>
-                          <span className="text-[10px] font-mono text-amber-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
-                            {sfx.timestamp.toFixed(1)}s
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => sfxEngine.playSound(sfx.category, sfx.volume)}
-                            className="p-1 rounded text-neutral-400 hover:text-white"
-                            title="Play SFX"
-                          >
-                            <Play className="w-3 h-3 fill-current" />
-                          </button>
-                          {onDeleteSFX && (
-                            <button
-                              onClick={() => onDeleteSFX(sfx.id)}
-                              className="text-neutral-500 hover:text-rose-400 p-1 transition-colors"
-                              title="Delete SFX"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUploadSfxFile}
+                      disabled={!selectedUploadFile || isUploadingSfx}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-neutral-950 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isUploadingSfx ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>Upload & Verify</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                      {/* Justification metadata */}
-                      <div className="text-[11px] text-neutral-400 bg-neutral-900/60 p-1.5 rounded border border-neutral-800/60 flex items-center justify-between gap-2">
-                        <span className="truncate">
-                          <strong className="text-neutral-300">Cue:</strong> {sfx.triggerText ? `"${sfx.triggerText}"` : sfx.reason || 'Spoken emphasis'}
-                        </span>
-                        {sfx.confidence !== undefined && (
-                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                            {Math.round(sfx.confidence * 100)}%
-                          </span>
-                        )}
+            {/* MODAL: GOOGLE DRIVE IMPORT */}
+            {showDriveModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FolderPlus className="w-4 h-4 text-amber-400" />
+                      <span>Import from Google Drive Folders</span>
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveModal(false)}
+                      className="text-neutral-400 hover:text-white text-base"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-xs text-neutral-400">
+                      Import user-owned SFX assets from connected Google Drive folders. All files will be verified and indexed with FFprobe.
+                    </p>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-neutral-300">Folder Name or ID</label>
+                      <input
+                        type="text"
+                        value={driveFolderName}
+                        onChange={(e) => setDriveFolderName(e.target.value)}
+                        placeholder="Google Drive SFX Folder..."
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-lg p-2 text-xs text-white"
+                      />
+                    </div>
+
+                    <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800 space-y-1 text-xs">
+                      <div className="font-bold text-white">License Compliance</div>
+                      <div className="text-[11px] text-neutral-400">
+                        Tracks license as "User-provided" without scraping third-party platforms.
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveModal(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-neutral-400 hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDriveImport}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-300 text-neutral-950 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Import Authorized Files</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

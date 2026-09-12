@@ -128,19 +128,81 @@ export type EditingIntensity = 'subtle' | 'balanced' | 'dynamic' | 'viral';
 export type HookCategory = 'curiosity' | 'bold' | 'question' | 'shock' | 'educational';
 
 export type SFXCategory =
-  | 'whoosh'
-  | 'pop'
-  | 'hit'
-  | 'click'
   | 'impact'
-  | 'rise'
+  | 'whoosh'
+  | 'transition'
   | 'riser'
-  | 'drop'
-  | 'glitch'
+  | 'hit'
+  | 'bass'
+  | 'pop'
+  | 'click'
+  | 'ui'
   | 'notification'
   | 'cinematic'
   | 'comedy'
-  | 'chime';
+  | 'meme'
+  | 'gaming'
+  | 'nature'
+  | 'ambient'
+  | 'human'
+  | 'animal'
+  | 'vehicle'
+  | 'mechanical'
+  | 'footsteps'
+  | 'applause'
+  | 'laugh'
+  | 'crowd'
+  | 'music'
+  | 'glitch'
+  | 'digital'
+  | 'horror'
+  | 'suspense'
+  | 'magic'
+  | 'success'
+  | 'failure'
+  | 'alert'
+  | 'rise'
+  | 'drop'
+  | 'chime'
+  | 'reveal'
+  | 'sci-fi';
+
+export type SFXApprovalMode = 'auto_apply' | 'balanced' | 'suggest_only';
+
+export interface SFXAsset {
+  id: string;
+  name: string;
+  file: string;
+  duration: number;
+  category: SFXCategory;
+  tags: string[];
+  description: string;
+  source: 'bundled' | 'user_imported' | 'google_drive' | 'ai_generated';
+  license: 'User-owned' | 'User-provided' | 'Licensed' | 'Generated' | 'Unknown' | 'Royalty-free';
+  hash: string;
+  waveform?: number[];
+  loudness?: number;
+  format?: string;
+  sampleRate?: number;
+  channels?: number;
+  isFavorite?: boolean;
+  recentlyUsed?: boolean;
+}
+
+export interface GeneratedSFXItem {
+  id: string;
+  prompt: string;
+  style?: string;
+  intensity?: 'low' | 'medium' | 'high';
+  duration: number;
+  format: string;
+  url: string;
+  waveform?: number[];
+  createdAt: string;
+  provider: string;
+  status: 'generating' | 'ready' | 'failed';
+  error?: string;
+}
 
 export type VFXType =
   | 'zoom_punch'
@@ -210,6 +272,7 @@ export interface CaptionSegment {
 export interface SFXMarker {
   id: string;
   timestamp: number; // relative to short clip start
+  duration?: number;
   category: SFXCategory;
   soundName: string;
   volume: number; // 0 to 1
@@ -217,6 +280,12 @@ export interface SFXMarker {
   triggerText?: string;
   confidence?: number;
   audioUrl?: string;
+  assetId?: string;
+  source?: 'library' | 'ai_generated' | 'user_imported';
+  prompt?: string;
+  fadeIn?: number;
+  fadeOut?: number;
+  duckingDb?: number;
 }
 
 export interface VFXMarker {

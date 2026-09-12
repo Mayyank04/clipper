@@ -443,6 +443,44 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     sfxEngine.playSound(cat, 0.8);
   };
 
+  const handleAddSFXMarker = (marker: SFXMarker) => {
+    const updated = {
+      ...currentShort,
+      sfxMarkers: [...(currentShort.sfxMarkers || []), marker],
+    };
+    pushState(updated);
+  };
+
+  const handleUpdateSFXMarker = (id: string, updates: Partial<SFXMarker>) => {
+    const updated = {
+      ...currentShort,
+      sfxMarkers: (currentShort.sfxMarkers || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
+    };
+    pushState(updated);
+  };
+
+  const handleRegenerateSingleSFX = async (sfxId: string) => {
+    try {
+      const projId = project?.id || 'default';
+      const res = await fetch(`/api/projects/${projId}/regenerate-elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortId: currentShort.id,
+          target: 'sfx',
+          targetSfxId: sfxId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.short) {
+        pushState(data.short);
+        setAiEditNotice('✨ Selected SFX regenerated with AI sound synthesis!');
+      }
+    } catch (err) {
+      console.error('Error regenerating single SFX:', err);
+    }
+  };
+
   // Add VFX Marker at current playhead
   const handleAddVFXAtCurrentTime = (
     type: 'zoom_punch' | 'shake' | 'glow' | 'motion_blur' | 'glitch' | 'callout',
@@ -1278,6 +1316,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               onRegenerateHooks={handleRegenerateHooks}
               isRegeneratingHooks={isRegeneratingHooks}
               onAddSFXAtCurrentTime={handleAddSFXAtCurrentTime}
+              onAddSFXMarker={handleAddSFXMarker}
+              onUpdateSFXMarker={handleUpdateSFXMarker}
+              onRegenerateSingleSFX={handleRegenerateSingleSFX}
               onAddVFXAtCurrentTime={handleAddVFXAtCurrentTime}
               onToggleVFXZoom={setZoomPunchEnabled}
               zoomPunchEnabled={zoomPunchEnabled}
