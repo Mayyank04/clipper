@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+public/uploads/*
+!public/uploads/.gitkeep
+public/exports/*
+!public/exports/.gitkeep

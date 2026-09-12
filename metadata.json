@@ -1,0 +1,6 @@
+{
+  "name": "ViralClip Studio - AI YouTube to Shorts",
+  "description": "Production-grade AI video repurposing platform transforming long-form YouTube videos into high-retention viral 9:16 Shorts with smart reframing, animated captions, and intelligent SFX.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

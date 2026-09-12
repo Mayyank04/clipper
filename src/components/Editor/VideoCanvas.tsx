@@ -1,0 +1,534 @@
+import React, { useRef, useEffect, useState } from 'react';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Maximize2,
+  Minimize2,
+  Flame,
+  Zap,
+  Scissors,
+  AlertTriangle,
+  Upload,
+} from 'lucide-react';
+import {
+  ShortCandidate,
+  AspectRatio,
+  CaptionCustomization,
+  BrandKit,
+  VFXMarker,
+  BRollSuggestion,
+} from '../../types';
+import { formatTime, formatTimeWithTenths } from '../../utils/timeFormat';
+import { AudioVisualizerCanvas } from './AudioVisualizerCanvas';
+import { TypingCaptionOverlay } from './TypingCaptionOverlay';
+
+interface VideoCanvasProps {
+  videoRef?: React.RefObject<HTMLVideoElement>;
+  short: ShortCandidate;
+  videoUrl: string;
+  currentTime: number;
+  isPlaying: boolean;
+  onTimeUpdate: (time: number) => void;
+  onPlayPause: () => void;
+  onPlayStateChange?: (playing: boolean) => void;
+  aspectRatio: AspectRatio;
+  captionConfig: CaptionCustomization;
+  brandKit: BrandKit;
+  zoomPunchEnabled: boolean;
+  speakerPosition?: 'center' | 'left' | 'right' | 'auto_switch';
+  volume?: number; // 0 to 1
+  onVideoLoaded?: (meta: { duration: number; videoWidth: number; videoHeight: number }) => void;
+  onRelinkMedia?: (file: File) => void;
+}
+
+export const VideoCanvas: React.FC<VideoCanvasProps> = ({
+  videoRef: externalVideoRef,
+  short,
+  videoUrl,
+  currentTime,
+  isPlaying,
+  onTimeUpdate,
+  onPlayPause,
+  onPlayStateChange,
+  aspectRatio,
+  captionConfig,
+  brandKit,
+  zoomPunchEnabled,
+  speakerPosition = 'center',
+  volume = 0.85,
+  onVideoLoaded,
+  onRelinkMedia,
+}) => {
+  const internalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = externalVideoRef || internalVideoRef;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [localVolume, setLocalVolume] = useState<number>(volume);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [isVideoReady, setIsVideoReady] = useState<boolean>(false);
+
+  // Clear errors when source video changes
+  useEffect(() => {
+    setMediaError(null);
+    setIsVideoReady(false);
+  }, [videoUrl]);
+
+  // Sync volume and mute
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.volume = isMuted ? 0 : localVolume;
+    vid.muted = isMuted;
+  }, [localVolume, isMuted]);
+
+  // Sync playback speed
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.playbackRate = playbackSpeed;
+  }, [playbackSpeed]);
+
+  const handleVideoTimeUpdate = () => {
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    const clips = short.videoClips && short.videoClips.length > 0
+      ? short.videoClips
+      : [{
+          id: 'clip_default',
+          sourceUrl: videoUrl,
+          sourceStart: short.startTime,
+          sourceEnd: short.endTime,
+          timelineStart: 0,
+          timelineEnd: short.duration,
+        }];
+
+    const curSource = vid.currentTime;
+    const activeClip = clips.find((c) => curSource >= c.sourceStart - 0.05 && curSource <= c.sourceEnd + 0.05) || clips[0];
+    const clipProgress = Math.max(0, curSource - activeClip.sourceStart);
+    const seqTime = activeClip.timelineStart + clipProgress;
+
+    // Check boundary for active clip
+    if (curSource >= activeClip.sourceEnd) {
+      const clipIdx = clips.indexOf(activeClip);
+      if (clipIdx < clips.length - 1) {
+        const nextClip = clips[clipIdx + 1];
+        vid.currentTime = nextClip.sourceStart;
+        onTimeUpdate(nextClip.timelineStart);
+        return;
+      } else {
+        vid.pause();
+        vid.currentTime = activeClip.sourceEnd;
+        onPlayStateChange?.(false);
+        onTimeUpdate(short.duration);
+        return;
+      }
+    }
+
+    if (curSource < activeClip.sourceStart) {
+      vid.currentTime = activeClip.sourceStart;
+      onTimeUpdate(activeClip.timelineStart);
+      return;
+    }
+
+    onTimeUpdate(Math.max(0, Math.min(short.duration, seqTime)));
+  };
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  };
+
+  // Find active caption segment
+  const activeCaption = short.captions?.find(
+    (cap) => currentTime >= cap.start && currentTime <= cap.end
+  );
+
+  // Find active VFX marker
+  const activeVfx: VFXMarker | undefined = short.vfxMarkers?.find(
+    (vfx) => currentTime >= vfx.timestamp && currentTime <= vfx.timestamp + vfx.duration
+  );
+
+  // Find active B-Roll
+  const activeBRoll: BRollSuggestion | undefined = short.brollSuggestions?.find(
+    (br) => br.enabled && currentTime >= br.timestamp && currentTime <= br.timestamp + br.duration
+  );
+
+  // Aspect ratio styling
+  const getAspectRatioClasses = () => {
+    switch (aspectRatio) {
+      case '9:16':
+        return 'w-[300px] sm:w-[340px] md:w-[360px] h-[533px] sm:h-[604px] md:h-[640px]';
+      case '1:1':
+        return 'w-[340px] sm:w-[440px] h-[340px] sm:h-[440px]';
+      case '16:9':
+        return 'w-[480px] sm:w-[620px] h-[270px] sm:h-[348px]';
+      default:
+        return 'w-[340px] h-[604px]';
+    }
+  };
+
+  // Dynamic Reframing Subject Alignment
+  const getSpeakerReframeStyle = () => {
+    switch (speakerPosition) {
+      case 'left':
+        return 'object-left scale-110';
+      case 'right':
+        return 'object-right scale-110';
+      case 'auto_switch':
+      case 'center':
+      default:
+        return 'object-center';
+    }
+  };
+
+  // Dynamic VFX transforms
+  const isPunchZoom = zoomPunchEnabled && activeVfx?.type === 'zoom_punch';
+  const isShake = activeVfx?.type === 'shake';
+  const isFlash = activeVfx?.type === 'glow';
+  const isBlur = activeVfx?.type === 'motion_blur';
+  const isGlitch = activeVfx?.type === 'glitch';
+
+  // Check if Audio-to-Video mode is active
+  const isAudioMode = Boolean(short.audioToVideoConfig || short.audioUrl);
+
+  return (
+    <div ref={containerRef} className="relative flex flex-col items-center justify-center p-2 sm:p-4 h-full">
+      {/* Video Framing Monitor */}
+      <div
+        className={`relative ${getAspectRatioClasses()} bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl flex items-center justify-center select-none transition-all duration-300 ${
+          isShake ? 'translate-x-1 translate-y-1' : ''
+        }`}
+      >
+        {/* Clean dark cinematic backdrop */}
+        <div className="absolute inset-0 bg-neutral-900 pointer-events-none" />
+
+        {/* Audio-to-Video Engine Canvas (Background & Reactive Visualizer) */}
+        {isAudioMode && short.audioToVideoConfig && (
+          <div className="absolute inset-0 z-10">
+            <AudioVisualizerCanvas
+              config={short.audioToVideoConfig}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              mediaElement={videoRef.current}
+            />
+          </div>
+        )}
+
+        {/* Source Video Player - Persistent HTMLVideoElement */}
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          preload="auto"
+          playsInline
+          onTimeUpdate={handleVideoTimeUpdate}
+          onPlay={() => onPlayStateChange?.(true)}
+          onPause={() => onPlayStateChange?.(false)}
+          onEnded={() => {
+            onPlayStateChange?.(false);
+            if (videoRef.current) {
+              videoRef.current.currentTime = short.startTime;
+            }
+          }}
+          onLoadedMetadata={(e) => {
+            const vid = e.currentTarget;
+            setMediaError(null);
+            setIsVideoReady(true);
+            if (vid.currentTime < short.startTime) {
+              vid.currentTime = short.startTime;
+            }
+            if (vid && onVideoLoaded) {
+              const dur = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : (short.duration || 30);
+              onVideoLoaded({
+                duration: dur,
+                videoWidth: vid.videoWidth || 720,
+                videoHeight: vid.videoHeight || 1280,
+              });
+            }
+          }}
+          onError={(e) => {
+            const vid = e.currentTarget;
+            console.error('Video error event:', vid.error);
+            setMediaError(
+              vid.error && vid.error.code === 4
+                ? "This media codec isn't supported by your browser. Please upload an MP3/WAV/AAC or MP4."
+                : 'Unable to stream source media. Please check media path or upload audio.'
+            );
+          }}
+          onClick={onPlayPause}
+          className={`relative z-10 w-full h-full object-cover cursor-pointer transition-all duration-300 ${
+            isAudioMode ? 'opacity-0 pointer-events-auto' : ''
+          } ${getSpeakerReframeStyle()} ${
+            isPunchZoom ? 'scale-125' : 'scale-100'
+          } ${isBlur ? 'blur-sm' : ''} ${isGlitch ? 'hue-rotate-90 saturate-200' : ''}`}
+        />
+
+        {/* Video Loading Indicator */}
+        {!isVideoReady && !mediaError && (
+          <div className="absolute top-4 z-25 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-800 text-[11px] text-amber-400 font-semibold flex items-center gap-2 pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            Loading video...
+          </div>
+        )}
+
+        {/* Media Error / Relink State */}
+        {(mediaError || short.mediaUnavailable) && (
+          <div className="absolute inset-0 z-30 bg-neutral-950/95 flex flex-col items-center justify-center p-6 text-center">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mb-3" />
+            <p className="text-white font-bold text-sm mb-1">
+              Media needs to be re-linked.
+            </p>
+            <p className="text-neutral-400 text-xs max-w-xs mb-4">
+              {mediaError || 'The original media file could not be persisted across browser sessions. Please relink your media file to continue.'}
+            </p>
+            <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs shadow-lg transition-colors cursor-pointer">
+              <Upload className="w-4 h-4" />
+              <span>Relink Media</span>
+              <input
+                type="file"
+                accept="video/*,audio/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && onRelinkMedia) {
+                    onRelinkMedia(file);
+                  }
+                }}
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Flash Overlay if active */}
+        {isFlash && (
+          <div className="absolute inset-0 z-15 bg-white/30 pointer-events-none animate-pulse" />
+        )}
+
+        {/* B-Roll Cutaway Overlay if active */}
+        {activeBRoll && (
+          <div className="absolute inset-0 z-15 transition-opacity duration-300 animate-fade-in">
+            {activeBRoll.videoUrl ? (
+              <video
+                src={activeBRoll.videoUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <img
+                src={activeBRoll.imageUrl}
+                alt={activeBRoll.concept}
+                className="w-full h-full object-cover"
+              />
+            )}
+            <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-amber-300 font-semibold border border-amber-400/30 flex items-center gap-1.5 shadow-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              B-Roll Cutaway: {activeBRoll.concept}
+            </div>
+          </div>
+        )}
+
+        {/* Watermark Overlay (Brand Kit) */}
+        {brandKit.enabled && brandKit.brandName && (
+          <div
+            className={`absolute z-20 pointer-events-none text-xs font-bold tracking-wider text-white px-2.5 py-1 rounded bg-black/40 backdrop-blur-sm border border-white/10 ${
+              brandKit.watermarkPosition === 'top-left'
+                ? 'top-4 left-4'
+                : brandKit.watermarkPosition === 'top-right'
+                ? 'top-4 right-4'
+                : brandKit.watermarkPosition === 'bottom-left'
+                ? 'bottom-4 left-4'
+                : 'bottom-4 right-4'
+            }`}
+            style={{ opacity: brandKit.watermarkOpacity / 100 }}
+          >
+            {brandKit.brandName}
+          </div>
+        )}
+
+        {/* Top Floating Badges */}
+        <div className="absolute top-3 inset-x-3 z-20 flex items-center justify-between pointer-events-none">
+          <div className="flex items-center gap-1.5 bg-black/65 backdrop-blur-md px-2.5 py-1 rounded-full border border-neutral-800 text-[11px] text-amber-400 font-bold shadow-md">
+            <Flame className="w-3.5 h-3.5 fill-amber-400" />
+            <span>{short.viralScore?.overall || 94} VIRAL</span>
+          </div>
+
+          <div className="text-[11px] font-mono text-neutral-300 bg-black/65 backdrop-blur-md px-2.5 py-1 rounded-full border border-neutral-800">
+            {formatTimeWithTenths(currentTime)} / {formatTimeWithTenths(short.duration)}
+          </div>
+        </div>
+
+        {/* Keypoint Callout Banner if VFX marker active */}
+        {activeVfx?.type === 'callout' && (
+          <div className="absolute top-16 inset-x-4 z-20 animate-bounce">
+            <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-neutral-950 font-black text-xs px-3 py-1.5 rounded-lg shadow-xl text-center uppercase tracking-wider">
+              {activeVfx.label || 'CRITICAL MOMENT'}
+            </div>
+          </div>
+        )}
+
+        {/* LIVE ANIMATED CAPTIONS OVERLAY (Audio-to-Video Typing Engine OR Standard Kinetic Captions) */}
+        {isAudioMode && short.audioToVideoConfig ? (
+          <TypingCaptionOverlay
+            captions={short.captions || []}
+            currentTime={currentTime}
+            config={short.audioToVideoConfig}
+          />
+        ) : (
+          activeCaption && (
+            <div
+              className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-none px-2 transition-all duration-150"
+              style={{ top: `${captionConfig.positionY}%` }}
+            >
+              <div
+                className={`text-center leading-snug max-w-[95%] drop-shadow-md transition-all ${
+                  captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
+                }`}
+                style={{
+                  fontFamily: captionConfig.fontFamily,
+                  fontSize: `${captionConfig.fontSize}px`,
+                  textTransform: captionConfig.uppercase ? 'uppercase' : 'none',
+                }}
+              >
+                {(activeCaption.words || []).map((w, idx) => {
+                  const isWordSpoken = currentTime >= w.start && currentTime <= w.end;
+                  const isPast = currentTime > w.end;
+
+                  let color = captionConfig.primaryColor;
+                  if (isWordSpoken) {
+                    color = w.highlightColor || captionConfig.highlightColor;
+                  } else if (isPast) {
+                    color = '#e2e8f0';
+                  }
+
+                  const wordScale = isWordSpoken ? (w.scale || 1.15) : 1;
+
+                  return (
+                    <span
+                      key={idx}
+                      className={`inline-block mx-1 transition-all duration-75 ${
+                        isWordSpoken ? 'scale-110 font-black' : 'font-bold'
+                      } ${captionConfig.strokeWidth > 0 ? 'text-stroke-sm' : ''}`}
+                      style={{
+                        color: color,
+                        transform: `scale(${wordScale})`,
+                        WebkitTextStroke: `${captionConfig.strokeWidth}px ${captionConfig.strokeColor}`,
+                      }}
+                    >
+                      {w.word}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Viral Progress Bar at Bottom of Short */}
+        <div className="absolute bottom-0 inset-x-0 h-1.5 bg-neutral-900/80 z-20 pointer-events-none">
+          <div
+            className="h-full bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm transition-all duration-100"
+            style={{ width: `${Math.min(100, (currentTime / (short.duration || 30)) * 100)}%` }}
+          />
+        </div>
+
+        {/* Big Center Play Icon when Paused */}
+        {!isPlaying && (
+          <div
+            onClick={onPlayPause}
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-[1px] cursor-pointer"
+          >
+            <div className="w-16 h-16 rounded-full bg-amber-400/95 text-neutral-950 flex items-center justify-center shadow-2xl shadow-amber-400/30 transform hover:scale-110 transition-transform">
+              <Play className="w-8 h-8 fill-neutral-950 ml-1" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating Bottom Transport Bar */}
+      <div className="mt-3 flex items-center gap-2.5 sm:gap-3 bg-neutral-900/95 border border-neutral-800 px-3.5 py-2 rounded-xl shadow-lg">
+        <button
+          onClick={() => {
+            const vid = videoRef.current;
+            if (vid) vid.currentTime = short.startTime;
+            onTimeUpdate(0);
+          }}
+          title="Restart Short"
+          className="p-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={onPlayPause}
+          title={isPlaying ? 'Pause' : 'Play'}
+          className="p-2 rounded-lg bg-amber-400 text-neutral-950 hover:bg-amber-300 font-bold transition-colors cursor-pointer"
+        >
+          {isPlaying ? <Pause className="w-4 h-4 fill-neutral-950" /> : <Play className="w-4 h-4 fill-neutral-950 ml-0.5" />}
+        </button>
+
+        {/* Volume / Mute Control */}
+        <button
+          onClick={() => setIsMuted(!isMuted)}
+          className="p-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+          title={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+        </button>
+
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={isMuted ? 0 : localVolume}
+          onChange={(e) => {
+            setLocalVolume(Number(e.target.value));
+            if (isMuted) setIsMuted(false);
+          }}
+          className="w-16 accent-amber-400 hidden sm:inline-block cursor-pointer"
+          title="Volume"
+        />
+
+        {/* Speed Selector */}
+        <select
+          value={playbackSpeed}
+          onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+          className="bg-neutral-950 border border-neutral-800 text-[11px] text-neutral-300 rounded px-1.5 py-1 focus:outline-none cursor-pointer"
+        >
+          <option value={0.5}>0.5x</option>
+          <option value={1}>1.0x</option>
+          <option value={1.25}>1.25x</option>
+          <option value={1.5}>1.5x</option>
+          <option value={2}>2.0x</option>
+        </select>
+
+        <div className="text-xs font-mono text-neutral-300">
+          {formatTimeWithTenths(currentTime)} / {formatTimeWithTenths(short.duration)}
+        </div>
+
+        {/* Fullscreen Button */}
+        <button
+          onClick={toggleFullscreen}
+          className="p-1.5 text-neutral-400 hover:text-white transition-colors ml-1 cursor-pointer"
+          title="Toggle Fullscreen"
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+};
