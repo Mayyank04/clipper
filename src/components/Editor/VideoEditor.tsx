@@ -30,6 +30,7 @@ import {
   BRollSuggestion,
   CaptionSegment,
   AudioToVideoConfig,
+  ApprovalMode,
 } from '../../types';
 import { VideoCanvas } from './VideoCanvas';
 import { Timeline } from './Timeline';
@@ -83,6 +84,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     initialShort.audioToVideoConfig ? 'audio_studio' : 'standard'
   );
   const [isAiStyling, setIsAiStyling] = useState<boolean>(false);
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>('auto_apply');
+  const [isRegeneratingElements, setIsRegeneratingElements] = useState<boolean>(false);
 
   // History stack for Undo/Redo
   const [history, setHistory] = useState<ShortCandidate[]>([initialShort]);
@@ -710,6 +713,43 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     setTimeout(() => setAiEditNotice(null), 3500);
   };
 
+  const handleLanguageChange = (newLang: string) => {
+    const updated = {
+      ...currentShort,
+      language: newLang,
+    };
+    pushState(updated);
+  };
+
+  const handleRegenerateElements = async (type: 'all' | 'captions' | 'broll' | 'sfx' | 'vfx') => {
+    setIsRegeneratingElements(true);
+    try {
+      const elementTypes = type === 'all' ? ['captions', 'broll', 'sfx', 'vfx'] : [type];
+      const res = await fetch(`/api/projects/${project.id}/regenerate-elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortId: currentShort.id,
+          elementTypes,
+          approvalMode,
+          language: currentShort.language || 'en',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.short) {
+          pushState(data.short);
+          setAiEditNotice(`✨ Regenerated ${type.toUpperCase()} elements successfully!`);
+          setTimeout(() => setAiEditNotice(null), 3000);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to regenerate elements', err);
+    } finally {
+      setIsRegeneratingElements(false);
+    }
+  };
+
   // Audio-to-Video config updater
   const handleAudioConfigChange = (newConfig: AudioToVideoConfig) => {
     const updated = {
@@ -1018,6 +1058,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               speakerPosition={speakerPosition}
               onSpeakerPositionChange={setSpeakerPosition}
               currentTime={currentTime}
+              language={currentShort.language || 'en'}
+              onLanguageChange={handleLanguageChange}
+              approvalMode={approvalMode}
+              onApprovalModeChange={setApprovalMode}
+              onRegenerateElements={handleRegenerateElements}
+              isRegeneratingElements={isRegeneratingElements}
             />
           )}
         </div>

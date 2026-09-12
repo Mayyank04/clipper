@@ -72,9 +72,9 @@ export function createEditorProject(
   ];
 
   // Canonical B-Roll items
-  const brollTrack: BrollItem[] = (short.brollSuggestions || []).map((b, idx) => ({
+  const brollTrack: BrollItem[] = (short.brollSuggestions || []).map((b: any, idx) => ({
     id: b.id || `broll_${idx}`,
-    assetUrl: b.imageUrl || '',
+    assetUrl: b.assetUrl || b.imageUrl || '',
     timelineStart: b.timestamp,
     timelineEnd: b.timestamp + b.duration,
     x: 0,
@@ -88,9 +88,9 @@ export function createEditorProject(
   }));
 
   // Canonical SFX items
-  const sfxTrack: SfxItem[] = (short.sfxMarkers || []).map((s, idx) => ({
+  const sfxTrack: SfxItem[] = (short.sfxMarkers || []).map((s: any, idx) => ({
     id: s.id || `sfx_${idx}`,
-    audioUrl: '',
+    audioUrl: s.audioUrl || `/assets/sfx/${s.category || 'impact'}.wav`,
     category: s.category,
     soundName: s.soundName,
     start: s.timestamp,
@@ -165,6 +165,8 @@ export function createEditorProject(
         }
       : undefined,
     exportSettings: defaultExportSettings,
+    projectAnalysis: short.projectAnalysis || project.projectAnalysis,
+    language: short.language || project.language,
   };
 }
 

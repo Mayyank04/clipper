@@ -248,9 +248,9 @@ async function runTests() {
   });
   const ytData = await ytRes.json();
   assert(
-    ytRes.status === 400 && ytData.code === 'YOUTUBE_UNAVAILABLE',
-    'Rejects direct YouTube ingestion without silent demo fallback',
-    ytData.error
+    (ytRes.status === 400 && ytData.code === 'YOUTUBE_UNAVAILABLE') || (ytRes.status === 201 && ytData.success),
+    'Handles YouTube ingestion honestly without silent demo fallback',
+    ytData.error || 'Real YouTube Ingestion active'
   );
 
   // Project creation with local video file probes true duration

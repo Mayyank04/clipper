@@ -21,7 +21,13 @@ import {
   Edit3,
   Save,
   Image as ImageIcon,
-  AlignLeft
+  AlignLeft,
+  Globe,
+  SlidersHorizontal,
+  RefreshCw,
+  Eye,
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -32,10 +38,11 @@ import {
   SFXCategory,
   VFXMarker,
   BRollSuggestion,
+  ApprovalMode,
 } from '../../types';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { TranscriptEditor } from './TranscriptEditor';
-import { CAPTION_STYLES_REGISTRY, getCaptionStylePreset } from '../../utils/captionEngine';
+import { CAPTION_STYLES_REGISTRY, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
 
 interface RightInspectorProps {
   short: ShortCandidate;
@@ -66,17 +73,23 @@ interface RightInspectorProps {
   speakerPosition: 'center' | 'left' | 'right' | 'auto_switch';
   onSpeakerPositionChange: (pos: 'center' | 'left' | 'right' | 'auto_switch') => void;
   currentTime: number;
+  language?: string;
+  onLanguageChange?: (lang: string) => void;
+  approvalMode?: ApprovalMode;
+  onApprovalModeChange?: (mode: ApprovalMode) => void;
+  onRegenerateElements?: (type: 'all' | 'captions' | 'broll' | 'sfx' | 'vfx') => void;
+  isRegeneratingElements?: boolean;
 }
 
-const SFX_CATALOG: { category: SFXCategory; name: string; desc: string }[] = [
+const VERIFIED_SFX_CATALOG: { category: SFXCategory; name: string; desc: string }[] = [
   { category: 'whoosh', name: 'Fast Modern Whoosh', desc: 'Quick camera pan or scene cut' },
-  { category: 'pop', name: 'Bubble Pop Accent', desc: 'Text keyword appearance' },
-  { category: 'hit', name: 'Heavy Cinematic Hit', desc: 'Bold emotional punchline' },
-  { category: 'impact', name: 'Sub-bass Boom', desc: 'Dramatic realization moment' },
-  { category: 'riser', name: 'Tension Riser', desc: 'Builds curiosity before climax' },
-  { category: 'click', name: 'Mechanical Snap', desc: 'Clean interface click' },
-  { category: 'chime', name: 'Warm Crystal Chime', desc: 'Positive discovery or tip' },
-  { category: 'glitch', name: 'Digital Glitch', desc: 'Pattern interrupt or contrast' },
+  { category: 'hit', name: 'Heavy Cinematic Hit', desc: 'Bold emotional punchline or announcement' },
+  { category: 'impact', name: 'Sub-bass Boom', desc: 'Dramatic realization or climax' },
+  { category: 'pop', name: 'Bubble Pop Accent', desc: 'Text keyword appearance or numbered point' },
+  { category: 'riser', name: 'Tension Riser', desc: 'Builds curiosity before key reveal' },
+  { category: 'chime', name: 'Warm Crystal Chime', desc: 'Positive discovery, success or tip' },
+  { category: 'click', name: 'Mechanical Snap', desc: 'Clean interface click or subtle tick' },
+  { category: 'glitch', name: 'Digital Glitch', desc: 'Pattern interrupt, error or contrast' },
 ];
 
 const VFX_CATALOG = [
@@ -88,12 +101,40 @@ const VFX_CATALOG = [
   { type: 'callout' as const, label: 'Floating Keynote Banner', desc: 'Top highlighted headline' },
 ];
 
-const BROLL_ASSETS = [
-  { concept: 'Deep Thinking & Strategy', url: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop' },
-  { concept: 'High-Growth Analytics Chart', url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&auto=format&fit=crop' },
-  { concept: 'Modern Tech Workspace', url: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=800&auto=format&fit=crop' },
-  { concept: 'AI & Neural Networks', url: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&auto=format&fit=crop' },
-  { concept: 'Dynamic City Skyline', url: 'https://images.unsplash.com/photo-1477959858617-67f30bc75b82?w=800&auto=format&fit=crop' },
+const VERIFIED_BROLL_ASSETS = [
+  { concept: 'Coding & Tech Build', url: '/assets/broll/coding.jpg', tag: 'tech' },
+  { concept: 'AI & Neural Systems', url: '/assets/broll/ai_interface.jpg', tag: 'ai' },
+  { concept: 'Growth Analytics Chart', url: '/assets/broll/analytics.jpg', tag: 'growth' },
+  { concept: 'Modern Tech Workspace', url: '/assets/broll/workspace.jpg', tag: 'office' },
+  { concept: 'Dynamic City Skyline', url: '/assets/broll/city_skyline.jpg', tag: 'city' },
+  { concept: 'Deep Thinking & Strategy', url: '/assets/broll/strategy.jpg', tag: 'strategy' },
+  { concept: 'Cinema & Studio Camera', url: '/assets/broll/camera.jpg', tag: 'media' },
+];
+
+const SUPPORTED_LANGUAGES = [
+  { code: 'auto', label: 'Auto Detect (Content-Driven)' },
+  { code: 'en', label: 'English (US/UK)' },
+  { code: 'hi', label: 'Hindi (हिन्दी)' },
+  { code: 'hi-Latn', label: 'Hinglish (Hindi Latin)' },
+  { code: 'es', label: 'Spanish (Español)' },
+  { code: 'fr', label: 'French (Français)' },
+  { code: 'de', label: 'German (Deutsch)' },
+  { code: 'pt', label: 'Portuguese (Português)' },
+  { code: 'it', label: 'Italian (Italiano)' },
+  { code: 'ja', label: 'Japanese (日本語)' },
+  { code: 'ko', label: 'Korean (한국어)' },
+  { code: 'zh', label: 'Chinese (中文)' },
+  { code: 'ar', label: 'Arabic (العربية)' },
+  { code: 'ru', label: 'Russian (Русский)' },
+  { code: 'id', label: 'Indonesian (Bahasa)' },
+  { code: 'tr', label: 'Turkish (Türkçe)' },
+  { code: 'vi', label: 'Vietnamese (Tiếng Việt)' },
+  { code: 'nl', label: 'Dutch (Nederlands)' },
+  { code: 'pl', label: 'Polish (Polski)' },
+  { code: 'th', label: 'Thai (ไทย)' },
+  { code: 'ta', label: 'Tamil (தமிழ்)' },
+  { code: 'te', label: 'Telugu (తెలుగు)' },
+  { code: 'bn', label: 'Bengali (বাংলা)' },
 ];
 
 export const RightInspector: React.FC<RightInspectorProps> = ({
@@ -125,6 +166,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   speakerPosition,
   onSpeakerPositionChange,
   currentTime,
+  language = 'en',
+  onLanguageChange,
+  approvalMode = 'auto_apply',
+  onApprovalModeChange,
+  onRegenerateElements,
+  isRegeneratingElements = false,
 }) => {
   const [copiedTitle, setCopiedTitle] = useState<boolean>(false);
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
@@ -136,6 +183,15 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [sfxVolume, setSfxVolume] = useState<number>(75);
   const [autoDucking, setAutoDucking] = useState<boolean>(true);
   const [selectedMusic, setSelectedMusic] = useState<string>('hype_trap');
+  const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
+
+  const analysis = short.projectAnalysis;
+  const detectedLangCode = analysis?.language || short.language || language || 'en';
+  const detectedLangName = analysis?.languageConfidence
+    ? `${analysis.language.toUpperCase()} (${Math.round(analysis.languageConfidence * 100)}%)`
+    : detectedLangCode.toUpperCase();
+
+  const captionCoverage = calculateCaptionCoverage(short.captions || [], short.duration || 30);
 
   const applyPreset = (preset: CaptionStylePreset) => {
     const styleDef = getCaptionStylePreset(preset);
@@ -170,8 +226,88 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     }
   };
 
+  const filteredPresets = CAPTION_STYLES_REGISTRY.filter((p) => {
+    if (presetFilterCategory === 'all') return true;
+    return p.category === presetFilterCategory;
+  });
+
   return (
     <div className="w-full lg:w-96 bg-neutral-900 border-l border-neutral-800 flex flex-col h-full overflow-hidden">
+      {/* TOP AI PRODUCTION INTELLIGENCE CONTROLS */}
+      <div className="p-3 bg-neutral-950 border-b border-neutral-800 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">AI Intelligence</span>
+          </div>
+
+          {/* Language selector & badge */}
+          <div className="flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5 text-amber-400" />
+            <select
+              value={language}
+              onChange={(e) => onLanguageChange?.(e.target.value)}
+              className="bg-neutral-900 border border-neutral-700 text-neutral-200 text-[11px] font-semibold rounded px-1.5 py-0.5 focus:outline-none focus:border-amber-400 cursor-pointer"
+              title="Content Language & Transcription Model"
+            >
+              {SUPPORTED_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Human Approval Mode Pills */}
+        <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+          {[
+            { id: 'auto_apply' as const, label: 'Auto Apply (≥0.80)' },
+            { id: 'balanced' as const, label: 'Balanced (≥0.85)' },
+            { id: 'suggest_only' as const, label: 'Suggest Only' },
+          ].map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => onApprovalModeChange?.(mode.id)}
+              className={`flex-1 py-1 px-1.5 text-[10px] font-bold rounded transition-colors text-center cursor-pointer ${
+                approvalMode === mode.id
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title={`Approval Mode: ${mode.label}`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Regeneration Actions Bar */}
+        <div className="flex items-center justify-between pt-1 border-t border-neutral-800/80">
+          <span className="text-[10px] font-medium text-neutral-400">Regenerate:</span>
+          <div className="flex items-center gap-1">
+            {[
+              { id: 'all' as const, label: '✨ All' },
+              { id: 'captions' as const, label: 'Captions' },
+              { id: 'broll' as const, label: 'B-Roll' },
+              { id: 'sfx' as const, label: 'SFX' },
+              { id: 'vfx' as const, label: 'VFX' },
+            ].map((btn) => (
+              <button
+                key={btn.id}
+                onClick={() => onRegenerateElements?.(btn.id)}
+                disabled={isRegeneratingElements}
+                className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 hover:border-amber-400/50 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Tab Switcher Icons */}
       <div className="flex items-center gap-1 p-2 border-b border-neutral-800 overflow-x-auto bg-neutral-950/60 scrollbar-none">
         {[
@@ -223,11 +359,11 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         {/* TAB 1: CAPTION ENGINE */}
         {activeTab === 'captions' && (
           <div className="space-y-6 animate-fade-in">
-            {/* Presets */}
+            {/* Presets Header & Auto-Transcribe */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white tracking-tight">Caption Presets</h3>
-                <p className="text-xs text-neutral-400 mt-0.5">12 styles optimized for retention & clarity</p>
+                <p className="text-xs text-neutral-400 mt-0.5">25 viral styles with word-level animations</p>
               </div>
 
               {onTranscribeCaptions && (
@@ -243,8 +379,53 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               )}
             </div>
 
+            {/* Caption Coverage Diagnostic Bar */}
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-neutral-300">Timeline Coverage</span>
+                <span className="font-mono font-bold text-amber-400">{captionCoverage.coveragePercent}%</span>
+              </div>
+              <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, captionCoverage.coveragePercent)}%` }}
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-1 pt-1 text-[10px] text-center">
+                <span className={`px-1 py-0.5 rounded font-mono ${captionCoverage.quartileCoverage.q1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-900 text-neutral-600'}`}>Q1 (0-25%)</span>
+                <span className={`px-1 py-0.5 rounded font-mono ${captionCoverage.quartileCoverage.q2 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-900 text-neutral-600'}`}>Q2 (25-50%)</span>
+                <span className={`px-1 py-0.5 rounded font-mono ${captionCoverage.quartileCoverage.q3 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-900 text-neutral-600'}`}>Q3 (50-75%)</span>
+                <span className={`px-1 py-0.5 rounded font-mono ${captionCoverage.quartileCoverage.q4 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-900 text-neutral-600'}`}>Q4 (75-100%)</span>
+              </div>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {[
+                { id: 'all', label: 'All (25)' },
+                { id: 'viral', label: 'Viral' },
+                { id: 'high_energy', label: 'Energy' },
+                { id: 'podcast', label: 'Podcast' },
+                { id: 'cinematic', label: 'Cinematic' },
+                { id: 'creative', label: 'Creative' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setPresetFilterCategory(c.id)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                    presetFilterCategory === c.id
+                      ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                      : 'bg-neutral-950 text-neutral-400 border border-neutral-800 hover:text-white'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 25 Presets Grid */}
             <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
-              {CAPTION_STYLES_REGISTRY.map((p) => {
+              {filteredPresets.map((p) => {
                 const isSelected = (captionConfig.preset || 'viral_bold') === p.id;
                 return (
                   <button
@@ -312,7 +493,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                 <input
                   type="range"
                   min="20"
-                  max="44"
+                  max="48"
                   value={captionConfig.fontSize}
                   onChange={(e) =>
                     onCaptionConfigChange({ ...captionConfig, fontSize: Number(e.target.value) })
@@ -325,7 +506,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               <div className="flex items-center justify-between pt-2">
                 <span className="text-xs text-neutral-300">Active Highlight Color</span>
                 <div className="flex items-center gap-1.5">
-                  {['#facc15', '#38bdf8', '#4ade80', '#fb7185', '#c084fc'].map((col) => (
+                  {['#facc15', '#38bdf8', '#4ade80', '#fb7185', '#c084fc', '#ff007f', '#00f5ff'].map((col) => (
                     <button
                       key={col}
                       onClick={() => onCaptionConfigChange({ ...captionConfig, highlightColor: col })}
@@ -350,91 +531,71 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                   className="w-4 h-4 accent-amber-400 cursor-pointer"
                 />
               </div>
-
-              {/* Speaker Reframing Position */}
-              <div className="pt-2 border-t border-neutral-800 space-y-1.5">
-                <label className="text-xs font-bold text-neutral-300">Active Speaker Reframing</label>
-                <div className="grid grid-cols-4 gap-1">
-                  {(['center', 'left', 'right', 'auto_switch'] as const).map((pos) => (
-                    <button
-                      key={pos}
-                      onClick={() => onSpeakerPositionChange(pos)}
-                      className={`p-1.5 text-[10px] font-bold rounded-lg border capitalize transition-colors cursor-pointer ${
-                        speakerPosition === pos
-                          ? 'bg-amber-400 text-neutral-950 border-amber-400'
-                          : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      {pos.replace('_', ' ')}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
 
-            {/* LIVE CAPTION TEXT EDITOR */}
+            {/* Captions List on Active Clip */}
             <div className="pt-4 border-t border-neutral-800 space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                    Edit Caption Segments
-                  </h4>
-                  <span className="text-[10px] text-amber-400">{short.captions?.length || 0} segments</span>
-                </div>
-
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                  Captions on Clip ({short.captions?.length || 0})
+                </h4>
                 {onAddCaptionAtCurrentTime && (
                   <button
                     onClick={onAddCaptionAtCurrentTime}
-                    className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 transition-colors cursor-pointer"
-                    title="Add caption at current playhead"
+                    className="flex items-center gap-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Add at {currentTime.toFixed(1)}s</span>
+                    <span>Add Caption</span>
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-neutral-400">Click time to jump playhead, or edit words directly</p>
 
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {short.captions?.map((cap) => {
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {(short.captions || []).map((cap) => {
                   const isEditing = editingCaptionId === cap.id;
+                  const isCurrentlyActive = currentTime >= cap.start && currentTime <= cap.end;
+
                   return (
                     <div
                       key={cap.id}
-                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs space-y-1.5 hover:border-neutral-700 transition-colors"
+                      className={`p-2.5 rounded-xl border text-xs transition-all ${
+                        isCurrentlyActive
+                          ? 'bg-amber-400/10 border-amber-400 shadow-sm'
+                          : 'bg-neutral-950/60 border-neutral-800 hover:border-neutral-700'
+                      }`}
                     >
-                      <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
-                        <button
-                          type="button"
+                      <div className="flex items-center justify-between mb-1.5 text-[10px] text-neutral-400">
+                        <span
+                          className="font-mono cursor-pointer hover:text-amber-400 font-bold"
                           onClick={() => onSeekToTime?.(cap.start)}
-                          className="hover:text-amber-400 font-bold underline decoration-dotted"
-                          title="Seek to caption start"
                         >
                           {cap.start.toFixed(1)}s - {cap.end.toFixed(1)}s
-                        </button>
-                        <div className="flex items-center gap-2">
+                        </span>
+                        <div className="flex items-center gap-1.5">
                           {isEditing ? (
                             <button
                               onClick={() => handleSaveCaption(cap.id)}
-                              className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-bold"
+                              className="text-emerald-400 hover:text-emerald-300 transition-colors"
+                              title="Save"
                             >
-                              <Save className="w-3 h-3" /> Save
+                              <Save className="w-3.5 h-3.5" />
                             </button>
                           ) : (
                             <button
                               onClick={() => handleStartEditCaption(cap.id, cap.text)}
-                              className="flex items-center gap-1 text-neutral-400 hover:text-amber-400"
+                              className="text-neutral-400 hover:text-white transition-colors"
+                              title="Edit Caption Text"
                             >
-                              <Edit3 className="w-3 h-3" /> Edit
+                              <Edit3 className="w-3.5 h-3.5" />
                             </button>
                           )}
                           {onDeleteCaption && (
                             <button
                               onClick={() => onDeleteCaption(cap.id)}
-                              className="text-neutral-500 hover:text-rose-400 p-0.5 transition-colors"
+                              className="text-neutral-500 hover:text-rose-400 transition-colors"
                               title="Delete Caption"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
@@ -445,7 +606,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                           type="text"
                           value={editedCaptionText}
                           onChange={(e) => setEditedCaptionText(e.target.value)}
-                          className="w-full bg-neutral-900 border border-amber-400 rounded px-2 py-1 text-white font-medium focus:outline-none"
+                          className="w-full bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-amber-400"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSaveCaption(cap.id);
@@ -528,7 +689,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             </div>
 
             <div className="space-y-2">
-              {SFX_CATALOG.map((s) => (
+              {VERIFIED_SFX_CATALOG.map((s) => (
                 <div
                   key={s.name}
                   className="p-3 rounded-xl bg-neutral-950/60 border border-neutral-800 flex items-center justify-between gap-2 hover:border-neutral-700 transition-colors"
@@ -559,41 +720,65 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               ))}
             </div>
 
-            {/* Active SFX on this clip */}
+            {/* Active SFX on this clip with semantic justifications */}
             {short.sfxMarkers && short.sfxMarkers.length > 0 && (
               <div className="space-y-2 pt-3 border-t border-neutral-800">
                 <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider">
                   <span>Active SFX on Timeline</span>
                   <span className="text-amber-400 text-[10px]">{short.sfxMarkers.length} cues</span>
                 </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {short.sfxMarkers.map((sfx) => (
                     <div
                       key={sfx.id}
-                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-between gap-2 hover:border-neutral-700 transition-colors"
+                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 transition-colors space-y-1.5"
                     >
-                      <div
-                        className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1"
-                        onClick={() => {
-                          sfxEngine.playSound(sfx.category, sfx.volume);
-                          onSeekToTime?.(sfx.timestamp);
-                        }}
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
-                        <span className="text-xs font-bold text-white truncate">{sfx.soundName}</span>
-                        <span className="text-[10px] font-mono text-amber-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
-                          {sfx.timestamp.toFixed(1)}s
-                        </span>
-                      </div>
-                      {onDeleteSFX && (
-                        <button
-                          onClick={() => onDeleteSFX(sfx.id)}
-                          className="text-neutral-500 hover:text-rose-400 p-1 transition-colors"
-                          title="Delete SFX"
+                      <div className="flex items-center justify-between gap-2">
+                        <div
+                          className="flex items-center gap-2 cursor-pointer min-w-0 flex-1"
+                          onClick={() => {
+                            sfxEngine.playSound(sfx.category, sfx.volume);
+                            onSeekToTime?.(sfx.timestamp);
+                          }}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                          <Volume2 className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                          <span className="text-xs font-bold text-white truncate">{sfx.soundName}</span>
+                          <span className="text-[10px] font-mono text-amber-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                            {sfx.timestamp.toFixed(1)}s
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => sfxEngine.playSound(sfx.category, sfx.volume)}
+                            className="p-1 rounded text-neutral-400 hover:text-white"
+                            title="Play SFX"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                          </button>
+                          {onDeleteSFX && (
+                            <button
+                              onClick={() => onDeleteSFX(sfx.id)}
+                              className="text-neutral-500 hover:text-rose-400 p-1 transition-colors"
+                              title="Delete SFX"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Justification metadata */}
+                      <div className="text-[11px] text-neutral-400 bg-neutral-900/60 p-1.5 rounded border border-neutral-800/60 flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          <strong className="text-neutral-300">Cue:</strong> {sfx.triggerText ? `"${sfx.triggerText}"` : sfx.reason || 'Spoken emphasis'}
+                        </span>
+                        {sfx.confidence !== undefined && (
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            {Math.round(sfx.confidence * 100)}%
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -731,8 +916,8 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         {activeTab === 'broll' && (
           <div className="space-y-5 animate-fade-in">
             <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">Contextual AI B-Roll</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Insert visual cutaways to boost visual interest</p>
+              <h3 className="text-sm font-bold text-white tracking-tight">Content-Aware AI B-Roll</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">Visual cutaways semantically aligned to spoken topics</p>
             </div>
 
             {/* Custom Upload or Add */}
@@ -755,74 +940,98 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
             {/* Pre-packaged Asset Catalog */}
             <div className="space-y-2">
               <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                Preset Visual Assets
+                Verified Local Assets
               </div>
-              {BROLL_ASSETS.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800 flex items-center gap-3"
-                >
-                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0 border border-neutral-700">
-                    <img src={item.url} alt={item.concept} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-white truncate">{item.concept}</div>
-                  </div>
-                  <button
-                    onClick={() => onAddBRollAtCurrentTime(item.concept, item.url)}
-                    className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Place</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Active Short B-Roll List */}
-            {short.brollSuggestions && short.brollSuggestions.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-neutral-800">
-                <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                  Timeline B-Roll Overlays
-                </div>
-                {short.brollSuggestions.map((br) => (
+              <div className="space-y-1.5">
+                {VERIFIED_BROLL_ASSETS.map((item, idx) => (
                   <div
-                    key={br.id}
-                    className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center gap-3 hover:border-neutral-700 transition-colors"
+                    key={idx}
+                    className="p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800 flex items-center gap-3"
                   >
-                    <img
-                      src={br.imageUrl}
-                      alt={br.concept}
-                      onClick={() => onSeekToTime?.(br.timestamp)}
-                      className="w-10 h-10 rounded object-cover cursor-pointer hover:opacity-80"
-                    />
-                    <div
-                      className="flex-1 min-w-0 cursor-pointer"
-                      onClick={() => onSeekToTime?.(br.timestamp)}
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0 border border-neutral-700">
+                      <img src={item.url} alt={item.concept} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-white truncate">{item.concept}</div>
+                      <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400">
+                        {item.tag}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => onAddBRollAtCurrentTime(item.concept, item.url)}
+                      className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 transition-colors cursor-pointer"
                     >
-                      <div className="text-xs font-bold text-white truncate">{br.concept}</div>
-                      <div className="text-[10px] text-neutral-400">At {br.timestamp.toFixed(1)}s ({br.duration}s)</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={br.enabled}
-                        onChange={() => onToggleBRoll(br.id)}
-                        className="w-4 h-4 accent-amber-400 cursor-pointer"
-                        title="Toggle Overlay"
-                      />
-                      {onDeleteBRoll && (
-                        <button
-                          onClick={() => onDeleteBRoll(br.id)}
-                          className="text-neutral-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
-                          title="Delete B-Roll"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                      <Plus className="w-3 h-3" />
+                      <span>Place</span>
+                    </button>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Active Short B-Roll List with justifications */}
+            {short.brollSuggestions && short.brollSuggestions.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-neutral-800">
+                <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                  <span>Timeline B-Roll Overlays</span>
+                  <span className="text-amber-400 text-[10px]">{short.brollSuggestions.length} items</span>
+                </div>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {short.brollSuggestions.map((br) => (
+                    <div
+                      key={br.id}
+                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 transition-colors space-y-1.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={br.imageUrl || br.assetUrl}
+                          alt={br.concept}
+                          onClick={() => onSeekToTime?.(br.timestamp)}
+                          className="w-12 h-12 rounded object-cover cursor-pointer hover:opacity-80 border border-neutral-800"
+                        />
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => onSeekToTime?.(br.timestamp)}
+                        >
+                          <div className="text-xs font-bold text-white truncate">{br.concept}</div>
+                          <div className="text-[10px] text-neutral-400 font-mono">
+                            {br.timestamp.toFixed(1)}s - {(br.timestamp + br.duration).toFixed(1)}s ({br.duration}s)
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={br.enabled}
+                            onChange={() => onToggleBRoll(br.id)}
+                            className="w-4 h-4 accent-amber-400 cursor-pointer"
+                            title="Toggle Overlay"
+                          />
+                          {onDeleteBRoll && (
+                            <button
+                              onClick={() => onDeleteBRoll(br.id)}
+                              className="text-neutral-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                              title="Delete B-Roll"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Justification details */}
+                      <div className="text-[11px] text-neutral-400 bg-neutral-900/60 p-1.5 rounded border border-neutral-800/60 flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          <strong className="text-neutral-300">Keyword:</strong> {br.triggerText ? `"${br.triggerText}"` : br.reason || 'Thematic match'}
+                        </span>
+                        {br.confidence !== undefined && (
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            {Math.round(br.confidence * 100)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

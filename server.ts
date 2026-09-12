@@ -8,6 +8,18 @@ import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
+import {
+  detectLanguageFromContent,
+  generateSemanticSFXSuggestions,
+  generateContentAwareBRollSuggestions,
+  buildCanonicalProjectAnalysis,
+  VERIFIED_SFX_ASSETS,
+} from './src/utils/analysisEngine';
+import {
+  getCaptionStylePreset,
+  groupWordsIntoCaptionSegments,
+  calculateCaptionCoverage,
+} from './src/utils/captionEngine';
 
 dotenv.config();
 
@@ -1106,28 +1118,19 @@ Requirements:
       });
     }
 
-    // Generate SFX markers distributed throughout duration
-    const sfxMarkers: any[] = [
-      { id: `sfx_${idx}_0`, timestamp: 0.4, category: 'whoosh', soundName: 'Fast Whoosh', volume: 0.75 },
-    ];
-    const sfxTimes = [
-      Math.round(clipDuration * 0.25 * 10) / 10,
-      Math.round(clipDuration * 0.5 * 10) / 10,
-      Math.round(clipDuration * 0.75 * 10) / 10,
-    ];
-    const sfxCats: Array<'pop' | 'hit' | 'impact' | 'chime' | 'riser'> = ['pop', 'impact', 'hit', 'chime', 'pop'];
-    const sfxNames = ['Keyword Pop', 'Sub-bass Impact', 'Cymbal Strike', 'Crystal Chime', 'Accent Pop'];
-    sfxTimes.forEach((t, sIdx) => {
-      if (t > 1.0 && t < clipDuration - 0.5) {
-        sfxMarkers.push({
-          id: `sfx_${idx}_${sIdx + 1}`,
-          timestamp: t,
-          category: sfxCats[sIdx % sfxCats.length],
-          soundName: sfxNames[sIdx % sfxNames.length],
-          volume: 0.7,
-        });
-      }
-    });
+    // Generate semantic SFX suggestions based on actual spoken phrases
+    const semanticSfx = generateSemanticSFXSuggestions(captions, clipDuration);
+    const sfxMarkers: any[] = semanticSfx.map((s, sIdx) => ({
+      id: `sfx_${idx}_${sIdx}`,
+      timestamp: s.start,
+      category: s.type,
+      soundName: VERIFIED_SFX_ASSETS[s.type]?.soundName || 'Impact Sound',
+      volume: 0.75,
+      reason: s.reason,
+      triggerText: s.triggerText,
+      confidence: s.confidence,
+      audioUrl: s.audioUrl,
+    }));
 
     // Generate VFX markers distributed throughout duration
     const vfxMarkers: any[] = [
@@ -1156,29 +1159,20 @@ Requirements:
       });
     }
 
-    // Generate B-roll distributed across clip
-    const brollSuggestions: any[] = [
-      {
-        id: `broll_${idx}_1`,
-        timestamp: Math.round(clipDuration * 0.18 * 10) / 10,
-        duration: Math.min(4.0, clipDuration * 0.15),
-        concept: 'High-growth charts & performance metrics',
-        imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=80',
-        keyword: 'growth',
-        enabled: true,
-      },
-    ];
-    if (clipDuration > 20) {
-      brollSuggestions.push({
-        id: `broll_${idx}_2`,
-        timestamp: Math.round(clipDuration * 0.62 * 10) / 10,
-        duration: Math.min(4.5, clipDuration * 0.15),
-        concept: 'Modern focused creator studio workspace',
-        imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=600&auto=format&fit=crop&q=80',
-        keyword: 'focus',
-        enabled: true,
-      });
-    }
+    // Generate content-aware B-roll suggestions based on actual spoken topics
+    const semanticBroll = generateContentAwareBRollSuggestions(captions, clipDuration);
+    const brollSuggestions: any[] = semanticBroll.map((b, bIdx) => ({
+      id: `broll_${idx}_${bIdx}`,
+      timestamp: b.start,
+      duration: Number((b.end - b.start).toFixed(2)),
+      concept: b.query,
+      imageUrl: b.assetUrl,
+      keyword: b.assetId,
+      enabled: b.enabled ?? true,
+      reason: b.reason,
+      triggerText: b.triggerText,
+      confidence: b.confidence,
+    }));
 
     return {
       id: `short_${project.id}_${idx + 1}`,
@@ -1251,6 +1245,24 @@ Requirements:
   job.progress = 90;
   job.currentStage = 'Building editor project workstation...';
   console.log('[PROCESS] current stage: preparing_editor (90%)');
+
+  // Build canonical single-source-of-truth ProjectAnalysis
+  const fullTranscriptText = (project.transcript || []).map((t: any) => t.text || t).join(' ') || project.originalTitle;
+  const canonicalAnalysis = buildCanonicalProjectAnalysis({
+    projectId: project.id,
+    sourceMedia: canonicalSourceMedia,
+    transcript: fullTranscriptText,
+    totalDuration,
+    shorts: finalizedShorts as any,
+  });
+
+  finalizedShorts.forEach((s: any) => {
+    s.projectAnalysis = canonicalAnalysis;
+    s.language = canonicalAnalysis.language;
+  });
+
+  project.projectAnalysis = canonicalAnalysis;
+  project.language = canonicalAnalysis.language;
 
   // Save back to project store with full analysis dashboard stats
   project.shorts = finalizedShorts;
@@ -1711,8 +1723,28 @@ Return JSON format:
   }
 });
 
+function hexToAssColor(hex: string = '#ffffff'): string {
+  const clean = hex.replace('#', '').trim();
+  if (clean.length === 6) {
+    const r = clean.substring(0, 2);
+    const g = clean.substring(2, 4);
+    const b = clean.substring(4, 6);
+    return `&H00${b}${g}${r}&`;
+  }
+  return '&H00FFFFFF&';
+}
+
 // Helper to generate ASS subtitles for burning into exported video
-function formatAssSubtitle(captions: any[] = []): string {
+function formatAssSubtitle(captions: any[] = [], captionConfig?: any): string {
+  const font = captionConfig?.fontFamily?.split(',')[0]?.replace(/['"]/g, '').trim() || 'Impact';
+  const fontSize = Math.round((captionConfig?.fontSize || 28) * 1.8);
+  const primaryColor = hexToAssColor(captionConfig?.primaryColor || '#ffffff');
+  const highlightColor = hexToAssColor(captionConfig?.highlightColor || '#facc15');
+  const strokeColor = hexToAssColor(captionConfig?.strokeColor || '#000000');
+  const strokeWidth = captionConfig?.strokeWidth !== undefined ? captionConfig.strokeWidth : 3;
+  const shadow = captionConfig?.hasShadow ? 2 : 0;
+  const marginV = Math.round(1920 * (1 - (captionConfig?.positionY ?? 72) / 100));
+
   let content = `[Script Info]
 Title: ViralClip Subtitles
 ScriptType: v4.00+
@@ -1723,7 +1755,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Impact,52,&H00FFFFFF,&H0000FFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,5,3,2,40,40,320,1
+Style: Default,${font},${fontSize},${primaryColor},${highlightColor},${strokeColor},&HA0000000,-1,0,0,0,100,100,0,0,1,${strokeWidth},${shadow},2,40,40,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1733,7 +1765,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const end = Math.max(start + 0.1, Number(cap.end) || (start + 1));
     const sTime = formatAssTime(start);
     const eTime = formatAssTime(end);
-    const text = String(cap.text || '').replace(/[\r\n]+/g, ' ').replace(/{/g, '').replace(/}/g, '').trim();
+    let text = String(cap.text || '').replace(/[\r\n]+/g, ' ').replace(/{/g, '').replace(/}/g, '').trim();
+    if (captionConfig?.uppercase) text = text.toUpperCase();
     if (text) {
       content += `Dialogue: 0,${sTime},${eTime},Default,,0,0,0,,${text}\n`;
     }
@@ -1822,11 +1855,13 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
         const outFileName = `viralclip_${short.id}_${Date.now()}.mp4`;
         const outputPath = path.join(exportDir, outFileName);
 
+        const activeCaptionConfig = req.body.captionConfig || passedShort?.captionConfig || short.captionConfig;
+
         // Generate temporary ASS subtitle file for burning real captions
         let subtitleFilter = '';
         if (Array.isArray(short.captions) && short.captions.length > 0) {
           tempAssFile = path.join(exportDir, `sub_${exportId}.ass`);
-          fs.writeFileSync(tempAssFile, formatAssSubtitle(short.captions), 'utf8');
+          fs.writeFileSync(tempAssFile, formatAssSubtitle(short.captions, activeCaptionConfig), 'utf8');
           // Escape backslashes and colons for ffmpeg filter argument
           const escapedAssPath = tempAssFile.replace(/\\/g, '/').replace(/:/g, '\\:');
           subtitleFilter = `subtitles='${escapedAssPath}'`;
@@ -1844,22 +1879,32 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
 
         let ffmpegArgs: string[];
 
-        // Check for B-roll item
-        const brollItem = (short.brollSuggestions || []).find((b: any) => (b.assetUrl || b.videoUrl));
+        // Check for B-roll item with verified asset
+        const brollItem = (short.brollSuggestions || []).find((b: any) => b.enabled !== false && (b.assetUrl || b.imageUrl || b.videoUrl));
         let brollLocalPath = '';
         if (brollItem) {
-          const rawBrollUrl = brollItem.assetUrl || brollItem.videoUrl;
+          const rawBrollUrl = brollItem.assetUrl || brollItem.imageUrl || brollItem.videoUrl;
           const cleanBroll = rawBrollUrl.replace(/^\/public\//, '/');
-          const testBrollPath = cleanBroll.startsWith('/uploads/')
-            ? path.join(process.cwd(), 'public', cleanBroll)
-            : path.join(process.cwd(), 'public', cleanBroll);
+          const testBrollPath = path.join(process.cwd(), 'public', cleanBroll);
           if (fs.existsSync(testBrollPath)) {
             brollLocalPath = testBrollPath;
           }
         }
 
-        // Check for SFX marker
+        // Check for SFX marker with verified audio asset
         const sfxItem = (short.sfxMarkers || []).find((s: any) => s.timestamp >= 0 && s.timestamp < durSec);
+        let sfxLocalPath = '';
+        if (sfxItem) {
+          if (sfxItem.audioUrl) {
+            const cleanSfx = sfxItem.audioUrl.replace(/^\/public\//, '/');
+            const p = path.join(process.cwd(), 'public', cleanSfx);
+            if (fs.existsSync(p)) sfxLocalPath = p;
+          }
+          if (!sfxLocalPath && sfxItem.category) {
+            const catPath = path.join(process.cwd(), 'public', 'assets', 'sfx', `${sfxItem.category}.wav`);
+            if (fs.existsSync(catPath)) sfxLocalPath = catPath;
+          }
+        }
 
         // Check for VFX marker
         const vfxItem = (short.vfxMarkers || []).find((v: any) => v.timestamp >= 0 && v.timestamp < durSec);
@@ -1955,14 +2000,11 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
           }
 
           let curAPad = '0:a';
-          // Mix SFX if specified
-          if (sfxItem) {
+          // Mix SFX if specified and audio file verified
+          if (sfxItem && sfxLocalPath && fs.existsSync(sfxLocalPath)) {
             const sfxTime = Math.max(0, sfxItem.timestamp || 0);
             const sfxDelayMs = Math.round(sfxTime * 1000);
-            inputFiles.push(
-              '-f', 'lavfi',
-              '-i', 'sine=frequency=520:duration=0.4'
-            );
+            inputFiles.push('-i', sfxLocalPath);
             filterChain += `;[${nextInputIndex}:a]adelay=${sfxDelayMs}|${sfxDelayMs}[asfx]`;
             filterChain += `;[0:a][asfx]amix=inputs=2:duration=first:dropout_transition=2[aout]`;
             curAPad = '[aout]';
@@ -2204,6 +2246,78 @@ app.post('/api/projects/:id/regenerate', (req: Request, res: Response) => {
   } catch (err) {
     console.error('Error regenerating project:', err);
     res.status(500).json({ error: 'Failed to regenerate project' });
+  }
+});
+
+// POST: Automatic Multilingual Language Detection
+app.post('/api/detect-language', (req: Request, res: Response) => {
+  try {
+    const { text = '', filename = '' } = req.body;
+    const result = detectLanguageFromContent(text, { filename });
+    res.json({ success: true, language: result, result });
+  } catch (err) {
+    console.error('Error detecting language:', err);
+    res.status(500).json({ error: 'Failed to detect language' });
+  }
+});
+
+// POST: Regenerate Specific AI Elements (Captions, B-roll, SFX, VFX, or All) without duplicates
+app.post('/api/projects/:id/regenerate-elements', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { shortId, target = 'all', elementTypes, approvalMode = 'auto_apply', stylePreset = 'bold' } = req.body;
+    const project = projectsStore.get(id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const short = (project.shorts || []).find((s: any) => s.id === shortId) || project.shorts?.[0];
+    if (!short) return res.status(404).json({ error: 'Short not found' });
+
+    const duration = short.duration || (short.endTime - short.startTime) || 30;
+    const isTarget = (t: string) => target === 'all' || target === t || (Array.isArray(elementTypes) && (elementTypes.includes(t) || elementTypes.includes('all')));
+
+    if (isTarget('captions')) {
+      const presetConfig = getCaptionStylePreset(stylePreset);
+      short.captionConfig = presetConfig;
+      if (short.editPlan) short.editPlan.captionStyle = presetConfig.style || stylePreset;
+    }
+
+    if (isTarget('sfx')) {
+      const semanticSfx = generateSemanticSFXSuggestions(short.captions || [], duration);
+      short.sfxMarkers = semanticSfx.map((s, idx) => ({
+        id: `sfx_regen_${idx}`,
+        timestamp: s.start,
+        category: s.type,
+        soundName: VERIFIED_SFX_ASSETS[s.type]?.soundName || 'Impact Sound',
+        volume: 0.75,
+        reason: s.reason,
+        triggerText: s.triggerText,
+        confidence: s.confidence,
+        audioUrl: s.audioUrl,
+      }));
+    }
+
+    if (isTarget('broll')) {
+      const semanticBroll = generateContentAwareBRollSuggestions(short.captions || [], duration, {
+        threshold: approvalMode === 'auto_apply' ? 0.80 : 0.88,
+      });
+      short.brollSuggestions = semanticBroll.map((b, idx) => ({
+        id: `broll_regen_${idx}`,
+        timestamp: b.start,
+        duration: Number((b.end - b.start).toFixed(2)),
+        concept: b.query,
+        imageUrl: b.assetUrl,
+        keyword: b.assetId,
+        enabled: b.enabled ?? true,
+        reason: b.reason,
+        triggerText: b.triggerText,
+        confidence: b.confidence,
+      }));
+    }
+
+    projectsStore.set(id, project);
+    res.json({ success: true, short, project });
+  } catch (err) {
+    console.error('Error regenerating elements:', err);
+    res.status(500).json({ error: 'Failed to regenerate elements' });
   }
 });
 

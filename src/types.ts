@@ -61,25 +61,43 @@ export interface AudioToVideoConfig {
 }
 
 export type CaptionStyleId =
+  | 'clean'
+  | 'minimal'
+  | 'bold'
+  | 'viral'
+  | 'tiktok'
+  | 'youtube'
+  | 'podcast'
+  | 'karaoke'
+  | 'word_highlight'
+  | 'pop'
+  | 'bounce'
+  | 'typewriter'
+  | 'neon'
+  | 'glitch'
+  | 'cinematic'
+  | 'news'
+  | 'documentary'
+  | 'gaming'
+  | 'mrbeast'
+  | 'creator'
+  | 'elegant'
+  | 'comic'
+  | 'highlight_box'
+  | 'gradient'
+  | 'dynamic'
+  // Backward compatibility aliases:
   | 'viral_bold'
   | 'hormozi'
   | 'kinetic'
-  | 'minimal'
-  | 'cinematic'
-  | 'podcast'
-  | 'neon'
-  | 'typewriter'
-  | 'pop'
-  | 'highlight'
   | 'clean_subtitle'
   | 'dynamic_ai'
-  // Backward compatibility aliases:
-  | 'viral'
-  | 'dynamic'
-  | 'gaming'
+  | 'highlight'
   | 'professional';
 
 export type CaptionStylePreset = CaptionStyleId;
+
+export type ApprovalMode = 'auto_apply' | 'balanced' | 'suggest_only';
 
 export type EditingPersonality = 'clean' | 'creator' | 'viral' | 'cinematic';
 export type EditingIntensity = 'subtle' | 'balanced' | 'dynamic' | 'viral';
@@ -172,6 +190,10 @@ export interface SFXMarker {
   category: SFXCategory;
   soundName: string;
   volume: number; // 0 to 1
+  reason?: string;
+  triggerText?: string;
+  confidence?: number;
+  audioUrl?: string;
 }
 
 export interface VFXMarker {
@@ -192,6 +214,9 @@ export interface BRollSuggestion {
   videoUrl?: string;
   keyword?: string;
   enabled: boolean;
+  reason?: string;
+  triggerText?: string;
+  confidence?: number;
 }
 
 export interface HookOption {
@@ -258,6 +283,8 @@ export interface ShortCandidate {
     sfxCount: number;
     vfxCount: number;
   };
+  language?: LanguageDetectionResult;
+  projectAnalysis?: ProjectAnalysis;
 }
 
 export interface AnalysisStats {
@@ -289,6 +316,8 @@ export interface VideoProject {
   demoMode?: boolean;
   mediaUnavailable?: boolean;
   mediaFileName?: string;
+  language?: LanguageDetectionResult;
+  projectAnalysis?: ProjectAnalysis;
 }
 
 export interface BrandKit {
@@ -312,15 +341,129 @@ export interface CaptionCustomization {
   preset?: CaptionStylePreset;
   fontFamily: string;
   fontSize: number; // in px
+  fontWeight?: number | string;
   positionY: number; // percentage from top (e.g. 75%)
   primaryColor: string;
   highlightColor: string;
   strokeColor: string;
   strokeWidth: number;
   hasShadow: boolean;
+  shadowColor?: string;
+  shadowBlur?: number;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
   wordsPerLine: number;
-  animationType?: 'pop' | 'fade' | 'bounce' | 'highlight' | 'scale';
+  wordsPerGroup?: number;
+  maxLines?: number;
+  maxCharacters?: number;
+  alignment?: 'center' | 'left' | 'right';
+  lineSpacing?: number;
+  letterSpacing?: number;
+  animationType?: 'pop' | 'fade' | 'bounce' | 'highlight' | 'scale' | 'karaoke' | 'typewriter' | 'glitch' | 'none';
+  animation?: any;
+  animationSpeed?: number;
+  wordAnimation?: string;
+  entryAnimation?: string;
+  exitAnimation?: string;
   uppercase: boolean;
+}
+
+export type CaptionWord = WordTiming;
+
+export interface LanguageDetectionResult {
+  primaryLanguage: string;
+  detectedCode: string;
+  detectedLanguage?: string;
+  secondaryLanguages: string[];
+  isMixedLanguage: boolean;
+  isCodeSwitching?: boolean;
+  script?: string;
+  confidence: number;
+}
+
+export interface SFXSuggestion {
+  id: string;
+  type: SFXCategory;
+  category?: SFXCategory;
+  soundName?: string;
+  start: number;
+  end: number;
+  timestamp?: number;
+  duration?: number;
+  triggerText: string;
+  reason: string;
+  confidence: number;
+  intensity: number; // 1-10
+  assetId?: string;
+  audioUrl?: string;
+}
+
+export interface BrollSuggestion {
+  id: string;
+  start: number;
+  end: number;
+  timestamp?: number;
+  duration?: number;
+  query: string;
+  concept?: string;
+  triggerText: string;
+  reason: string;
+  confidence: number;
+  assetType: 'image' | 'video';
+  assetId?: string;
+  assetUrl: string;
+  imageUrl?: string;
+  enabled?: boolean;
+}
+
+export interface SilenceRange {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+export interface SpeechEnergySegment {
+  start: number;
+  end: number;
+  energy: number; // 0 to 1
+  isPeak: boolean;
+}
+
+export interface CaptionPlan {
+  stylePreset: CaptionStyleId;
+  customization: CaptionCustomization;
+  segments: CaptionSegment[];
+  totalWords: number;
+  coveragePercent: number;
+}
+
+export interface ProjectAnalysis {
+  id: string;
+  projectId: string;
+  sourceMedia: SourceMedia;
+  language: LanguageDetectionResult;
+  languageConfidence: number;
+  transcript: string;
+  segments: CaptionSegment[];
+  words: WordTiming[];
+  scenes: { start: number; end: number; description?: string; cameraMotion?: string }[];
+  speakers: { id: string; name: string; timeRanges: { start: number; end: number }[] }[];
+  topics: string[];
+  entities: string[];
+  keywords: string[];
+  emotions: { emotion: string; start: number; end: number; intensity: number }[];
+  energy: SpeechEnergySegment[];
+  speechEnergyMap?: SpeechEnergySegment[];
+  silenceRanges: SilenceRange[];
+  sfxSuggestions: SFXSuggestion[];
+  sfxPlan?: SFXSuggestion[];
+  brollSuggestions: BrollSuggestion[];
+  brollPlan?: BrollSuggestion[];
+  captionPlan: CaptionPlan;
+  shortCandidates: ShortCandidate[];
+  approvalMode?: ApprovalMode;
+  overallScore?: number;
+  createdAt: number;
 }
 
 export interface SilencePacingSettings {
@@ -484,4 +627,6 @@ export interface EditorProject {
   transformState?: TransformState;
   exportSettings?: ExportSettings;
   history?: HistoryState;
+  projectAnalysis?: ProjectAnalysis;
+  language?: LanguageDetectionResult;
 }

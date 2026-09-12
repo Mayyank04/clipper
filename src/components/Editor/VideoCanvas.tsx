@@ -12,6 +12,7 @@ import {
   Scissors,
   AlertTriangle,
   Upload,
+  Shield,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -24,6 +25,8 @@ import {
 import { formatTime, formatTimeWithTenths } from '../../utils/timeFormat';
 import { AudioVisualizerCanvas } from './AudioVisualizerCanvas';
 import { TypingCaptionOverlay } from './TypingCaptionOverlay';
+import { getCaptionStateAtTime } from '../../utils/captionEngine';
+import { sfxEngine } from '../../utils/sfxAudio';
 
 interface VideoCanvasProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -150,10 +153,32 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     }
   };
 
-  // Find active caption segment
-  const activeCaption = short.captions?.find(
-    (cap) => currentTime >= cap.start && currentTime <= cap.end
-  );
+  const [showSafeZones, setShowSafeZones] = useState<boolean>(false);
+  const playedSfxRef = useRef<Set<string>>(new Set());
+
+  // Reset played SFX on seeking backwards or clip change
+  useEffect(() => {
+    playedSfxRef.current.clear();
+  }, [short.id, videoUrl]);
+
+  // Trigger verified SFX playback when playhead crosses timestamp
+  useEffect(() => {
+    if (!isPlaying || !short.sfxMarkers) return;
+    for (const sfx of short.sfxMarkers) {
+      if (
+        currentTime >= sfx.timestamp - 0.08 &&
+        currentTime <= sfx.timestamp + 0.15 &&
+        !playedSfxRef.current.has(sfx.id)
+      ) {
+        playedSfxRef.current.add(sfx.id);
+        sfxEngine.playSound(sfx.category, sfx.volume ?? 0.8);
+      }
+    }
+  }, [currentTime, isPlaying, short.sfxMarkers]);
+
+  // Deterministic seek-safe caption state calculation
+  const captionState = getCaptionStateAtTime(short.captions || [], currentTime, captionConfig);
+  const activeCaption = captionState.activeCaption;
 
   // Find active VFX marker
   const activeVfx: VFXMarker | undefined = short.vfxMarkers?.find(
@@ -388,33 +413,56 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
             config={short.audioToVideoConfig}
           />
         ) : (
-          activeCaption && (
+          captionState.activeCaption && (
             <div
               className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-none px-2 transition-all duration-150"
               style={{ top: `${captionConfig.positionY}%` }}
             >
               <div
-                className={`text-center leading-snug max-w-[95%] drop-shadow-md transition-all ${
+                className={`text-center leading-snug max-w-[95%] transition-all ${
                   captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
+                } ${
+                  captionConfig.backgroundColor ? 'px-3 py-1.5 rounded-xl backdrop-blur-sm' : ''
                 }`}
                 style={{
                   fontFamily: captionConfig.fontFamily,
                   fontSize: `${captionConfig.fontSize}px`,
+                  fontWeight: captionConfig.fontWeight || 800,
                   textTransform: captionConfig.uppercase ? 'uppercase' : 'none',
+                  backgroundColor: captionConfig.backgroundColor
+                    ? `${captionConfig.backgroundColor}${Math.round((captionConfig.backgroundOpacity ?? 0.85) * 255).toString(16).padStart(2, '0')}`
+                    : undefined,
+                  letterSpacing: captionConfig.letterSpacing ? `${captionConfig.letterSpacing}px` : undefined,
                 }}
               >
-                {(activeCaption.words || []).map((w, idx) => {
-                  const isWordSpoken = currentTime >= w.start && currentTime <= w.end;
-                  const isPast = currentTime > w.end;
+                {(captionState.activeCaption.words || []).map((w, idx) => {
+                  const isWordSpoken = idx === captionState.activeWordIndex;
+                  const isPast = captionState.highlightState.pastWordIndices.includes(idx);
 
                   let color = captionConfig.primaryColor;
                   if (isWordSpoken) {
                     color = w.highlightColor || captionConfig.highlightColor;
                   } else if (isPast) {
-                    color = '#e2e8f0';
+                    color = captionConfig.style === 'podcast' ? '#64748b' : '#e2e8f0';
                   }
 
-                  const wordScale = isWordSpoken ? (w.scale || 1.15) : 1;
+                  let wordScale = isWordSpoken ? (w.scale || 1.15) : 1;
+                  if (captionConfig.animationType === 'bounce' && isWordSpoken) {
+                    wordScale = 1.18 + Math.sin(captionState.animationProgress * Math.PI) * 0.08;
+                  }
+
+                  let displayWord = w.word;
+                  if (captionConfig.animationType === 'typewriter' && captionState.revealedCharacterCount !== undefined) {
+                    const wordStartChar = (captionState.activeCaption?.words || [])
+                      .slice(0, idx)
+                      .reduce((acc, prevW) => acc + prevW.word.length + 1, 0);
+                    const wordEndChar = wordStartChar + w.word.length;
+                    if (captionState.revealedCharacterCount < wordStartChar) {
+                      return null;
+                    } else if (captionState.revealedCharacterCount < wordEndChar) {
+                      displayWord = w.word.slice(0, captionState.revealedCharacterCount - wordStartChar);
+                    }
+                  }
 
                   return (
                     <span
@@ -428,13 +476,34 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                         WebkitTextStroke: `${captionConfig.strokeWidth}px ${captionConfig.strokeColor}`,
                       }}
                     >
-                      {w.word}
+                      {displayWord}
                     </span>
                   );
                 })}
               </div>
             </div>
           )
+        )}
+
+        {/* 9:16 Safe-Zone Overlay Guides */}
+        {showSafeZones && aspectRatio === '9:16' && (
+          <div className="absolute inset-0 pointer-events-none z-25 border-2 border-dashed border-sky-400/40">
+            <div className="absolute top-0 inset-x-0 h-[15%] bg-red-500/10 border-b border-dashed border-red-400/50 flex items-center justify-center">
+              <span className="text-[9px] font-mono font-bold text-red-300 tracking-wider bg-black/60 px-2 py-0.5 rounded">
+                HEADER SAFE MARGIN (15%)
+              </span>
+            </div>
+            <div className="absolute top-[15%] right-0 bottom-[20%] w-[20%] bg-red-500/10 border-l border-dashed border-red-400/50 flex items-center justify-center">
+              <span className="text-[8px] font-mono font-bold text-red-300 tracking-wider bg-black/60 px-1 py-0.5 rounded rotate-90 whitespace-nowrap">
+                SOCIAL ACTIONS (20%)
+              </span>
+            </div>
+            <div className="absolute bottom-0 inset-x-0 h-[20%] bg-amber-500/10 border-t border-dashed border-amber-400/50 flex items-center justify-center">
+              <span className="text-[9px] font-mono font-bold text-amber-300 tracking-wider bg-black/60 px-2 py-0.5 rounded">
+                DESCRIPTION & CAPTION SAFE MARGIN (20%)
+              </span>
+            </div>
+          </div>
         )}
 
         {/* Viral Progress Bar at Bottom of Short */}
@@ -520,10 +589,21 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           {formatTimeWithTenths(currentTime)} / {formatTimeWithTenths(short.duration)}
         </div>
 
+        {/* Safe Zones Toggle */}
+        <button
+          onClick={() => setShowSafeZones(!showSafeZones)}
+          className={`p-1.5 rounded transition-colors ml-1 cursor-pointer ${
+            showSafeZones ? 'text-amber-400 bg-amber-400/10' : 'text-neutral-400 hover:text-white'
+          }`}
+          title="Toggle 9:16 UI Safe-Zones Guide"
+        >
+          <Shield className="w-4 h-4" />
+        </button>
+
         {/* Fullscreen Button */}
         <button
           onClick={toggleFullscreen}
-          className="p-1.5 text-neutral-400 hover:text-white transition-colors ml-1 cursor-pointer"
+          className="p-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer"
           title="Toggle Fullscreen"
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
