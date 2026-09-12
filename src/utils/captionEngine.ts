@@ -4,13 +4,13 @@
  * and deterministic animation calculations.
  */
 
-import { CaptionCustomization, CaptionSegment, CaptionStyleId, WordTiming } from '../types';
+import { CaptionCustomization, CaptionSegment, CaptionStyleId, CaptionCategory, WordTiming } from '../types';
 
 export interface CaptionStyleDefinition {
   id: CaptionStyleId;
   name: string;
   desc: string;
-  category: 'viral' | 'cinematic' | 'podcast' | 'creative' | 'high_energy';
+  category: CaptionCategory;
   config: CaptionCustomization;
 }
 
@@ -656,6 +656,272 @@ export const CAPTION_STYLES_REGISTRY: CaptionStyleDefinition[] = [
   },
 ];
 
+export const EXTENDED_CAPTION_STYLES: CaptionStyleDefinition[] = [
+  {
+    id: 'modern',
+    name: 'Modern Clean',
+    desc: 'Geometric modern typography with subtle rounded emerald highlight backing',
+    category: 'educational',
+    config: {
+      style: 'modern',
+      preset: 'modern',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 24,
+      fontWeight: 700,
+      primaryColor: '#ffffff',
+      highlightColor: '#10b981',
+      strokeColor: '#000000',
+      strokeWidth: 1.5,
+      hasShadow: true,
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      backgroundOpacity: 0.75,
+      positionY: 75,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'retro',
+    name: 'Retro Arcade',
+    desc: 'Vintage pixel-aesthetic arcade display with warm amber glow',
+    category: 'creative',
+    config: {
+      style: 'retro',
+      preset: 'retro',
+      fontFamily: 'Courier New, monospace',
+      fontSize: 26,
+      fontWeight: 900,
+      primaryColor: '#fef08a',
+      highlightColor: '#f97316',
+      strokeColor: '#451a03',
+      strokeWidth: 2.5,
+      hasShadow: true,
+      positionY: 65,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'typewriter',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'luxury',
+    name: 'Luxury Serif',
+    desc: 'Refined editorial serif designed for high-status luxury aesthetics',
+    category: 'cinematic',
+    config: {
+      style: 'luxury',
+      preset: 'luxury',
+      fontFamily: 'Georgia, serif',
+      fontSize: 25,
+      fontWeight: 600,
+      primaryColor: '#f8fafc',
+      highlightColor: '#d4af37',
+      strokeColor: '#09090b',
+      strokeWidth: 1,
+      hasShadow: true,
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'energetic',
+    name: 'Energetic Pulse',
+    desc: 'High-octane yellow & red kinetic bouncing captions that demand eyes',
+    category: 'viral',
+    config: {
+      style: 'energetic',
+      preset: 'energetic',
+      fontFamily: 'Arial Black, Impact, sans-serif',
+      fontSize: 34,
+      fontWeight: 900,
+      primaryColor: '#ffffff',
+      highlightColor: '#facc15',
+      strokeColor: '#000000',
+      strokeWidth: 4,
+      hasShadow: true,
+      positionY: 68,
+      wordsPerLine: 2,
+      wordsPerGroup: 2,
+      maxLines: 1,
+      alignment: 'center',
+      animationType: 'bounce',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'minimal_dark',
+    name: 'Minimal Dark',
+    desc: 'Subtle slate typography with soft dark vignette',
+    category: 'minimal',
+    config: {
+      style: 'minimal_dark',
+      preset: 'minimal_dark',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 21,
+      fontWeight: 600,
+      primaryColor: '#cbd5e1',
+      highlightColor: '#38bdf8',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: false,
+      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      backgroundOpacity: 0.85,
+      positionY: 82,
+      wordsPerLine: 5,
+      wordsPerGroup: 5,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'minimal_light',
+    name: 'Minimal Light',
+    desc: 'Bright high-contrast clean captions on semi-translucent frosted backdrop',
+    category: 'minimal',
+    config: {
+      style: 'minimal_light',
+      preset: 'minimal_light',
+      fontFamily: 'Plus Jakarta Sans, sans-serif',
+      fontSize: 22,
+      fontWeight: 600,
+      primaryColor: '#0f172a',
+      highlightColor: '#2563eb',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: false,
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      backgroundOpacity: 0.9,
+      positionY: 80,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'big_word',
+    name: 'Big Word Punch',
+    desc: 'Single giant word on screen at a time for maximum retention spikes',
+    category: 'viral',
+    config: {
+      style: 'big_word',
+      preset: 'big_word',
+      fontFamily: 'Impact, Arial Black, sans-serif',
+      fontSize: 42,
+      fontWeight: 900,
+      primaryColor: '#ffffff',
+      highlightColor: '#f59e0b',
+      strokeColor: '#000000',
+      strokeWidth: 5,
+      hasShadow: true,
+      positionY: 62,
+      wordsPerLine: 1,
+      wordsPerGroup: 1,
+      maxLines: 1,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'center_stage',
+    name: 'Center Stage',
+    desc: 'Dead-center placement with vibrant purple and cyan dual-tone glow',
+    category: 'social',
+    config: {
+      style: 'center_stage',
+      preset: 'center_stage',
+      fontFamily: 'Montserrat, Arial Black, sans-serif',
+      fontSize: 32,
+      fontWeight: 900,
+      primaryColor: '#ffffff',
+      highlightColor: '#a855f7',
+      strokeColor: '#000000',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      positionY: 50,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'bounce',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'subtle',
+    name: 'Subtle Conversational',
+    desc: 'Low-profile subtitle styling designed not to distract from speaker face',
+    category: 'podcast',
+    config: {
+      style: 'subtle',
+      preset: 'subtle',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 19,
+      fontWeight: 500,
+      primaryColor: '#94a3b8',
+      highlightColor: '#f1f5f9',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: true,
+      positionY: 86,
+      wordsPerLine: 5,
+      wordsPerGroup: 5,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'high_contrast',
+    name: 'High Contrast Alert',
+    desc: 'Black text on bright yellow banner block for maximum accessibility and readability',
+    category: 'news',
+    config: {
+      style: 'high_contrast',
+      preset: 'high_contrast',
+      fontFamily: 'Arial Black, Impact, sans-serif',
+      fontSize: 26,
+      fontWeight: 900,
+      primaryColor: '#000000',
+      highlightColor: '#dc2626',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: false,
+      backgroundColor: '#facc15',
+      backgroundOpacity: 1.0,
+      positionY: 74,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+];
+
+export const ALL_CAPTION_STYLES: CaptionStyleDefinition[] = [
+  ...CAPTION_STYLES_REGISTRY,
+  ...EXTENDED_CAPTION_STYLES,
+];
+
 // Map backward compatibility aliases
 const ALIAS_MAP: Record<string, CaptionStyleId> = {
   viral_bold: 'bold',
@@ -672,7 +938,9 @@ const ALIAS_MAP: Record<string, CaptionStyleId> = {
  */
 export function getCaptionStylePreset(styleId: CaptionStyleId): CaptionCustomization {
   const canonicalId = ALIAS_MAP[styleId] || styleId;
-  const match = CAPTION_STYLES_REGISTRY.find((s) => s.id === canonicalId) || CAPTION_STYLES_REGISTRY[0];
+  const match =
+    ALL_CAPTION_STYLES.find((s) => s.id === canonicalId) ||
+    CAPTION_STYLES_REGISTRY[0];
   return {
     ...match.config,
     animation: (match.config.animation || match.config.animationType) as any,
@@ -939,5 +1207,197 @@ export function calculateCaptionCoverage(
     speechDuration: Number(speechDuration.toFixed(2)),
     coveredQuartiles: [hasQ1, hasQ2, hasQ3, hasQ4],
     quartileCoverage: { q1: hasQ1, q2: hasQ2, q3: hasQ3, q4: hasQ4 },
+  };
+}
+
+export interface NormalizedWord {
+  text: string;
+  start: number;
+  end: number;
+  confidence: number;
+  isHighlight?: boolean;
+  highlightColor?: string;
+  scale?: number;
+}
+
+export interface NormalizedSegment {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  words: NormalizedWord[];
+}
+
+export interface NormalizedTranscript {
+  language: string;
+  languageConfidence: number;
+  duration: number;
+  segments: NormalizedSegment[];
+  detectedSpeechDuration: number;
+  captionedSpeechDuration: number;
+  speechCoverage: number; // 0.0 to 1.0
+}
+
+/**
+ * Deterministically aligns words within a known segment boundary when word timestamps are absent.
+ * Strict non-overlapping proportional calculation based on character weights.
+ */
+export function alignWordsInSegment(
+  segmentText: string,
+  segStart: number,
+  segEnd: number,
+  fallbackConfidence = 0.92
+): NormalizedWord[] {
+  const clean = (segmentText || '').trim();
+  if (!clean) return [];
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const totalChars = words.reduce((acc, w) => acc + Math.max(1, w.length), 0);
+  const totalDuration = Math.max(0.1, segEnd - segStart);
+  // Reserve small 4% pause at end of segment
+  const speechDuration = totalDuration * 0.96;
+
+  const result: NormalizedWord[] = [];
+  let runningStart = segStart;
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const weight = Math.max(1, w.length) / totalChars;
+    const wDur = Math.max(0.08, Number((speechDuration * weight).toFixed(3)));
+    const wStart = Number(runningStart.toFixed(3));
+    const wEnd = Number(Math.min(segEnd, wStart + wDur).toFixed(3));
+
+    result.push({
+      text: w,
+      start: wStart,
+      end: wEnd,
+      confidence: fallbackConfidence,
+      isHighlight: ['secret', 'truth', 'mistake', 'growth', 'ai', 'viral', 'stop', 'number'].includes(
+        w.toLowerCase().replace(/[^a-z]/g, '')
+      ),
+    });
+
+    runningStart = wEnd;
+  }
+
+  return result;
+}
+
+/**
+ * Normalizes any provider-specific transcription response into the canonical schema.
+ * Enforces: 0 <= word.start < word.end <= duration, strict chronological ordering,
+ * and speech coverage metrics calculation.
+ */
+export function normalizeTranscriptResponse(
+  rawResponse: any,
+  sourceDuration = 30
+): NormalizedTranscript {
+  if (!rawResponse || typeof rawResponse !== 'object') {
+    return {
+      language: 'en',
+      languageConfidence: 0.85,
+      duration: sourceDuration,
+      segments: [],
+      detectedSpeechDuration: 0,
+      captionedSpeechDuration: 0,
+      speechCoverage: 0,
+    };
+  }
+
+  const duration = Math.max(
+    1,
+    Number(rawResponse.duration) || sourceDuration
+  );
+
+  const rawLanguage = String(
+    rawResponse.language || rawResponse.detectedLanguage || rawResponse.primaryLanguage || 'en'
+  );
+  const languageConfidence = Number(rawResponse.languageConfidence ?? rawResponse.confidence ?? 0.95);
+
+  const rawSegments = Array.isArray(rawResponse.segments)
+    ? rawResponse.segments
+    : Array.isArray(rawResponse.captions)
+    ? rawResponse.captions
+    : [];
+
+  const normalizedSegments: NormalizedSegment[] = [];
+  let totalSpeechTime = 0;
+
+  for (let sIdx = 0; sIdx < rawSegments.length; sIdx++) {
+    const s = rawSegments[sIdx];
+    const segText = String(s.text || s.transcript || '').trim();
+    if (!segText && (!Array.isArray(s.words) || s.words.length === 0)) continue;
+
+    let sStart = Number(s.start ?? s.startTime ?? 0);
+    let sEnd = Number(s.end ?? s.endTime ?? (sStart + 2.5));
+
+    sStart = Math.max(0, Math.min(duration, sStart));
+    sEnd = Math.max(sStart + 0.1, Math.min(duration, sEnd));
+
+    const segWords: NormalizedWord[] = [];
+    const incomingWords = Array.isArray(s.words) ? s.words : [];
+
+    if (incomingWords.length > 0) {
+      let lastEnd = sStart;
+      for (let wIdx = 0; wIdx < incomingWords.length; wIdx++) {
+        const w = incomingWords[wIdx];
+        const wText = String(w.text || w.word || '').trim();
+        if (!wText) continue;
+
+        let wStart = Number(w.start ?? lastEnd);
+        let wEnd = Number(w.end ?? (wStart + 0.3));
+
+        // Validate timing
+        wStart = Math.max(sStart, Math.min(sEnd, wStart));
+        wEnd = Math.max(wStart + 0.05, Math.min(sEnd, wEnd));
+        lastEnd = wEnd;
+
+        segWords.push({
+          text: wText,
+          start: Number(wStart.toFixed(3)),
+          end: Number(wEnd.toFixed(3)),
+          confidence: typeof w.confidence === 'number' ? w.confidence : 0.95,
+          isHighlight: Boolean(w.isHighlight),
+          highlightColor: w.highlightColor,
+          scale: typeof w.scale === 'number' ? w.scale : 1.0,
+        });
+      }
+    } else {
+      // Align words deterministically
+      const aligned = alignWordsInSegment(segText, sStart, sEnd);
+      segWords.push(...aligned);
+    }
+
+    if (segWords.length > 0) {
+      const segStartFinal = segWords[0].start;
+      const segEndFinal = segWords[segWords.length - 1].end;
+      const actualSegText = segText || segWords.map((w) => w.text).join(' ');
+
+      normalizedSegments.push({
+        id: s.id || `norm_seg_${sIdx + 1}`,
+        start: segStartFinal,
+        end: segEndFinal,
+        text: actualSegText,
+        words: segWords,
+      });
+
+      totalSpeechTime += Math.max(0, segEndFinal - segStartFinal);
+    }
+  }
+
+  // Sort chronologically
+  normalizedSegments.sort((a, b) => a.start - b.start);
+
+  const speechCoverage = duration > 0 ? Math.min(1.0, totalSpeechTime / duration) : 0;
+
+  return {
+    language: rawLanguage,
+    languageConfidence,
+    duration,
+    segments: normalizedSegments,
+    detectedSpeechDuration: Number(totalSpeechTime.toFixed(3)),
+    captionedSpeechDuration: Number(totalSpeechTime.toFixed(3)),
+    speechCoverage: Number(speechCoverage.toFixed(3)),
   };
 }

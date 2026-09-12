@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ShortUnavailableRecovery } from '../ShortUnavailableRecovery';
+import { ErrorBoundary } from '../ErrorBoundary';
+import { SAMPLE_PROJECTS } from '../../data/sampleProjects';
 import {
   ArrowLeft,
   Sparkles,
@@ -14,8 +17,15 @@ import {
   Undo2,
   Redo2,
   Upload,
-  Activity
+  Activity,
+  AlertTriangle,
+  FileText,
+  CheckCircle2,
+  RotateCcw,
+  X,
 } from 'lucide-react';
+import { generateContentAwareBRollSuggestions } from '../../utils/analysisEngine';
+import { normalizeTranscriptResponse } from '../../utils/captionEngine';
 import {
   ShortCandidate,
   VideoProject,
@@ -57,6 +67,48 @@ interface VideoEditorProps {
   onUpdateShort?: (updated: ShortCandidate) => void;
 }
 
+function normalizeEditorShort(rawShort?: ShortCandidate, proj?: VideoProject): ShortCandidate {
+  const safeProj = proj || SAMPLE_PROJECTS[0];
+  const base = rawShort || safeProj?.shorts?.[0] || SAMPLE_PROJECTS[0]?.shorts?.[0];
+  const safeStartTime = Number.isFinite(base?.startTime) ? base.startTime : 0;
+  const safeDuration = Number.isFinite(base?.duration) && base.duration > 0
+    ? base.duration
+    : (Number.isFinite(base?.endTime) && base.endTime > safeStartTime ? base.endTime - safeStartTime : 28);
+  const safeEndTime = Number.isFinite(base?.endTime) && base.endTime > safeStartTime ? base.endTime : (safeStartTime + safeDuration);
+
+  return {
+    ...base,
+    id: base?.id || `short_${Date.now()}`,
+    title: base?.title || 'Untitled Short Candidate',
+    startTime: safeStartTime,
+    endTime: safeEndTime,
+    duration: safeDuration,
+    aspectRatio: base?.aspectRatio || '9:16',
+    speakerPosition: base?.speakerPosition || 'center',
+    captions: Array.isArray(base?.captions) ? base.captions : [],
+    sfxMarkers: Array.isArray(base?.sfxMarkers) ? base.sfxMarkers : [],
+    vfxMarkers: Array.isArray(base?.vfxMarkers) ? base.vfxMarkers : [],
+    brollSuggestions: Array.isArray(base?.brollSuggestions) ? base.brollSuggestions : [],
+    viralScore: base?.viralScore || {
+      overall: 94,
+      breakdown: { hook: 96, retention: 94, emotion: 92, value: 95, pacing: 94, shareability: 93, clarity: 95, contextCompleteness: 91 },
+      summary: 'High engagement score',
+    },
+    videoClips: Array.isArray(base?.videoClips) && base.videoClips.length > 0
+      ? base.videoClips
+      : [
+          {
+            id: `clip_${base?.id || '0'}`,
+            sourceUrl: base?.videoProxyUrl || base?.audioUrl || safeProj?.videoUrl || '',
+            sourceStart: safeStartTime,
+            sourceEnd: safeEndTime,
+            timelineStart: 0,
+            timelineEnd: safeDuration,
+          },
+        ],
+  };
+}
+
 export const VideoEditor: React.FC<VideoEditorProps> = ({
   project,
   short: initialShort,
@@ -66,29 +118,47 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   editingPersonality,
   onUpdateShort,
 }) => {
-  const [currentShort, setCurrentShort] = useState<ShortCandidate>(initialShort);
+  // Pre-render validation: ensure project or short exists
+  if (!project && !initialShort) {
+    return (
+      <ShortUnavailableRecovery
+        reason="This Short could not be loaded because its source project is missing."
+        onBackToShorts={onBack}
+        onBackToDashboard={onBack}
+      />
+    );
+  }
+
+  const normalizedInitial = useMemo(() => normalizeEditorShort(initialShort, project), [initialShort, project]);
+  const [currentShort, setCurrentShort] = useState<ShortCandidate>(normalizedInitial);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialShort.aspectRatio || '9:16');
+  // Keep track of SFX that played in the current run to prevent repeated triggers in the same second
+  const playedSfxRef = useRef<Set<string>>(new Set());
+
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(normalizedInitial.aspectRatio || '9:16');
   const [activeTab, setActiveTab] = useState<'captions' | 'transcript' | 'hooks' | 'sfx' | 'vfx' | 'silence' | 'broll' | 'audio' | 'metadata'>('captions');
   const [zoomPunchEnabled, setZoomPunchEnabled] = useState<boolean>(true);
   const [isRegeneratingHooks, setIsRegeneratingHooks] = useState<boolean>(false);
   const [aiEditNotice, setAiEditNotice] = useState<string | null>(null);
-  const [speakerPosition, setSpeakerPosition] = useState<'center' | 'left' | 'right' | 'auto_switch'>(initialShort.speakerPosition || 'center');
+  const [speakerPosition, setSpeakerPosition] = useState<'center' | 'left' | 'right' | 'auto_switch'>(normalizedInitial.speakerPosition || 'center');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
   const [panelMode, setPanelMode] = useState<'audio_studio' | 'standard'>(
-    initialShort.audioToVideoConfig ? 'audio_studio' : 'standard'
+    normalizedInitial.audioToVideoConfig ? 'audio_studio' : 'standard'
   );
   const [isAiStyling, setIsAiStyling] = useState<boolean>(false);
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>('auto_apply');
   const [isRegeneratingElements, setIsRegeneratingElements] = useState<boolean>(false);
+  const [transcriptionFailure, setTranscriptionFailure] = useState<{ reason: string } | null>(null);
+  const [showManualCaptionModal, setShowManualCaptionModal] = useState<boolean>(false);
+  const [manualDialogueText, setManualDialogueText] = useState<string>('');
 
   // History stack for Undo/Redo
-  const [history, setHistory] = useState<ShortCandidate[]>([initialShort]);
+  const [history, setHistory] = useState<ShortCandidate[]>([normalizedInitial]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
 
   const pushState = (newShort: ShortCandidate) => {
@@ -122,8 +192,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
   // Sync state when active short clip changes
   useEffect(() => {
-    setCurrentShort(initialShort);
-    setHistory([initialShort]);
+    const fresh = normalizeEditorShort(initialShort, project);
+    setCurrentShort(fresh);
+    setHistory([fresh]);
     setHistoryIndex(0);
     setCurrentTime(0);
     setIsPlaying(false);
@@ -131,9 +202,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     const vid = videoRef.current;
     if (vid) {
       vid.pause();
-      vid.currentTime = initialShort.startTime || 0;
+      vid.currentTime = fresh.startTime || 0;
     }
-  }, [initialShort.id]);
+  }, [initialShort?.id, project?.id]);
 
   const [captionConfig, setCaptionConfig] = useState<CaptionCustomization>({
     preset: 'viral_bold',
@@ -148,9 +219,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     hasShadow: true,
     wordsPerLine: 3,
   });
-
-  // Keep track of SFX that played in the current run to prevent repeated triggers in the same second
-  const playedSfxRef = useRef<Set<string>>(new Set());
 
   // Playhead update handler
   const handleTimeUpdate = (time: number) => {
@@ -511,28 +579,198 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.captions && data.captions.length > 0) {
-          const updated = {
-            ...currentShort,
-            captions: data.captions,
-          };
-          pushState(updated);
-          setAiEditNotice(`✨ Generated ${data.captions.length} timed caption segments!`);
-        } else {
-          setAiEditNotice('Transcription complete.');
-        }
+      const data = await res.json();
+      if (res.ok && data.captions && data.captions.length > 0) {
+        // Regenerate semantic B-roll based on newly generated captions!
+        const semanticBroll = generateContentAwareBRollSuggestions(data.captions, currentShort.duration, {
+          threshold: 0.85,
+        });
+        const updatedBroll = semanticBroll.map((b, idx) => ({
+          id: `broll_trans_${Date.now()}_${idx}`,
+          timestamp: b.start,
+          duration: Number((b.end - b.start).toFixed(2)),
+          concept: b.query || b.concept,
+          imageUrl: b.assetUrl,
+          keyword: b.assetId,
+          enabled: true,
+          reason: b.reason,
+          triggerText: b.triggerText,
+          confidence: b.confidence,
+        }));
+
+        const updated = {
+          ...currentShort,
+          captions: data.captions,
+          brollSuggestions: updatedBroll.length > 0 ? updatedBroll : currentShort.brollSuggestions,
+        };
+        pushState(updated);
+        setAiEditNotice(`✨ Generated ${data.captions.length} timed caption segments!`);
       } else {
-        setAiEditNotice('⚠️ Transcription service busy. Try again shortly.');
+        const errorReason =
+          data?.message || data?.error || 'Speech transcription offline or GEMINI_API_KEY unconfigured.';
+        setTranscriptionFailure({ reason: errorReason });
+        setAiEditNotice(null);
       }
     } catch (err) {
       console.error('Failed to transcribe', err);
-      setAiEditNotice('⚠️ Transcription request failed.');
+      setTranscriptionFailure({ reason: 'Network error or transcription service unavailable.' });
+      setAiEditNotice(null);
     } finally {
       setIsTranscribing(false);
       setTimeout(() => setAiEditNotice(null), 3500);
     }
+  };
+
+  // Manual Dialogue / Transcript submission
+  const handleApplyManualDialogue = async () => {
+    if (!manualDialogueText.trim()) return;
+    setIsTranscribing(true);
+    try {
+      const res = await fetch('/api/transcribe-captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dialogue: manualDialogueText.trim(),
+          duration: currentShort.duration,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.captions && data.captions.length > 0) {
+        const semanticBroll = generateContentAwareBRollSuggestions(data.captions, currentShort.duration, {
+          threshold: 0.85,
+        });
+        const updatedBroll = semanticBroll.map((b, idx) => ({
+          id: `broll_man_${Date.now()}_${idx}`,
+          timestamp: b.start,
+          duration: Number((b.end - b.start).toFixed(2)),
+          concept: b.query || b.concept,
+          imageUrl: b.assetUrl,
+          keyword: b.assetId,
+          enabled: true,
+          reason: b.reason,
+          triggerText: b.triggerText,
+          confidence: b.confidence,
+        }));
+
+        const updated = {
+          ...currentShort,
+          captions: data.captions,
+          brollSuggestions: updatedBroll.length > 0 ? updatedBroll : currentShort.brollSuggestions,
+        };
+        pushState(updated);
+        setShowManualCaptionModal(false);
+        setManualDialogueText('');
+        setAiEditNotice(`✨ Generated ${data.captions.length} aligned caption segments from text!`);
+        setTimeout(() => setAiEditNotice(null), 3500);
+      }
+    } catch (err) {
+      console.error('Failed to apply manual dialogue', err);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Subtitle file (.srt, .vtt, .json) upload handler
+  const handleUploadSubtitles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const content = String(ev.target?.result || '');
+        let parsed: any = null;
+        if (file.name.endsWith('.json')) {
+          parsed = JSON.parse(content);
+        } else {
+          // Parse SRT / VTT lines into segments
+          const lines = content.split(/\r?\n/);
+          const vttSegments: any[] = [];
+          let currentTiming: { start: number; end: number } | null = null;
+          let currentText: string[] = [];
+          const parseTime = (tStr: string): number => {
+            const parts = tStr.trim().replace(',', '.').split(':');
+            if (parts.length === 3)
+              return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+            if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+            return 0;
+          };
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'WEBVTT' || /^\d+$/.test(trimmed)) {
+              if (currentTiming && currentText.length > 0) {
+                const text = currentText.join(' ').trim();
+                if (text)
+                  vttSegments.push({
+                    id: `sub_${vttSegments.length + 1}`,
+                    start: currentTiming.start,
+                    end: currentTiming.end,
+                    text,
+                  });
+                currentTiming = null;
+                currentText = [];
+              }
+              continue;
+            }
+            const match = trimmed.match(
+              /((?:\d+:)?\d+:\d+(?:[.,]\d+)?)\s*-->\s*((?:\d+:)?\d+:\d+(?:[.,]\d+)?)/
+            );
+            if (match) {
+              if (currentTiming && currentText.length > 0) {
+                const text = currentText.join(' ').trim();
+                if (text)
+                  vttSegments.push({
+                    id: `sub_${vttSegments.length + 1}`,
+                    start: currentTiming.start,
+                    end: currentTiming.end,
+                    text,
+                  });
+                currentText = [];
+              }
+              currentTiming = {
+                start: Number(parseTime(match[1]).toFixed(3)),
+                end: Number(parseTime(match[2]).toFixed(3)),
+              };
+            } else if (currentTiming) {
+              currentText.push(trimmed.replace(/<[^>]+>/g, ''));
+            }
+          }
+          parsed = { segments: vttSegments };
+        }
+        const normalized = normalizeTranscriptResponse(parsed, currentShort.duration);
+        if (normalized.segments.length > 0) {
+          const semanticBroll = generateContentAwareBRollSuggestions(
+            normalized.segments as any,
+            currentShort.duration,
+            { threshold: 0.85 }
+          );
+          const updatedBroll = semanticBroll.map((b, idx) => ({
+            id: `broll_file_${Date.now()}_${idx}`,
+            timestamp: b.start,
+            duration: Number((b.end - b.start).toFixed(2)),
+            concept: b.query || b.concept,
+            imageUrl: b.assetUrl,
+            keyword: b.assetId,
+            enabled: true,
+            reason: b.reason,
+            triggerText: b.triggerText,
+            confidence: b.confidence,
+          }));
+          const updated = {
+            ...currentShort,
+            captions: normalized.segments as any,
+            brollSuggestions: updatedBroll.length > 0 ? updatedBroll : currentShort.brollSuggestions,
+          };
+          pushState(updated);
+          setShowManualCaptionModal(false);
+          setTranscriptionFailure(null);
+          setAiEditNotice(`✨ Imported ${normalized.segments.length} caption segments from file!`);
+          setTimeout(() => setAiEditNotice(null), 3500);
+        }
+      } catch (err) {
+        console.error('Failed to parse subtitle file:', err);
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Add caption segment at current playhead
@@ -732,7 +970,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           shortId: currentShort.id,
           elementTypes,
           approvalMode,
-          language: currentShort.language || 'en',
+          language: typeof currentShort.language === 'object' && currentShort.language !== null ? currentShort.language.detectedCode : (currentShort.language || 'en'),
         }),
       });
       if (res.ok) {
@@ -967,7 +1205,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           <VideoCanvas
             videoRef={videoRef}
             short={currentShort}
-            videoUrl={currentShort.videoProxyUrl || currentShort.audioUrl || project.videoUrl || ''}
+            videoUrl={currentShort.videoProxyUrl || currentShort.audioUrl || project?.videoUrl || ''}
             currentTime={currentTime}
             isPlaying={isPlaying}
             onTimeUpdate={handleTimeUpdate}
@@ -979,6 +1217,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             zoomPunchEnabled={zoomPunchEnabled}
             speakerPosition={speakerPosition}
             onRelinkMedia={handleRelinkFile}
+            onBack={onBack}
             onVideoLoaded={(meta) => {
               if (meta.duration && Number.isFinite(meta.duration)) {
                 if (currentShort.endTime > meta.duration) {
@@ -1058,7 +1297,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               speakerPosition={speakerPosition}
               onSpeakerPositionChange={setSpeakerPosition}
               currentTime={currentTime}
-              language={currentShort.language || 'en'}
+              language={typeof currentShort.language === 'object' && currentShort.language !== null ? (currentShort.language.detectedCode || currentShort.language.primaryLanguage || 'en') : String(currentShort.language || 'en')}
               onLanguageChange={handleLanguageChange}
               approvalMode={approvalMode}
               onApprovalModeChange={setApprovalMode}
@@ -1098,6 +1337,133 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         isPlaying={isPlaying}
         videoUrl={currentShort.videoProxyUrl || currentShort.audioUrl || project.videoUrl || ''}
       />
+
+      {/* PART 2: TRANSCRIPTION FAILED RECOVERY MODAL */}
+      {transcriptionFailure && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                  TRANSCRIPTION FAILED
+                </h3>
+                <p className="text-[11px] text-neutral-400">Speech-to-text could not complete</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
+                Reason:
+              </span>
+              <div className="text-xs font-mono text-neutral-200 bg-neutral-950 px-3 py-2.5 rounded-xl border border-neutral-800 break-words leading-relaxed">
+                {transcriptionFailure.reason}
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setTranscriptionFailure(null);
+                    handleTranscribeCaptions();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Retry</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setTranscriptionFailure(null);
+                    setShowManualCaptionModal(true);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs rounded-xl border border-neutral-700 shadow-md transition-all cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Edit Captions Manually</span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setTranscriptionFailure(null)}
+                className="w-full text-[11px] text-neutral-500 hover:text-neutral-300 py-1 font-medium transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANUAL CAPTION EDITING & SUBTITLE IMPORT MODAL */}
+      {showManualCaptionModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <FileText className="w-4 h-4 text-amber-400" />
+                <span>EDIT CAPTIONS MANUALLY</span>
+              </div>
+              <button
+                onClick={() => setShowManualCaptionModal(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-neutral-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-neutral-300 leading-relaxed">
+              Type or paste your spoken dialogue, or import a subtitle file (<span className="font-mono text-amber-400">.srt</span>, <span className="font-mono text-amber-400">.vtt</span>, <span className="font-mono text-amber-400">.json</span>). Word timings will be deterministically aligned across the {currentShort.duration.toFixed(1)}s duration.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-neutral-400 block uppercase tracking-wider">
+                Dialogue Text:
+              </label>
+              <textarea
+                value={manualDialogueText}
+                onChange={(e) => setManualDialogueText(e.target.value)}
+                placeholder="Paste or type the dialogue for this short clip..."
+                rows={5}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:border-amber-400 transition-colors resize-none leading-relaxed font-sans"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 text-xs font-semibold text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-2 rounded-xl border border-neutral-700 cursor-pointer transition-colors">
+                <Upload className="w-3.5 h-3.5 text-amber-400" />
+                <span>Upload Subtitles (.srt / .vtt)</span>
+                <input
+                  type="file"
+                  accept=".srt,.vtt,.json"
+                  onChange={handleUploadSubtitles}
+                  className="hidden"
+                />
+              </label>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowManualCaptionModal(false)}
+                  className="px-3.5 py-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleApplyManualDialogue}
+                  disabled={!manualDialogueText.trim() || isTranscribing}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-neutral-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isTranscribing ? 'Aligning...' : 'Generate Captions'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

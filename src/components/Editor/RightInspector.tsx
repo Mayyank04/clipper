@@ -42,7 +42,7 @@ import {
 } from '../../types';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { TranscriptEditor } from './TranscriptEditor';
-import { CAPTION_STYLES_REGISTRY, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
+import { ALL_CAPTION_STYLES, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
 
 interface RightInspectorProps {
   short: ShortCandidate;
@@ -186,9 +186,10 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
 
   const analysis = short.projectAnalysis;
-  const detectedLangCode = analysis?.language || short.language || language || 'en';
+  const rawLang = analysis?.language || short.language || language || 'en';
+  const detectedLangCode = typeof rawLang === 'object' && rawLang !== null ? (rawLang.detectedCode || rawLang.primaryLanguage || 'en') : String(rawLang);
   const detectedLangName = analysis?.languageConfidence
-    ? `${analysis.language.toUpperCase()} (${Math.round(analysis.languageConfidence * 100)}%)`
+    ? `${detectedLangCode.toUpperCase()} (${Math.round(analysis.languageConfidence * 100)}%)`
     : detectedLangCode.toUpperCase();
 
   const captionCoverage = calculateCaptionCoverage(short.captions || [], short.duration || 30);
@@ -226,7 +227,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     }
   };
 
-  const filteredPresets = CAPTION_STYLES_REGISTRY.filter((p) => {
+  const filteredPresets = ALL_CAPTION_STYLES.filter((p) => {
     if (presetFilterCategory === 'all') return true;
     return p.category === presetFilterCategory;
   });
@@ -984,7 +985,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <img
-                          src={br.imageUrl || br.assetUrl}
+                          src={br.imageUrl || (br as any).assetUrl}
                           alt={br.concept}
                           onClick={() => onSeekToTime?.(br.timestamp)}
                           className="w-12 h-12 rounded object-cover cursor-pointer hover:opacity-80 border border-neutral-800"

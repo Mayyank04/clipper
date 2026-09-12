@@ -25,6 +25,8 @@ import { ProcessingModal } from './components/ProcessingModal';
 import { ExportModal } from './components/ExportModal';
 import { BrandKitModal } from './components/BrandKitModal';
 import { NewShortModal } from './components/NewShortModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ShortUnavailableRecovery } from './components/ShortUnavailableRecovery';
 
 export default function App() {
   const [projects, setProjects] = useState<VideoProject[]>(() => loadStoredProjects());
@@ -545,67 +547,99 @@ export default function App() {
         onPersonalityChange={setEditingPersonality}
       />
 
-      {/* Main View Router */}
+      {/* Main View Router with ErrorBoundary Protection */}
       <main className="flex-1 flex flex-col">
-        {currentView === 'landing' && (
-          <LandingPage
-            onStartAnalysis={handleStartAnalysis}
-            onStartDemo={handleStartDemo}
-            onImportVideoFile={handleImportVideoFile}
-            onImportAudioFile={handleImportAudioFile}
-            onSelectProject={(proj) => {
-              setActiveProject(proj);
-              if (proj.shorts && proj.shorts.length > 0) {
-                setActiveShort(proj.shorts[0]);
-              }
-              setCurrentView('project');
-            }}
-          />
-        )}
+        <ErrorBoundary
+          componentName={`View_${currentView}`}
+          route={`/${currentView}`}
+          projectId={activeProject?.id}
+          onReset={() => setCurrentView('dashboard')}
+        >
+          {currentView === 'landing' && (
+            <LandingPage
+              onStartAnalysis={handleStartAnalysis}
+              onStartDemo={handleStartDemo}
+              onImportVideoFile={handleImportVideoFile}
+              onImportAudioFile={handleImportAudioFile}
+              onSelectProject={(proj) => {
+                setActiveProject(proj);
+                if (proj.shorts && proj.shorts.length > 0) {
+                  setActiveShort(proj.shorts[0]);
+                }
+                setCurrentView('project');
+              }}
+            />
+          )}
 
-        {currentView === 'dashboard' && (
-          <DashboardView
-            projects={projects}
-            onSelectProject={(proj) => {
-              setActiveProject(proj);
-              if (proj.shorts && proj.shorts.length > 0) {
-                setActiveShort(proj.shorts[0]);
-              }
-              setCurrentView('project');
-            }}
-            onNewShortClick={() => setIsNewShortModalOpen(true)}
-            onImportVideoFile={handleImportVideoFile}
-            onDeleteProject={handleDeleteProject}
-          />
-        )}
+          {currentView === 'dashboard' && (
+            <DashboardView
+              projects={projects}
+              onSelectProject={(proj) => {
+                setActiveProject(proj);
+                if (proj.shorts && proj.shorts.length > 0) {
+                  setActiveShort(proj.shorts[0]);
+                }
+                setCurrentView('project');
+              }}
+              onNewShortClick={() => setIsNewShortModalOpen(true)}
+              onImportVideoFile={handleImportVideoFile}
+              onDeleteProject={handleDeleteProject}
+            />
+          )}
 
-        {currentView === 'project' && (
-          <ProjectView
-            project={activeProject}
-            onBack={() => setCurrentView('dashboard')}
-            onOpenEditor={(short) => {
-              setActiveShort(short);
-              setCurrentView('editor');
-            }}
-            onQuickExport={(short) => {
-              setExportingShort(short);
-            }}
-            onDuplicateShort={handleDuplicateShort}
-            onUpdateProject={handleUpdateProject}
-          />
-        )}
+          {currentView === 'project' && (
+            <ProjectView
+              project={activeProject}
+              onBack={() => setCurrentView('dashboard')}
+              onOpenEditor={(short) => {
+                setActiveShort(short);
+                setCurrentView('editor');
+              }}
+              onQuickExport={(short) => {
+                setExportingShort(short);
+              }}
+              onDuplicateShort={handleDuplicateShort}
+              onUpdateProject={handleUpdateProject}
+            />
+          )}
 
-        {currentView === 'editor' && (
-          <VideoEditor
-            project={activeProject}
-            short={activeShort || activeProject.shorts[0] || SAMPLE_PROJECTS[0].shorts[0]}
-            onBack={() => setCurrentView('project')}
-            onExport={(short) => setExportingShort(short)}
-            brandKit={brandKit}
-            editingPersonality={editingPersonality}
-            onUpdateShort={handleUpdateShort}
-          />
-        )}
+          {currentView === 'editor' && (() => {
+            const resolvedProject = activeProject || projects[0] || SAMPLE_PROJECTS[0];
+            const resolvedShort = activeShort || resolvedProject?.shorts?.[0] || SAMPLE_PROJECTS[0]?.shorts?.[0];
+
+            if (!resolvedProject || !resolvedShort) {
+              return (
+                <ShortUnavailableRecovery
+                  reason="This Short could not be loaded because its source project or candidate is missing."
+                  projectId={resolvedProject?.id}
+                  shortId={resolvedShort?.id}
+                  onBackToShorts={() => setCurrentView('project')}
+                  onReloadProject={() => window.location.reload()}
+                  onBackToDashboard={() => setCurrentView('dashboard')}
+                />
+              );
+            }
+
+            return (
+              <ErrorBoundary
+                componentName="VideoEditor"
+                projectId={resolvedProject.id}
+                route={`/editor/${resolvedProject.id}/short/${resolvedShort.id}`}
+                onReset={() => setCurrentView('project')}
+              >
+                <VideoEditor
+                  project={resolvedProject}
+                  short={resolvedShort}
+                  onBack={() => setCurrentView('project')}
+                  onExport={(short) => setExportingShort(short)}
+                  brandKit={brandKit}
+                  editingPersonality={editingPersonality}
+                  onUpdateShort={handleUpdateShort}
+                />
+              </ErrorBoundary>
+            );
+          })()}
+        </ErrorBoundary>
       </main>
 
       {/* Observable AI Processing Pipeline Modal */}

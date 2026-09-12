@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Upload,
   Shield,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -45,6 +46,7 @@ interface VideoCanvasProps {
   volume?: number; // 0 to 1
   onVideoLoaded?: (meta: { duration: number; videoWidth: number; videoHeight: number }) => void;
   onRelinkMedia?: (file: File) => void;
+  onBack?: () => void;
 }
 
 export const VideoCanvas: React.FC<VideoCanvasProps> = ({
@@ -64,20 +66,24 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   volume = 0.85,
   onVideoLoaded,
   onRelinkMedia,
+  onBack,
 }) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = externalVideoRef || internalVideoRef;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const relinkInputRef = useRef<HTMLInputElement | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [localVolume, setLocalVolume] = useState<number>(volume);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaErrorCode, setMediaErrorCode] = useState<string | null>(null);
   const [isVideoReady, setIsVideoReady] = useState<boolean>(false);
 
   // Clear errors when source video changes
   useEffect(() => {
     setMediaError(null);
+    setMediaErrorCode(null);
     setIsVideoReady(false);
   }, [videoUrl]);
 
@@ -95,6 +101,52 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     if (!vid) return;
     vid.playbackRate = playbackSpeed;
   }, [playbackSpeed]);
+
+  const handleMediaError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+    const vid = e.currentTarget;
+    let detail = 'Unable to stream source media file.';
+    let codeStr = 'MEDIA_ERR_UNKNOWN';
+
+    if (vid.error) {
+      switch (vid.error.code) {
+        case 1: // MEDIA_ERR_ABORTED
+          codeStr = 'MEDIA_ERR_ABORTED';
+          detail = 'The media resource fetching was aborted by the user or browser.';
+          break;
+        case 2: // MEDIA_ERR_NETWORK
+          codeStr = 'MEDIA_ERR_NETWORK';
+          detail = 'A network error occurred while streaming the video file.';
+          break;
+        case 3: // MEDIA_ERR_DECODE
+          codeStr = 'MEDIA_ERR_DECODE';
+          detail = 'The browser failed to decode the media (codec incompatibility or corrupted file).';
+          break;
+        case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
+          codeStr = 'MEDIA_ERR_SRC_NOT_SUPPORTED';
+          detail = 'The video format or stream source is not supported by your browser.';
+          break;
+        default:
+          detail = vid.error.message || detail;
+      }
+    }
+    console.error(`[VideoCanvas Error] code=${codeStr}:`, detail);
+    setMediaErrorCode(codeStr);
+    setMediaError(detail);
+    setIsVideoReady(false);
+  };
+
+  const handleRetryMedia = () => {
+    setMediaError(null);
+    setMediaErrorCode(null);
+    const vid = videoRef.current;
+    if (vid) {
+      try {
+        vid.load();
+      } catch (err) {
+        console.warn('Retry load error:', err);
+      }
+    }
+  };
 
   const handleVideoTimeUpdate = () => {
     const vid = videoRef.current;
@@ -282,15 +334,20 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
               });
             }
           }}
-          onError={(e) => {
-            const vid = e.currentTarget;
-            console.error('Video error event:', vid.error);
-            setMediaError(
-              vid.error && vid.error.code === 4
-                ? "This media codec isn't supported by your browser. Please upload an MP3/WAV/AAC or MP4."
-                : 'Unable to stream source media. Please check media path or upload audio.'
-            );
+          onCanPlay={() => {
+            setIsVideoReady(true);
+            setMediaError(null);
           }}
+          onStalled={() => {
+            console.warn('[VideoCanvas] video stream stalled');
+          }}
+          onAbort={() => {
+            console.warn('[VideoCanvas] video stream aborted');
+          }}
+          onEmptied={() => {
+            setIsVideoReady(false);
+          }}
+          onError={handleMediaError}
           onClick={onPlayPause}
           className={`relative z-10 w-full h-full object-cover cursor-pointer transition-all duration-300 ${
             isAudioMode ? 'opacity-0 pointer-events-auto' : ''
@@ -307,31 +364,59 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           </div>
         )}
 
-        {/* Media Error / Relink State */}
+        {/* Media Error / Relink State (PART 4 SPECIFICATION) */}
         {(mediaError || short.mediaUnavailable) && (
-          <div className="absolute inset-0 z-30 bg-neutral-950/95 flex flex-col items-center justify-center p-6 text-center">
-            <AlertTriangle className="w-10 h-10 text-amber-400 mb-3" />
-            <p className="text-white font-bold text-sm mb-1">
-              Media needs to be re-linked.
+          <div className="absolute inset-0 z-30 bg-neutral-950/95 flex flex-col items-center justify-center p-6 text-center animate-fade-in select-none">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3 shadow-lg shadow-rose-500/10">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-white font-black text-sm uppercase tracking-wider mb-1">
+              VIDEO COULD NOT BE LOADED
+            </h3>
+            <p className="text-neutral-300 text-xs max-w-xs mb-1 font-medium leading-relaxed">
+              {mediaError || 'Unable to stream or decode video media file.'}
             </p>
-            <p className="text-neutral-400 text-xs max-w-xs mb-4">
-              {mediaError || 'The original media file could not be persisted across browser sessions. Please relink your media file to continue.'}
-            </p>
-            <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs shadow-lg transition-colors cursor-pointer">
-              <Upload className="w-4 h-4" />
-              <span>Relink Media</span>
-              <input
-                type="file"
-                accept="video/*,audio/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && onRelinkMedia) {
-                    onRelinkMedia(file);
-                  }
-                }}
-              />
-            </label>
+            {mediaErrorCode && (
+              <span className="text-[10px] font-mono text-neutral-500 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800 mb-4">
+                {mediaErrorCode}
+              </span>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+              <button
+                onClick={handleRetryMedia}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs shadow-md transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </button>
+
+              <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs border border-neutral-700 shadow-md transition-all cursor-pointer">
+                <Upload className="w-3.5 h-3.5 text-amber-400" />
+                <span>Relink Media</span>
+                <input
+                  ref={relinkInputRef}
+                  type="file"
+                  accept="video/*,audio/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && onRelinkMedia) {
+                      onRelinkMedia(file);
+                    }
+                  }}
+                />
+              </label>
+
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-neutral-400 hover:text-white font-semibold text-xs border border-neutral-800 transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -435,32 +520,36 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                   letterSpacing: captionConfig.letterSpacing ? `${captionConfig.letterSpacing}px` : undefined,
                 }}
               >
-                {(captionState.activeCaption.words || []).map((w, idx) => {
+                {(captionState.activeCaption.words || []).map((w: any, idx: number) => {
                   const isWordSpoken = idx === captionState.activeWordIndex;
                   const isPast = captionState.highlightState.pastWordIndices.includes(idx);
 
                   let color = captionConfig.primaryColor;
                   if (isWordSpoken) {
-                    color = w.highlightColor || captionConfig.highlightColor;
+                    color = w?.highlightColor || captionConfig.highlightColor;
                   } else if (isPast) {
                     color = captionConfig.style === 'podcast' ? '#64748b' : '#e2e8f0';
                   }
 
-                  let wordScale = isWordSpoken ? (w.scale || 1.15) : 1;
+                  let wordScale = isWordSpoken ? (w?.scale || 1.15) : 1;
                   if (captionConfig.animationType === 'bounce' && isWordSpoken) {
                     wordScale = 1.18 + Math.sin(captionState.animationProgress * Math.PI) * 0.08;
                   }
 
-                  let displayWord = w.word;
+                  const curWordStr = typeof w === 'string' ? w : (w?.word || w?.text || String(w || ''));
+                  let displayWord = curWordStr;
                   if (captionConfig.animationType === 'typewriter' && captionState.revealedCharacterCount !== undefined) {
                     const wordStartChar = (captionState.activeCaption?.words || [])
                       .slice(0, idx)
-                      .reduce((acc, prevW) => acc + prevW.word.length + 1, 0);
-                    const wordEndChar = wordStartChar + w.word.length;
+                      .reduce((acc: number, prevW: any) => {
+                        const prevStr = typeof prevW === 'string' ? prevW : (prevW?.word || prevW?.text || '');
+                        return acc + prevStr.length + 1;
+                      }, 0);
+                    const wordEndChar = wordStartChar + curWordStr.length;
                     if (captionState.revealedCharacterCount < wordStartChar) {
                       return null;
                     } else if (captionState.revealedCharacterCount < wordEndChar) {
-                      displayWord = w.word.slice(0, captionState.revealedCharacterCount - wordStartChar);
+                      displayWord = curWordStr.slice(0, captionState.revealedCharacterCount - wordStartChar);
                     }
                   }
 

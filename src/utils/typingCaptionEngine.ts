@@ -57,6 +57,7 @@ export interface TypingStyleDefinition {
   textShadow?: string;
   backgroundPill?: boolean;
   pillColor?: string;
+  boxBackground?: string;
   boxShadow?: string;
   border?: string;
 }

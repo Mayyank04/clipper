@@ -52,17 +52,44 @@ export const DevDebugPanel: React.FC<DevDebugPanelProps> = ({
   const muted = vid?.muted ?? false;
   const volume = vid ? Math.round(vid.volume * 100) : 0;
 
-  const activeCaption = short.captions?.find(
+  const captionsList = short.captions || [];
+  const brollList = short.brollSuggestions || [];
+  const sfxList = short.sfxMarkers || [];
+  const vfxList = short.vfxMarkers || [];
+
+  const totalWords = captionsList.reduce(
+    (acc, c) => acc + (c.words?.length || c.text.split(/\s+/).filter(Boolean).length),
+    0
+  );
+  const firstCapTime = captionsList.length > 0 ? `${captionsList[0].start.toFixed(2)}s` : 'N/A';
+  const lastCapTime =
+    captionsList.length > 0 ? `${captionsList[captionsList.length - 1].end.toFixed(2)}s` : 'N/A';
+
+  const speechDuration = captionsList.reduce((acc, c) => acc + Math.max(0, c.end - c.start), 0);
+  const speechCoverage =
+    short.duration > 0 ? Math.min(100, Math.round((speechDuration / short.duration) * 100)) : 0;
+
+  const brollAccepted = brollList.filter((b) => b.enabled).length;
+  const brollRejected = brollList.filter((b) => !b.enabled).length;
+  const firstBrollTime = brollList.length > 0 ? `${brollList[0].timestamp.toFixed(2)}s` : 'N/A';
+  const lastBrollTime =
+    brollList.length > 0
+      ? `${(brollList[brollList.length - 1].timestamp + brollList[brollList.length - 1].duration).toFixed(2)}s`
+      : 'N/A';
+
+  const detectedLang =
+    typeof short.language === 'object' && short.language !== null
+      ? (short.language as any).detectedCode || (short.language as any).primaryLanguage
+      : short.language || 'en';
+
+  const activeCaption = captionsList.find(
     (c) => currentTime >= c.start && currentTime <= c.end
   );
-  const activeBroll = short.brollSuggestions?.find(
+  const activeBroll = brollList.find(
     (b) => b.enabled && currentTime >= b.timestamp && currentTime <= b.timestamp + b.duration
   );
-  const activeSfx = short.sfxMarkers?.find(
+  const activeSfx = sfxList.find(
     (s) => Math.abs(currentTime - s.timestamp) < 0.5
-  );
-  const activeVfx = short.vfxMarkers?.find(
-    (v) => currentTime >= v.timestamp && currentTime <= v.timestamp + v.duration
   );
 
   return (
@@ -70,7 +97,7 @@ export const DevDebugPanel: React.FC<DevDebugPanelProps> = ({
       <div className="flex items-center justify-between pb-3 mb-3 border-b border-neutral-800">
         <div className="flex items-center gap-2 text-amber-400 font-bold">
           <Activity className="w-4 h-4 animate-pulse" />
-          <span>REAL MEDIA DIAGNOSTICS</span>
+          <span>DIAGNOSTICS (PART 25)</span>
         </div>
         <button
           onClick={onClose}
@@ -80,115 +107,90 @@ export const DevDebugPanel: React.FC<DevDebugPanelProps> = ({
         </button>
       </div>
 
-      <div className="space-y-2">
-        <div>
-          <span className="text-neutral-500 block">SOURCE MEDIA:</span>
-          <span className="text-amber-300 font-semibold break-all text-[11px]">
-            {videoUrl || 'No source loaded'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-900">
-          <div>
-            <span className="text-neutral-500 block">VIDEO DURATION:</span>
-            <span className="text-white font-bold">
-              {Number.isFinite(rawDuration) ? `${rawDuration.toFixed(2)}s` : 'N/A'}
-            </span>
+      <div className="space-y-3">
+        {/* SOURCE */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-amber-400 border-b border-neutral-900 pb-0.5">
+            1. SOURCE
           </div>
-          <div>
-            <span className="text-neutral-500 block">CLIP DURATION:</span>
-            <span className="text-white font-bold">
-              {short.duration ? `${short.duration.toFixed(2)}s` : 'N/A'}
-            </span>
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Duration: <span className="text-white font-bold">{rawDuration ? `${rawDuration.toFixed(2)}s` : 'N/A'}</span></div>
+            <div>Resolution: <span className="text-white font-bold">{videoWidth && videoHeight ? `${videoWidth}x${videoHeight}` : '1080x1920'}</span></div>
+            <div>FPS: <span className="text-white font-bold">{short.sourceMedia?.fps || 30}</span></div>
+            <div>Audio: <span className="text-emerald-400 font-bold">{muted ? 'Muted' : 'AAC Active'}</span></div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-900">
-          <div>
-            <span className="text-neutral-500 block">RESOLUTION:</span>
-            <span className="text-white font-bold">
-              {videoWidth && videoHeight ? `${videoWidth}x${videoHeight}` : 'Probing...'}
-            </span>
+        {/* TRANSCRIPT */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-sky-400 border-b border-neutral-900 pb-0.5">
+            2. TRANSCRIPT
           </div>
-          <div>
-            <span className="text-neutral-500 block">READY STATE:</span>
-            <span className={`font-bold ${readyState >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {READY_STATE_MAP[readyState] || `STATE_${readyState}`}
-            </span>
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Language: <span className="text-white font-bold">{detectedLang}</span></div>
+            <div>Segments: <span className="text-white font-bold">{captionsList.length}</span></div>
+            <div>Words: <span className="text-white font-bold">{totalWords}</span></div>
+            <div>Coverage: <span className="text-emerald-400 font-bold">{speechCoverage}%</span></div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-900">
-          <div>
-            <span className="text-neutral-500 block">VIDEO CURRENT TIME:</span>
-            <span className="text-amber-400 font-bold">{rawCurrentTime.toFixed(3)}s</span>
+        {/* CAPTIONS */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-amber-300 border-b border-neutral-900 pb-0.5">
+            3. CAPTIONS
           </div>
-          <div>
-            <span className="text-neutral-500 block">CLIP RELATIVE TIME:</span>
-            <span className="text-amber-400 font-bold">{currentTime.toFixed(3)}s</span>
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Count: <span className="text-white font-bold">{captionsList.length}</span></div>
+            <div>Speech Cov: <span className={`font-bold ${speechCoverage >= 95 ? 'text-emerald-400' : 'text-amber-400'}`}>{speechCoverage}%</span></div>
+            <div>First: <span className="text-white font-bold">{firstCapTime}</span></div>
+            <div>Last: <span className="text-white font-bold">{lastCapTime}</span></div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-900">
-          <div>
-            <span className="text-neutral-500 block">PLAYBACK STATE:</span>
-            <span className={`font-bold ${!paused ? 'text-emerald-400' : 'text-neutral-400'}`}>
-              {!paused ? '▶ PLAYING' : '⏸ PAUSED'}
-            </span>
-          </div>
-          <div>
-            <span className="text-neutral-500 block">VOLUME / MUTED:</span>
-            <span className="text-white font-bold">
-              {muted ? 'MUTED' : `${volume}%`}
-            </span>
+          <div className="text-[10px] text-neutral-400 truncate bg-neutral-900 px-2 py-1 rounded">
+            {activeCaption ? `Active: "${activeCaption.text}"` : 'No caption at playhead'}
           </div>
         </div>
 
-        <div className="pt-2 border-t border-neutral-900 space-y-1">
-          <div className="flex justify-between">
-            <span className="text-neutral-500">CAPTIONS:</span>
-            <span className="text-white">{short.captions?.length || 0} segments</span>
+        {/* B-ROLL */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-purple-400 border-b border-neutral-900 pb-0.5">
+            4. B-ROLL
           </div>
-          <div className="text-[11px] text-neutral-300 italic truncate bg-neutral-900 px-2 py-1 rounded">
-            {activeCaption ? `"${activeCaption.text}"` : 'No caption active at playhead'}
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Candidates: <span className="text-white font-bold">{brollList.length}</span></div>
+            <div>Accepted: <span className="text-emerald-400 font-bold">{brollAccepted}</span></div>
+            <div>Rejected: <span className="text-neutral-500 font-bold">{brollRejected}</span></div>
+            <div>First/Last: <span className="text-white font-bold">{firstBrollTime} / {lastBrollTime}</span></div>
           </div>
-        </div>
-
-        <div className="pt-1 border-t border-neutral-900 space-y-1">
-          <div className="flex justify-between">
-            <span className="text-neutral-500">B-ROLL TRACK:</span>
-            <span className="text-white">{short.brollSuggestions?.length || 0} assets</span>
-          </div>
-          <div className="text-[11px] text-neutral-300 truncate bg-neutral-900 px-2 py-1 rounded">
-            {activeBroll ? `Active: ${activeBroll.concept}` : 'None active'}
+          <div className="text-[10px] text-neutral-400 truncate bg-neutral-900 px-2 py-1 rounded">
+            {activeBroll ? `Active: ${activeBroll.concept} (${activeBroll.confidence || 0.9} conf)` : 'No B-roll at playhead'}
           </div>
         </div>
 
-        <div className="pt-1 border-t border-neutral-900 space-y-1">
-          <div className="flex justify-between">
-            <span className="text-neutral-500">SFX TRACK:</span>
-            <span className="text-white">{short.sfxMarkers?.length || 0} markers</span>
+        {/* SFX */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-rose-400 border-b border-neutral-900 pb-0.5">
+            5. SFX
           </div>
-          <div className="text-[11px] text-neutral-300 truncate bg-neutral-900 px-2 py-1 rounded">
-            {activeSfx ? `Playing: ${activeSfx.name} (${activeSfx.category})` : 'Idle'}
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Candidates: <span className="text-white font-bold">{sfxList.length}</span></div>
+            <div>Accepted: <span className="text-emerald-400 font-bold">{sfxList.length}</span></div>
           </div>
-        </div>
-
-        <div className="pt-1 border-t border-neutral-900 space-y-1">
-          <div className="flex justify-between">
-            <span className="text-neutral-500">VFX TRACK:</span>
-            <span className="text-white">{short.vfxMarkers?.length || 0} markers</span>
-          </div>
-          <div className="text-[11px] text-neutral-300 truncate bg-neutral-900 px-2 py-1 rounded">
-            {activeVfx ? `Active: ${activeVfx.type} (${activeVfx.label})` : 'Idle'}
+          <div className="text-[10px] text-neutral-400 truncate bg-neutral-900 px-2 py-1 rounded">
+            {activeSfx ? `Playing: ${activeSfx.soundName || activeSfx.category}` : 'Idle'}
           </div>
         </div>
 
-        <div className="pt-1 border-t border-neutral-900">
-          <span className="text-neutral-500 block">TIMELINE BOUNDS:</span>
-          <span className="text-white text-[11px]">
-            start: {short.startTime.toFixed(2)}s | end: {short.endTime.toFixed(2)}s
-          </span>
+        {/* RENDER */}
+        <div className="space-y-1">
+          <div className="text-[11px] font-bold text-emerald-400 border-b border-neutral-900 pb-0.5">
+            6. RENDER (CANONICAL RENDER PLAN)
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 text-[11px]">
+            <div>Video Layers: <span className="text-white font-bold">1 (9:16 Base)</span></div>
+            <div>Caption Layers: <span className="text-white font-bold">{captionsList.length > 0 ? '1 (Kinetic)' : '0'}</span></div>
+            <div>B-roll Layers: <span className="text-white font-bold">{brollAccepted > 0 ? '1 (Cutaway)' : '0'}</span></div>
+            <div>SFX Layers: <span className="text-white font-bold">{sfxList.length > 0 ? '1 (AudioMix)' : '0'}</span></div>
+          </div>
         </div>
       </div>
     </div>

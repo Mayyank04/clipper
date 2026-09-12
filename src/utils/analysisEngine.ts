@@ -34,41 +34,111 @@ export const VERIFIED_SFX_ASSETS: Record<string, { soundName: string; audioUrl: 
   glitch: { soundName: 'Digital Glitch', audioUrl: '/assets/sfx/glitch.wav', duration: 0.2 },
 };
 
-export const VERIFIED_BROLL_CATALOG = [
+export interface BRollAssetDefinition {
+  id: string;
+  concept: string;
+  topic: string;
+  visualConcept: string;
+  entities: string[];
+  actions: string[];
+  concepts: string[];
+  keywords: string[];
+  assetUrl: string;
+  aspectRatio: string;
+  license: string;
+}
+
+export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
   {
+    id: 'developer-ai-code-01',
     concept: 'Developer Code Editor & Software Interface',
-    assetUrl: '/assets/broll/coding.jpg',
+    topic: 'software_engineering',
+    visualConcept: 'Developer writing modern code in dark IDE interface with syntax highlighting',
+    entities: ['developer', 'engineer', 'programmer', 'code', 'ide', 'editor', 'syntax', 'terminal', 'script', 'python', 'javascript', 'typescript', 'software'],
+    actions: ['coding', 'programming', 'debugging', 'developing', 'building apps', 'refactoring', 'writing software'],
+    concepts: ['software development', 'coding', 'algorithms', 'tech stack', 'programming languages'],
     keywords: ['developer', 'coding', 'programming', 'software', 'engineer', 'code', 'python', 'javascript', 'algorithm', 'app'],
+    assetUrl: '/assets/broll/coding.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'ai-neural-model-02',
     concept: 'AI Neural Networks & Digital Intelligence',
-    assetUrl: '/assets/broll/ai_interface.jpg',
+    topic: 'artificial_intelligence',
+    visualConcept: 'Glowing futuristic artificial intelligence neural network nodes and data flows',
+    entities: ['ai', 'artificial intelligence', 'neural network', 'machine learning', 'llm', 'transformer', 'agent', 'model', 'deep learning'],
+    actions: ['analyzing data', 'generating predictions', 'training models', 'processing intelligence', 'automating'],
+    concepts: ['artificial intelligence', 'automation', 'neural networks', 'machine learning', 'future of tech'],
     keywords: ['ai', 'intelligence', 'neural', 'artificial', 'gpt', 'model', 'machine', 'deep', 'transformer', 'agent'],
+    assetUrl: '/assets/broll/ai_interface.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'analytics-growth-metrics-03',
     concept: 'High-Growth Analytics & Metrics Charts',
-    assetUrl: '/assets/broll/analytics.jpg',
+    topic: 'business_analytics',
+    visualConcept: 'High-growth exponential upward trajectory business analytics charts and metrics dashboard',
+    entities: ['analytics', 'metrics', 'growth chart', 'dashboard', 'finance', 'revenue', 'profit', 'scale', 'statistics', 'graph', 'growth', 'chart'],
+    actions: ['scaling', 'growing', 'analyzing metrics', 'measuring performance', 'spiking', 'tracking results'],
+    concepts: ['business growth', 'exponential curve', 'analytics', 'revenue growth', 'performance data'],
     keywords: ['growth', 'analytics', 'metrics', 'chart', 'finance', 'revenue', 'money', 'business', 'profit', 'market', 'scale'],
+    assetUrl: '/assets/broll/analytics.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'creator-studio-workspace-04',
     concept: 'Modern Creator Studio Workspace',
-    assetUrl: '/assets/broll/workspace.jpg',
+    topic: 'creator_studio',
+    visualConcept: 'Clean aesthetic creator desk setup with dual monitors, mechanical keyboard, and ambient lighting',
+    entities: ['creator', 'studio', 'desk', 'workspace', 'setup', 'monitors', 'office', 'workstation', 'work'],
+    actions: ['creating content', 'editing video', 'working', 'focusing', 'producing', 'building'],
+    concepts: ['creator workflow', 'productivity', 'studio setup', 'high performance workspace'],
     keywords: ['creator', 'studio', 'desk', 'workspace', 'work', 'focus', 'setup', 'productivity', 'office'],
+    assetUrl: '/assets/broll/workspace.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'cityscape-urban-future-05',
     concept: 'Dynamic Cityscape & Architecture',
-    assetUrl: '/assets/broll/city_skyline.jpg',
+    topic: 'urban_future',
+    visualConcept: 'Illuminated modern metropolis skyline with towering glass skyscrapers and urban energy',
+    entities: ['city', 'skyline', 'metropolis', 'skyscrapers', 'urban', 'architecture', 'buildings', 'world'],
+    actions: ['expanding', 'urbanizing', 'traveling', 'operating globally'],
+    concepts: ['global scale', 'metropolis', 'future city', 'architecture'],
     keywords: ['city', 'future', 'world', 'global', 'travel', 'industry', 'skyline', 'urban'],
+    assetUrl: '/assets/broll/city_skyline.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'strategic-system-architecture-06',
     concept: 'Strategic Framework & System Architecture',
-    assetUrl: '/assets/broll/strategy.jpg',
+    topic: 'strategy_framework',
+    visualConcept: 'Strategic conceptual blueprint, workflow architecture, and structured execution system',
+    entities: ['strategy', 'framework', 'blueprint', 'system', 'architecture', 'plan', 'model', 'diagram'],
+    actions: ['planning', 'designing systems', 'executing framework', 'structuring strategy'],
+    concepts: ['mental models', 'systems thinking', 'strategic planning', 'execution framework'],
     keywords: ['strategy', 'plan', 'framework', 'concept', 'system', 'architecture', 'design', 'idea', 'thinking'],
+    assetUrl: '/assets/broll/strategy.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
   {
+    id: 'cinema-production-camera-07',
     concept: 'Cinema Production & Filming Setup',
-    assetUrl: '/assets/broll/camera.jpg',
+    topic: 'video_production',
+    visualConcept: 'Professional cinema camera rig with anamorphic lens on studio gimbal filming setup',
+    entities: ['camera', 'lens', 'cinematography', 'rig', 'filming', 'production', 'studio', 'video', 'youtube', 'content'],
+    actions: ['filming', 'shooting video', 'recording', 'capturing shots', 'cinematography'],
+    concepts: ['video production', 'filmmaking', 'visual storytelling', 'content creation'],
     keywords: ['camera', 'filming', 'video', 'youtube', 'shorts', 'content', 'production', 'record'],
+    assetUrl: '/assets/broll/camera.jpg',
+    aspectRatio: '16:9',
+    license: 'royalty_free',
   },
 ];
 
@@ -81,7 +151,22 @@ const HINDI_ROMANIZED_TOKENS = new Set([
 
 const SPANISH_TOKENS = new Set([
   'hola', 'amigos', 'que', 'para', 'por', 'con', 'los', 'las', 'del', 'gracias',
-  'este', 'esta', 'video', 'vamos', 'hablar', 'como', 'pero', 'mas', 'muy', 'bien',
+  'este', 'esta', 'vamos', 'hablar', 'como', 'pero', 'mas', 'muy', 'bien', 'hoy',
+  'redes', 'sociales', 'inteligencia', 'artificial'
+]);
+
+const ENGLISH_TOKENS = new Set([
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not',
+  'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from',
+  'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would',
+  'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which',
+  'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know',
+  'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see',
+  'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think',
+  'also', 'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way',
+  'even', 'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'are',
+  'is', 'was', 'were', 'been', 'today', 'welcome', 'everyone', 'tools', 'deep', 'editing',
+  'creators', 'video', 'growing', 'brand', 'content'
 ]);
 
 const FRENCH_TOKENS = new Set([
@@ -109,6 +194,28 @@ const INDONESIAN_TOKENS = new Set([
   'kita', 'hari', 'ini', 'bisa', 'akan', 'sudah', 'sangat', 'halo',
 ]);
 
+const PUNJABI_ROMANIZED_TOKENS = new Set([
+  'ajj', 'asi', 'ik', 'karan', 'hova', 'veere', 'paaji', 'samjhan', 'wale', 'haan',
+  'tusi', 'changa', 'gall', 'karo', 'saade', 'vich', 'te', 'naal', 'dasso', 'daso',
+  'baut', 'theek', 'kiddan',
+]);
+
+const BRAZILIAN_PORTUGUESE_TOKENS = new Set([
+  'voce', 'obrigado', 'legal', 'cara', 'beleza', 'gente', 'bom', 'hoje', 'vamos',
+  'falar', 'sobre', 'muito', 'bem', 'mais', 'aqui', 'tudo', 'brasil', 'brasileiro',
+  'valeu', 'ne', 'pra', 'pro',
+]);
+
+const TURKISH_TOKENS = new Set([
+  'cok', 'bir', 'bu', 'icin', 'ile', 'guzel', 'evet', 'hayir', 'merhaba', 'nasil',
+  'tamam', 'tesekkurler', 'gunler',
+]);
+
+const DUTCH_TOKENS = new Set([
+  'van', 'het', 'een', 'voor', 'met', 'zijn', 'naar', 'deze', 'over', 'hallo',
+  'dank', 'welkom', 'maar', 'niet',
+]);
+
 function formatLangResult(
   code: string,
   primaryLanguage: string,
@@ -130,8 +237,8 @@ function formatLangResult(
 }
 
 /**
- * Robust Multilingual Language Detection
- * Supports 20+ languages and accurately identifies mixed-language speech (e.g. Hinglish).
+ * Robust Multilingual Language Detection & Code-Switching Engine
+ * Supports 24+ languages and accurately identifies mixed-language speech (Hinglish, Punjabi+English, Spanish+English).
  */
 export function detectLanguageFromContent(
   text: string,
@@ -143,8 +250,12 @@ export function detectLanguageFromContent(
   }
 
   // 1. Script-based unicode analysis
+  if (/[\u0A00-\u0A7F]/.test(clean)) {
+    const hasLatin = /[a-zA-Z]/.test(clean);
+    return formatLangResult('pa', 'Punjabi', 0.98, hasLatin ? ['English'] : [], hasLatin, 'Gurmukhi');
+  }
   if (/[\u0900-\u097F]/.test(clean)) {
-    // Devanagari script: Hindi
+    // Devanagari script: Hindi / Marathi
     const hasLatin = /[a-zA-Z]/.test(clean);
     return formatLangResult('hi', 'Hindi', 0.98, hasLatin ? ['English'] : [], hasLatin, 'Devanagari');
   }
@@ -161,11 +272,14 @@ export function detectLanguageFromContent(
   if (/[\u0C00-\u0C7F]/.test(clean)) {
     return formatLangResult('te', 'Telugu', 0.97, [], false, 'Telugu');
   }
+  if (/[\u0C80-\u0CFF]/.test(clean)) {
+    return formatLangResult('kn', 'Kannada', 0.97, [], false, 'Kannada');
+  }
+  if (/[\u0D00-\u0D7F]/.test(clean)) {
+    return formatLangResult('ml', 'Malayalam', 0.97, [], false, 'Malayalam');
+  }
   if (/[\u0A80-\u0AFF]/.test(clean)) {
     return formatLangResult('gu', 'Gujarati', 0.97, [], false, 'Gujarati');
-  }
-  if (/[\u0A00-\u0A7F]/.test(clean)) {
-    return formatLangResult('pa', 'Punjabi', 0.97, [], false, 'Gurmukhi');
   }
   if (/[\u0400-\u04FF]/.test(clean)) {
     return formatLangResult('ru', 'Russian', 0.98, [], false, 'Cyrillic');
@@ -184,22 +298,46 @@ export function detectLanguageFromContent(
   const tokens = clean.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
   const totalTokens = Math.max(1, tokens.length);
 
+  let punjabiCount = 0;
   let hindiCount = 0;
   let spanishCount = 0;
   let frenchCount = 0;
   let germanCount = 0;
+  let brazilianPtCount = 0;
   let portugueseCount = 0;
   let italianCount = 0;
   let indonesianCount = 0;
+  let turkishCount = 0;
+  let dutchCount = 0;
+  let englishCount = 0;
 
   for (const t of tokens) {
+    if (ENGLISH_TOKENS.has(t)) englishCount++;
+    if (PUNJABI_ROMANIZED_TOKENS.has(t)) punjabiCount++;
     if (HINDI_ROMANIZED_TOKENS.has(t)) hindiCount++;
     if (SPANISH_TOKENS.has(t)) spanishCount++;
     if (FRENCH_TOKENS.has(t)) frenchCount++;
     if (GERMAN_TOKENS.has(t)) germanCount++;
+    if (BRAZILIAN_PORTUGUESE_TOKENS.has(t)) brazilianPtCount++;
     if (PORTUGUESE_TOKENS.has(t)) portugueseCount++;
     if (ITALIAN_TOKENS.has(t)) italianCount++;
     if (INDONESIAN_TOKENS.has(t)) indonesianCount++;
+    if (TURKISH_TOKENS.has(t)) turkishCount++;
+    if (DUTCH_TOKENS.has(t)) dutchCount++;
+  }
+
+  // Mixed Punjabi + English
+  if (punjabiCount >= 1) {
+    const hasEnglishWords = tokens.some((w) => !PUNJABI_ROMANIZED_TOKENS.has(w) && w.length > 2);
+    const confidence = Math.min(0.98, 0.86 + (punjabiCount / totalTokens) * 0.14);
+    return formatLangResult(
+      'pa',
+      'Punjabi',
+      Number(confidence.toFixed(2)),
+      hasEnglishWords ? ['English'] : [],
+      hasEnglishWords,
+      'Latin'
+    );
   }
 
   // Mixed Hinglish: Hindi tokens present alongside English tokens
@@ -216,23 +354,45 @@ export function detectLanguageFromContent(
     );
   }
 
-  if (spanishCount >= 2 || spanishCount / totalTokens > 0.15) {
-    return formatLangResult('es', 'Spanish', 0.94, [], false, 'Latin');
+  // Mixed Spanish + English or pure Spanish
+  if (spanishCount >= 2 || (spanishCount >= 1 && spanishCount >= englishCount)) {
+    const hasEnglishWords = tokens.some((w) => !SPANISH_TOKENS.has(w) && w.length > 2);
+    const isCodeSwitching = hasEnglishWords && spanishCount / totalTokens < 0.8;
+    return formatLangResult(
+      'es',
+      'Spanish',
+      Number(Math.min(0.98, 0.86 + (spanishCount / totalTokens) * 0.14).toFixed(2)),
+      isCodeSwitching ? ['English'] : [],
+      isCodeSwitching,
+      'Latin'
+    );
   }
-  if (frenchCount >= 2 || frenchCount / totalTokens > 0.15) {
-    return formatLangResult('fr', 'French', 0.94, [], false, 'Latin');
+
+  // Portuguese — Brazil (pt-BR)
+  if (brazilianPtCount >= 2 || (portugueseCount >= 1 && brazilianPtCount >= 1)) {
+    return formatLangResult('pt-BR', 'Portuguese (Brazil)', 0.95, [], false, 'Latin');
   }
-  if (germanCount >= 2 || germanCount / totalTokens > 0.15) {
-    return formatLangResult('de', 'German', 0.95, [], false, 'Latin');
-  }
-  if (portugueseCount >= 2 || portugueseCount / totalTokens > 0.15) {
+
+  if (portugueseCount >= 2 && portugueseCount >= englishCount) {
     return formatLangResult('pt', 'Portuguese', 0.94, [], false, 'Latin');
   }
-  if (italianCount >= 2 || italianCount / totalTokens > 0.15) {
+  if (frenchCount >= 2 && frenchCount >= englishCount) {
+    return formatLangResult('fr', 'French', 0.94, [], false, 'Latin');
+  }
+  if (germanCount >= 2 && germanCount >= englishCount) {
+    return formatLangResult('de', 'German', 0.95, [], false, 'Latin');
+  }
+  if (italianCount >= 2 && italianCount >= englishCount) {
     return formatLangResult('it', 'Italian', 0.93, [], false, 'Latin');
   }
-  if (indonesianCount >= 2 || indonesianCount / totalTokens > 0.15) {
+  if (indonesianCount >= 2 && indonesianCount >= englishCount) {
     return formatLangResult('id', 'Indonesian', 0.93, [], false, 'Latin');
+  }
+  if (turkishCount >= 2 && turkishCount >= englishCount) {
+    return formatLangResult('tr', 'Turkish', 0.93, [], false, 'Latin');
+  }
+  if (dutchCount >= 2 && dutchCount >= englishCount) {
+    return formatLangResult('nl', 'Dutch', 0.94, [], false, 'Latin');
   }
 
   return formatLangResult('en', 'English', 0.96, [], false, 'Latin');
@@ -465,36 +625,77 @@ export function generateContentAwareBRollSuggestions(
       continue;
     }
 
-    // Score against verified catalog
+    // Score against verified catalog with multi-factor semantic scoring (Parts 14, 15, 16, 17, 18)
+    let bestMatch: {
+      item: BRollAssetDefinition;
+      confidence: number;
+      matchedKeyword: string;
+      topicMatch: number;
+      entityMatch: number;
+      visualMatch: number;
+    } | null = null;
+
     for (const item of VERIFIED_BROLL_CATALOG) {
-      const matchedKeywords = item.keywords.filter((k) => text.includes(k));
-      if (matchedKeywords.length > 0) {
-        const confidence = Math.min(0.96, 0.80 + matchedKeywords.length * 0.06);
-        const bStart = segStart;
-        const bEnd = Math.min(totalDuration, Math.min(bStart + 4.5, segEnd));
-        const duration = Number((bEnd - bStart).toFixed(2));
+      // 1. Topic & concept match
+      const matchedConcepts = item.concepts.filter((c) => text.includes(c.toLowerCase()));
+      const matchedKeywords = item.keywords.filter((k) => text.includes(k.toLowerCase()));
+      const allMatches = Array.from(new Set([...matchedConcepts, ...matchedKeywords]));
+      if (allMatches.length === 0) continue;
 
-        suggestions.push({
-          id: `broll_sug_${suggestions.length + 1}`,
-          start: bStart,
-          end: bEnd,
-          timestamp: bStart,
-          duration,
-          query: item.concept,
-          concept: item.concept,
-          triggerText: seg.text || (seg as any).word || matchedKeywords[0],
-          reason: `Visual reinforcement of spoken topic: "${matchedKeywords.join(', ')}"`,
-          confidence: Number(confidence.toFixed(2)),
-          assetType: 'image',
-          assetId: item.concept.toLowerCase().replace(/\s+/g, '_'),
-          assetUrl: item.assetUrl,
-          imageUrl: item.assetUrl,
-          enabled: confidence >= threshold,
-        });
+      const topicMatch = Math.min(1.0, 0.70 + (matchedConcepts.length * 0.15) + (matchedKeywords.length * 0.08));
 
-        lastBrollEnd = bEnd;
-        break; // One B-roll per motivating segment
+      // 2. Entity match
+      const matchedEntities = item.entities.filter((e) => text.includes(e.toLowerCase()));
+      const entityMatch = matchedEntities.length >= 2 ? 0.96 : matchedEntities.length === 1 ? 0.88 : 0.75;
+
+      // 3. Visual & Action match
+      const matchedActions = item.actions.filter((a) => text.includes(a.toLowerCase()));
+      const visualMatch = matchedActions.length > 0 ? 0.94 : 0.85;
+
+      // 4. Timing fit
+      const timingFit = segDur >= 2.0 && segDur <= 5.5 ? 0.96 : 0.88;
+
+      // Weighted multi-factor confidence
+      const overallConfidence = (topicMatch * 0.35) + (entityMatch * 0.30) + (visualMatch * 0.25) + (timingFit * 0.10);
+      const confidence = Number(Math.min(0.98, Math.max(0.70, overallConfidence)).toFixed(2));
+
+      if (confidence >= threshold && (!bestMatch || confidence > bestMatch.confidence)) {
+        bestMatch = {
+          item,
+          confidence,
+          matchedKeyword: allMatches.join(', '),
+          topicMatch,
+          entityMatch,
+          visualMatch,
+        };
       }
+    }
+
+    if (bestMatch) {
+      const { item, confidence, matchedKeyword } = bestMatch;
+      const bStart = segStart;
+      const bEnd = Math.min(totalDuration, Math.min(bStart + 4.5, segEnd));
+      const duration = Number((bEnd - bStart).toFixed(2));
+
+      suggestions.push({
+        id: `broll_sug_${suggestions.length + 1}`,
+        start: bStart,
+        end: bEnd,
+        timestamp: bStart,
+        duration,
+        query: item.concept,
+        concept: item.concept,
+        triggerText: seg.text || (seg as any).word || matchedKeyword,
+        reason: `Visual reinforcement of spoken topic: "${matchedKeyword}"`,
+        confidence,
+        assetType: 'image',
+        assetId: item.concept.toLowerCase().replace(/\s+/g, '_'),
+        assetUrl: item.assetUrl,
+        imageUrl: item.assetUrl,
+        enabled: confidence >= threshold,
+      });
+
+      lastBrollEnd = bEnd;
     }
   }
 

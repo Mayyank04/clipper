@@ -10,3 +10,5 @@ public/uploads/*
 !public/uploads/.gitkeep
 public/exports/*
 !public/exports/.gitkeep
+public/audio/*
+!public/audio/.gitkeep

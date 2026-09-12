@@ -86,6 +86,16 @@ export type CaptionStyleId =
   | 'highlight_box'
   | 'gradient'
   | 'dynamic'
+  | 'modern'
+  | 'retro'
+  | 'luxury'
+  | 'energetic'
+  | 'minimal_dark'
+  | 'minimal_light'
+  | 'big_word'
+  | 'center_stage'
+  | 'subtle'
+  | 'high_contrast'
   // Backward compatibility aliases:
   | 'viral_bold'
   | 'hormozi'
@@ -96,6 +106,19 @@ export type CaptionStyleId =
   | 'professional';
 
 export type CaptionStylePreset = CaptionStyleId;
+
+export type CaptionCategory =
+  | 'viral'
+  | 'minimal'
+  | 'podcast'
+  | 'gaming'
+  | 'cinematic'
+  | 'news'
+  | 'educational'
+  | 'social'
+  | 'music'
+  | 'creative'
+  | 'high_energy';
 
 export type ApprovalMode = 'auto_apply' | 'balanced' | 'suggest_only';
 
@@ -283,8 +306,11 @@ export interface ShortCandidate {
     sfxCount: number;
     vfxCount: number;
   };
-  language?: LanguageDetectionResult;
+  language?: string | LanguageDetectionResult;
   projectAnalysis?: ProjectAnalysis;
+  transcript?: string;
+  sfxTrack?: any[];
+  vfxTrack?: any[];
 }
 
 export interface AnalysisStats {
@@ -310,14 +336,13 @@ export interface VideoProject {
   createdAt: string;
   status?: 'ready' | 'processing' | 'error';
   videoUrl?: string; // direct playable MP4 demo source
-  audioUrl?: string; // direct audio source
-  audioFilename?: string;
+  audioUrl?: string;
   sourceMedia?: SourceMedia;
   demoMode?: boolean;
-  mediaUnavailable?: boolean;
-  mediaFileName?: string;
-  language?: LanguageDetectionResult;
+  editingPersonality?: EditingPersonality;
+  language?: string | LanguageDetectionResult;
   projectAnalysis?: ProjectAnalysis;
+  transcript?: any[];
 }
 
 export interface BrandKit {
@@ -379,6 +404,7 @@ export interface LanguageDetectionResult {
   isCodeSwitching?: boolean;
   script?: string;
   confidence: number;
+  segments?: { text: string; language: string; start: number; end: number }[];
 }
 
 export interface SFXSuggestion {
@@ -628,5 +654,5 @@ export interface EditorProject {
   exportSettings?: ExportSettings;
   history?: HistoryState;
   projectAnalysis?: ProjectAnalysis;
-  language?: LanguageDetectionResult;
+  language?: string | LanguageDetectionResult;
 }

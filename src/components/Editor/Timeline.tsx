@@ -65,14 +65,16 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [isTrimmingStart, setIsTrimmingStart] = useState<boolean>(false);
   const [isTrimmingEnd, setIsTrimmingEnd] = useState<boolean>(false);
-  const [trimPreviewStart, setTrimPreviewStart] = useState<number>(short.startTime);
-  const [trimPreviewEnd, setTrimPreviewEnd] = useState<number>(short.endTime);
+  const safeStartTime = Number.isFinite(short?.startTime) ? short.startTime : 0;
+  const safeEndTime = Number.isFinite(short?.endTime) ? short.endTime : (safeStartTime + (short?.duration || 30));
+  const [trimPreviewStart, setTrimPreviewStart] = useState<number>(safeStartTime);
+  const [trimPreviewEnd, setTrimPreviewEnd] = useState<number>(safeEndTime);
 
   // Sync trim bounds with short
   useEffect(() => {
-    setTrimPreviewStart(short.startTime);
-    setTrimPreviewEnd(short.endTime);
-  }, [short.startTime, short.endTime]);
+    setTrimPreviewStart(Number.isFinite(short?.startTime) ? short.startTime : 0);
+    setTrimPreviewEnd(Number.isFinite(short?.endTime) ? short.endTime : ((short?.startTime || 0) + (short?.duration || 30)));
+  }, [short?.startTime, short?.endTime, short?.duration]);
 
   // Capture real video frames across the clip interval
   useEffect(() => {
@@ -196,12 +198,13 @@ export const Timeline: React.FC<TimelineProps> = ({
     trimPreviewEnd,
   ]);
 
-  const playheadPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : (short?.duration || 30);
+  const playheadPercent = safeDuration > 0 ? Math.max(0, Math.min(100, (currentTime / safeDuration) * 100)) : 0;
 
   // Time ruler ticks
-  const step = duration > 40 ? 5 : duration > 15 ? 2 : 1;
-  const ticksCount = Math.ceil(duration / step);
-  const ticks = Array.from({ length: ticksCount + 1 }, (_, i) => Math.min(duration, i * step));
+  const step = safeDuration > 40 ? 5 : safeDuration > 15 ? 2 : 1;
+  const ticksCount = Math.max(1, Math.min(120, Math.ceil(safeDuration / step)));
+  const ticks = Array.from({ length: ticksCount + 1 }, (_, i) => Math.min(safeDuration, i * step));
 
   return (
     <div ref={containerRef} className="w-full bg-neutral-950 border-t border-neutral-800 p-3 sm:p-4 select-none flex flex-col gap-2">

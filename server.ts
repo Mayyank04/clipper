@@ -19,6 +19,9 @@ import {
   getCaptionStylePreset,
   groupWordsIntoCaptionSegments,
   calculateCaptionCoverage,
+  normalizeTranscriptResponse,
+  alignWordsInSegment,
+  NormalizedTranscript,
 } from './src/utils/captionEngine';
 import {
   YouTubeDownloader,
@@ -797,9 +800,26 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
   job.status = 'extracting_audio';
   job.stage = 'extracting_audio';
   job.progress = 30;
-  job.currentStage = 'Extracting audio stream from source media...';
-  addJobLog(job, 'Extracted audio track for speech analysis', 'info');
+  job.currentStage = 'Extracting mono 16kHz audio stream with FFmpeg...';
   console.log('[PROCESS] current stage: extracting_audio (30%)');
+
+  const audioDir = path.join(process.cwd(), 'public', 'audio');
+  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+  const extractedAudioPath = path.join(audioDir, `extracted_${project.id}.mp3`);
+
+  let audioExtracted = false;
+  if (probe.hasAudio && fs.existsSync(localDiskPath)) {
+    audioExtracted = await extractAudioFromMedia(localDiskPath, extractedAudioPath);
+  }
+
+  if (audioExtracted) {
+    project.extractedAudioPath = extractedAudioPath;
+    project.audioUrl = `/audio/extracted_${project.id}.mp3`;
+    const audioSizeKb = (fs.statSync(extractedAudioPath).size / 1024).toFixed(1);
+    addJobLog(job, `FFmpeg extracted mono 16kHz audio track (${audioSizeKb} KB)`, 'success');
+  } else {
+    addJobLog(job, 'No separate audio stream extracted or media is silent', 'warn');
+  }
 
   if (job.cancelled) return;
 
@@ -808,8 +828,100 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
   job.stage = 'transcribing';
   job.progress = 45;
   job.currentStage = 'Transcribing speech audio and generating word timestamps...';
-  addJobLog(job, 'Voice detected: generating phonetic alignments', 'info');
   console.log('[PROCESS] current stage: transcribing (45%)');
+
+  let normalizedTranscript: NormalizedTranscript | null = null;
+
+  // 5A: Try YouTube subtitle / caption stream extraction
+  if (isYouTube && project.youtubeUrl) {
+    try {
+      addJobLog(job, 'Checking YouTube stream for synchronized subtitles...', 'info');
+      const subRes = await extractYouTubeSubtitles(project.youtubeUrl, audioDir, `sub_${project.id}`);
+      if (subRes && fs.existsSync(subRes.subFile)) {
+        normalizedTranscript = parseSubtitleFile(subRes.subFile, totalDuration);
+        if (normalizedTranscript && normalizedTranscript.segments.length > 0) {
+          const totalWords = normalizedTranscript.segments.reduce((acc, s) => acc + s.words.length, 0);
+          addJobLog(
+            job,
+            `Extracted real YouTube subtitles (${normalizedTranscript.segments.length} segments, ${totalWords} words, lang: ${normalizedTranscript.language})`,
+            'success'
+          );
+        }
+      }
+    } catch (subErr) {
+      console.warn('YouTube subtitle extraction notice:', subErr);
+    }
+  }
+
+  // 5B: Real Gemini Audio Speech-to-Text if API key configured and audio exists
+  if (!normalizedTranscript && ai && audioExtracted && fs.existsSync(extractedAudioPath)) {
+    try {
+      const audioStats = fs.statSync(extractedAudioPath);
+      if (audioStats.size < 20 * 1024 * 1024) {
+        addJobLog(job, 'Transcribing extracted audio stream with Gemini 2.5 Flash...', 'info');
+        const base64Audio = fs.readFileSync(extractedAudioPath).toString('base64');
+        const transPrompt = `You are a professional audio transcription engine.
+Transcribe the spoken audio with EXACT word-level timestamps across the entire duration.
+Total duration: ${totalDuration} seconds.
+Output JSON format:
+{
+  "language": "detected language code (e.g. en, hi, pt-BR, es, pa)",
+  "languageConfidence": 0.95,
+  "segments": [
+    {
+      "id": "seg_1",
+      "text": "3 to 8 words per segment",
+      "start": 0.5,
+      "end": 3.8,
+      "words": [
+        { "text": "word", "start": 0.5, "end": 0.9, "confidence": 0.95 }
+      ]
+    }
+  ]
+}`;
+        const transResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            { inlineData: { mimeType: 'audio/mp3', data: base64Audio } },
+            transPrompt,
+          ],
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        if (transResponse.text) {
+          const parsed = JSON.parse(transResponse.text);
+          normalizedTranscript = normalizeTranscriptResponse(parsed, totalDuration);
+          const totalWords = normalizedTranscript.segments.reduce((acc, s) => acc + s.words.length, 0);
+          addJobLog(
+            job,
+            `Gemini transcribed audio: ${normalizedTranscript.segments.length} segments, ${totalWords} words (speech coverage: ${(normalizedTranscript.speechCoverage * 100).toFixed(0)}%)`,
+            'success'
+          );
+        }
+      }
+    } catch (aiTransErr) {
+      console.warn('Gemini audio transcription notice:', aiTransErr);
+    }
+  }
+
+  if (normalizedTranscript && normalizedTranscript.segments.length > 0) {
+    project.normalizedTranscript = normalizedTranscript;
+    project.transcript = normalizedTranscript.segments.map((s) => s.text).join(' ');
+    project.words = normalizedTranscript.segments.flatMap((s) => s.words);
+    project.detectedLanguage = normalizedTranscript.language;
+    project.language = normalizedTranscript.language;
+  } else {
+    project.transcriptionStatus = 'manual_required';
+    project.transcriptionError = ai
+      ? 'No speech detected in audio stream'
+      : 'GEMINI_API_KEY not configured and no stream subtitles available';
+    addJobLog(
+      job,
+      `Speech transcription note: ${project.transcriptionError}. You can edit captions manually in the editor.`,
+      'info'
+    );
+  }
 
   if (job.cancelled) return;
 
@@ -1007,24 +1119,60 @@ Requirements:
     const endTime = Number(Math.min(totalDuration, Math.max(startTime + 5, rawEnd)).toFixed(2));
     const clipDuration = Number((endTime - startTime).toFixed(2));
 
-    // Build captions segments covering real speech if provided, never fabricated
-    const rawSentences = clip.sentences || [];
+    // Build captions segments covering real speech from normalized transcript or clip sentences
     const captions: any[] = [];
-    if (rawSentences.length > 0) {
-      rawSentences.forEach((s: any, sIdx: number) => {
+    if (project.normalizedTranscript && project.normalizedTranscript.segments.length > 0) {
+      for (const seg of project.normalizedTranscript.segments) {
+        if (seg.end >= startTime && seg.start <= endTime) {
+          const relStart = Math.max(0, Number((seg.start - startTime).toFixed(2)));
+          const relEnd = Math.min(clipDuration, Number((seg.end - startTime).toFixed(2)));
+          if (relEnd > relStart) {
+            captions.push({
+              id: `cap_${idx}_${captions.length + 1}`,
+              text: seg.text,
+              start: relStart,
+              end: relEnd,
+              words: (seg.words || []).map((w: any) => {
+                const wText = String(w.text || w.word || '').trim();
+                const wRelStart = Math.max(0, Number(((w.start ?? seg.start) - startTime).toFixed(2)));
+                const wRelEnd = Math.min(clipDuration, Number(((w.end ?? seg.end) - startTime).toFixed(2)));
+                return {
+                  word: wText,
+                  text: wText,
+                  start: wRelStart,
+                  end: Math.max(wRelStart + 0.05, wRelEnd),
+                  confidence: w.confidence ?? 0.95,
+                  isHighlight:
+                    Boolean(w.isHighlight) ||
+                    ['unfair', 'advantage', 'truth', 'top', 'secret', 'growth', 'ai', 'mistake', 'results', 'stop'].includes(
+                      wText.toLowerCase().replace(/[^a-z]/g, '')
+                    ),
+                  highlightColor: w.highlightColor || '#facc15',
+                };
+              }),
+            });
+          }
+        }
+      }
+    } else if (Array.isArray(clip.sentences) && clip.sentences.length > 0) {
+      clip.sentences.forEach((s: any, sIdx: number) => {
         captions.push({
           id: `cap_${idx}_${sIdx}`,
           text: s.text,
           start: s.start,
           end: s.end,
-          words: (s.words || []).map((w: any) => ({
-            word: w.word,
-            start: w.start,
-            end: w.end,
-            isHighlight: ['unfair', 'advantage', 'truth', 'top', 'persistent', 'opens', 'biggest', 'mistake', 'lie', 'results', 'unreasonable', 'progress', 'dots', 'secret'].includes(
-              w.word.toLowerCase().replace(/[^a-z]/g, '')
-            ),
-          })),
+          words: (s.words || []).map((w: any) => {
+            const wordStr = typeof w === 'string' ? w : (w?.word || w?.text || '');
+            return {
+              word: wordStr,
+              text: wordStr,
+              start: Number(w?.start ?? 0),
+              end: Number(w?.end ?? 0),
+              isHighlight: ['unfair', 'advantage', 'truth', 'top', 'persistent', 'opens', 'biggest', 'mistake', 'lie', 'results', 'unreasonable', 'progress', 'dots', 'secret'].includes(
+                wordStr.toLowerCase().replace(/[^a-z]/g, '')
+              ),
+            };
+          }),
         });
       });
     }
@@ -1071,12 +1219,14 @@ Requirements:
     }
 
     // Generate content-aware B-roll suggestions based on actual spoken topics
-    const semanticBroll = generateContentAwareBRollSuggestions(captions, clipDuration);
+    const semanticBroll = generateContentAwareBRollSuggestions(captions, clipDuration, {
+      threshold: 0.85,
+    });
     const brollSuggestions: any[] = semanticBroll.map((b, bIdx) => ({
       id: `broll_${idx}_${bIdx}`,
       timestamp: b.start,
       duration: Number((b.end - b.start).toFixed(2)),
-      concept: b.query,
+      concept: b.query || b.concept,
       imageUrl: b.assetUrl,
       keyword: b.assetId,
       enabled: b.enabled ?? true,
@@ -1319,6 +1469,224 @@ function probeMedia(filePath: string): Promise<MediaProbeResult> {
 async function getMediaDuration(filePath: string): Promise<number> {
   const probe = await probeMedia(filePath);
   return probe.duration;
+}
+
+/**
+ * Extracts a mono 16kHz MP3 audio track from source video for speech analysis
+ */
+function extractAudioFromMedia(inputPath: string, outputPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      ffmpegPath,
+      [
+        '-y',
+        '-i', inputPath,
+        '-vn',
+        '-acodec', 'libmp3lame',
+        '-q:a', '2',
+        '-ar', '16000',
+        '-ac', '1',
+        outputPath,
+      ],
+      (err) => {
+        if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Extracts YouTube subtitles/auto-subtitles in json3 or vtt format using yt-dlp
+ */
+function extractYouTubeSubtitles(
+  url: string,
+  outputDir: string,
+  baseName: string
+): Promise<{ subFile: string; lang: string } | null> {
+  return new Promise((resolve) => {
+    const outTemplate = path.join(outputDir, `${baseName}.%(ext)s`);
+    execFile(
+      'yt-dlp',
+      [
+        '--skip-download',
+        '--write-auto-subs',
+        '--write-subs',
+        '--sub-langs', 'en.*,hi.*,es.*,pt.*,pa.*,all',
+        '--sub-format', 'json3/vtt/srt',
+        '-o', outTemplate,
+        url,
+      ],
+      { timeout: 35000 },
+      () => {
+        try {
+          if (!fs.existsSync(outputDir)) return resolve(null);
+          const files = fs.readdirSync(outputDir).filter(
+            (f) =>
+              f.startsWith(baseName) &&
+              (f.endsWith('.json3') || f.endsWith('.vtt') || f.endsWith('.srt'))
+          );
+          if (files.length > 0) {
+            const chosen = files.find((f) => f.endsWith('.json3')) || files[0];
+            const langMatch = chosen.match(/\.([a-z]{2}(?:-[A-Za-z0-9]+)?)\.(json3|vtt|srt)$/i);
+            const lang = langMatch ? langMatch[1] : 'en';
+            return resolve({ subFile: path.join(outputDir, chosen), lang });
+          }
+        } catch {}
+        resolve(null);
+      }
+    );
+  });
+}
+
+/**
+ * Parses raw subtitle files (YouTube json3, WebVTT, or SubRip SRT) into NormalizedTranscript
+ */
+function parseSubtitleFile(filePath: string, sourceDuration = 30): NormalizedTranscript | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    if (filePath.endsWith('.json3')) {
+      const parsed = JSON.parse(content);
+      const events = Array.isArray(parsed.events) ? parsed.events : [];
+      const segments: any[] = [];
+
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        if (!ev.segs || ev.segs.length === 0) continue;
+        const segText = ev.segs.map((s: any) => s.utf8 || '').join('').trim();
+        if (!segText || segText === '\n') continue;
+
+        const start = (ev.tStartMs || 0) / 1000;
+        const dur = (ev.dDurationMs || 2500) / 1000;
+        const end = start + dur;
+
+        const words: any[] = [];
+        let runningOffset = start;
+
+        for (const s of ev.segs) {
+          const wText = String(s.utf8 || '').trim();
+          if (!wText) continue;
+          const wStart = s.tOffsetMs !== undefined ? start + s.tOffsetMs / 1000 : runningOffset;
+          const wEnd = wStart + 0.3;
+          words.push({
+            text: wText,
+            word: wText,
+            start: Number(wStart.toFixed(3)),
+            end: Number(wEnd.toFixed(3)),
+            confidence: 0.95,
+          });
+          runningOffset = wEnd;
+        }
+
+        segments.push({
+          id: `yt_sub_${segments.length + 1}`,
+          start: Number(start.toFixed(3)),
+          end: Number(end.toFixed(3)),
+          text: segText,
+          words: words.length > 0 ? words : alignWordsInSegment(segText, start, end),
+        });
+      }
+
+      return normalizeTranscriptResponse(
+        {
+          language: parsed.wireMagic ? 'en' : 'auto',
+          duration: sourceDuration,
+          segments,
+        },
+        sourceDuration
+      );
+    }
+
+    // WebVTT or SRT format parsing
+    const lines = content.split(/\r?\n/);
+    const vttSegments: any[] = [];
+    let currentTiming: { start: number; end: number } | null = null;
+    let currentText: string[] = [];
+
+    const parseTime = (tStr: string): number => {
+      const parts = tStr.trim().replace(',', '.').split(':');
+      if (parts.length === 3) {
+        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+      } else if (parts.length === 2) {
+        return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      }
+      return 0;
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'WEBVTT' || /^\d+$/.test(trimmed)) {
+        if (currentTiming && currentText.length > 0) {
+          const text = currentText.join(' ').trim();
+          if (text) {
+            vttSegments.push({
+              id: `vtt_seg_${vttSegments.length + 1}`,
+              start: currentTiming.start,
+              end: currentTiming.end,
+              text,
+              words: alignWordsInSegment(text, currentTiming.start, currentTiming.end),
+            });
+          }
+          currentTiming = null;
+          currentText = [];
+        }
+        continue;
+      }
+
+      const match = trimmed.match(/((?:\d+:)?\d+:\d+(?:[.,]\d+)?)\s*-->\s*((?:\d+:)?\d+:\d+(?:[.,]\d+)?)/);
+      if (match) {
+        if (currentTiming && currentText.length > 0) {
+          const text = currentText.join(' ').trim();
+          if (text) {
+            vttSegments.push({
+              id: `vtt_seg_${vttSegments.length + 1}`,
+              start: currentTiming.start,
+              end: currentTiming.end,
+              text,
+              words: alignWordsInSegment(text, currentTiming.start, currentTiming.end),
+            });
+          }
+          currentText = [];
+        }
+        currentTiming = {
+          start: Number(parseTime(match[1]).toFixed(3)),
+          end: Number(parseTime(match[2]).toFixed(3)),
+        };
+      } else if (currentTiming) {
+        currentText.push(trimmed.replace(/<[^>]+>/g, ''));
+      }
+    }
+
+    if (currentTiming && currentText.length > 0) {
+      const text = currentText.join(' ').trim();
+      if (text) {
+        vttSegments.push({
+          id: `vtt_seg_${vttSegments.length + 1}`,
+          start: currentTiming.start,
+          end: currentTiming.end,
+          text,
+          words: alignWordsInSegment(text, currentTiming.start, currentTiming.end),
+        });
+      }
+    }
+
+    return normalizeTranscriptResponse(
+      {
+        language: 'auto',
+        duration: sourceDuration,
+        segments: vttSegments,
+      },
+      sourceDuration
+    );
+  } catch (err) {
+    console.warn('Failed to parse subtitle file:', err);
+    return null;
+  }
 }
 
 // POST: Upload local video or audio file
@@ -2379,54 +2747,42 @@ Ensure timestamps are strictly chronological and sequential with no overlaps.`;
       }
     }
 
-    // Only align if dialogue text was explicitly provided by the user
+    // If user provided dialogue text or manual script, align words deterministically
     if (dialogue && typeof dialogue === 'string' && dialogue.trim().length > 0) {
-      const wordsList = dialogue.replace(/[^\w\s',.?!-]/g, '').split(/\s+/).filter(Boolean);
-      if (wordsList.length > 0) {
-        const wordsPerSegment = 5;
-        const segmentCount = Math.max(1, Math.ceil(wordsList.length / wordsPerSegment));
-        const effectiveDuration = Math.max(1, duration - 1.0);
-        const segmentDuration = effectiveDuration / segmentCount;
+      const cleanDialogue = dialogue.trim();
+      const effectiveDuration = Math.max(1, duration);
+      const alignedWords = alignWordsInSegment(cleanDialogue, 0.5, effectiveDuration - 0.5);
 
-        const generatedCaptions = [];
-        for (let i = 0; i < segmentCount; i++) {
-          const segWords = wordsList.slice(i * wordsPerSegment, (i + 1) * wordsPerSegment);
-          if (segWords.length === 0) continue;
-          const segStart = Number((0.5 + i * segmentDuration).toFixed(2));
-          const segEnd = Number((segStart + segmentDuration * 0.92).toFixed(2));
-          const wordSpan = (segEnd - segStart) / segWords.length;
+      const captionWords = alignedWords.map((w) => ({
+        word: w.text,
+        text: w.text,
+        start: w.start,
+        end: w.end,
+        confidence: w.confidence,
+        isHighlight: w.isHighlight,
+      }));
 
-          const wordsWithTimings = segWords.map((w, wIdx) => {
-            const wStart = Number((segStart + wIdx * wordSpan).toFixed(2));
-            const wEnd = Number((wStart + wordSpan * 0.95).toFixed(2));
-            const isHighlight = wIdx === 1 || (w.length > 6 && wIdx > 0);
-            return {
-              word: w,
-              start: wStart,
-              end: wEnd,
-              isHighlight,
-              highlightColor: isHighlight ? '#facc15' : undefined,
-              scale: isHighlight ? 1.2 : 1.0,
-            };
-          });
+      // Group into 4-6 words per caption segment
+      const captionSegments = groupWordsIntoCaptionSegments(captionWords, {
+        wordsPerGroup: 5,
+        maxDuration: 3.5,
+        pauseThresholdSeconds: 0.35,
+      });
 
-          generatedCaptions.push({
-            id: `cap_gen_${Date.now()}_${i + 1}`,
-            text: segWords.join(' '),
-            start: segStart,
-            end: segEnd,
-            words: wordsWithTimings,
-          });
-        }
-
-        return res.json({ success: true, captions: generatedCaptions });
-      }
+      return res.json({
+        success: true,
+        captions: captionSegments,
+        words: alignedWords,
+        text: cleanDialogue,
+      });
     }
 
-    // If no dialogue provided and Gemini failed/not configured, return genuine error
+    // Honest error if transcription is unavailable — DO NOT generate fake text
     return res.status(503).json({
       success: false,
-      error: 'Transcription failed — Gemini API key not configured or processing failed. Please enter dialogue manually.',
+      code: 'TRANSCRIPTION_UNAVAILABLE',
+      error: 'Transcription unavailable — GEMINI_API_KEY is not configured.',
+      message: 'Please enter dialogue manually or upload a transcript file.',
     });
   } catch (err: unknown) {
     console.error('Error in /api/transcribe-captions:', err);
