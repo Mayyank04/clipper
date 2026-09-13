@@ -10,5 +10,10 @@ public/uploads/*
 !public/uploads/.gitkeep
 public/exports/*
 !public/exports/.gitkeep
+exports/*
+!exports/.gitkeep
+public/assets/sfx/generated/*
+!public/assets/sfx/generated/.gitkeep
 public/audio/*
 !public/audio/.gitkeep
+

@@ -3002,7 +3002,10 @@ app.post('/api/broll/generate-plan', async (req: Request, res: Response) => {
     }));
 
     projectsStore.set(projectId, project);
-    res.json({ success: true, renderPlan, short, analysis });
+    const message = brollEvents.length === 0
+      ? 'No sufficiently relevant B-roll found. Original footage retained.'
+      : `Generated ${brollEvents.length} semantic B-roll cutaways.`;
+    res.json({ success: true, renderPlan, short, analysis, message });
   } catch (err: any) {
     console.error('Error generating B-roll plan:', err);
     res.status(500).json({ error: 'Failed to generate B-roll plan' });

@@ -2296,9 +2296,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                     ) : (
                       <div className="p-6 text-center text-xs text-neutral-400 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
                         <Film className="w-6 h-6 text-neutral-600 mx-auto" />
-                        <div>No B-roll cutaways on timeline.</div>
+                        <div className="font-medium text-neutral-300">No sufficiently relevant B-roll found. Original footage retained.</div>
                         <p className="text-[11px] text-neutral-500">
-                          Click "AI Polish" to automatically detect opportunities, or search footage below.
+                          High semantic threshold (0.82) protects video pacing. Click "AI Polish" or search footage manually.
                         </p>
                       </div>
                     )}
