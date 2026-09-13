@@ -34,6 +34,7 @@ interface TimelineProps {
   onSelectVFX?: (vfx: VFXMarker) => void;
   onSelectBRoll?: (broll: BRollSuggestion) => void;
   onSelectCaption?: (caption: CaptionSegment) => void;
+  onUpdateCaptionTiming?: (captionId: string, newStart: number, newEnd: number) => void;
   onSelectClip?: (clipId: string) => void;
   onTrimChange?: (newBounds: { startTime: number; endTime: number }) => void;
   selectedItemId?: string | null;
@@ -53,6 +54,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onSelectVFX,
   onSelectBRoll,
   onSelectCaption,
+  onUpdateCaptionTiming,
   onSelectClip,
   onTrimChange,
   selectedItemId,
@@ -65,6 +67,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [isTrimmingStart, setIsTrimmingStart] = useState<boolean>(false);
   const [isTrimmingEnd, setIsTrimmingEnd] = useState<boolean>(false);
+  const [captionDrag, setCaptionDrag] = useState<{
+    id: string;
+    type: 'start' | 'end' | 'move';
+    initialStart: number;
+    initialEnd: number;
+    currentStart: number;
+    currentEnd: number;
+  } | null>(null);
   const safeStartTime = Number.isFinite(short?.startTime) ? short.startTime : 0;
   const safeEndTime = Number.isFinite(short?.endTime) ? short.endTime : (safeStartTime + (short?.duration || 30));
   const [trimPreviewStart, setTrimPreviewStart] = useState<number>(safeStartTime);
@@ -150,6 +160,26 @@ export const Timeline: React.FC<TimelineProps> = ({
           setTrimPreviewEnd(proposedEnd);
           onTimeSeek(Math.max(0, proposedEnd - short.startTime));
         }
+      } else if (captionDrag && timelineTrackRef.current) {
+        const rect = timelineTrackRef.current.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const pointerTime = ratio * duration;
+
+        if (captionDrag.type === 'start') {
+          const newStart = Math.max(0, Math.min(captionDrag.initialEnd - 0.15, pointerTime));
+          setCaptionDrag((prev) => prev ? { ...prev, currentStart: Number(newStart.toFixed(3)) } : null);
+          onTimeSeek(newStart);
+        } else if (captionDrag.type === 'end') {
+          const newEnd = Math.min(duration, Math.max(captionDrag.initialStart + 0.15, pointerTime));
+          setCaptionDrag((prev) => prev ? { ...prev, currentEnd: Number(newEnd.toFixed(3)) } : null);
+          onTimeSeek(newEnd);
+        } else if (captionDrag.type === 'move') {
+          const capDur = captionDrag.initialEnd - captionDrag.initialStart;
+          const newStart = Math.max(0, Math.min(duration - capDur, pointerTime));
+          const newEnd = Number((newStart + capDur).toFixed(3));
+          setCaptionDrag((prev) => prev ? { ...prev, currentStart: Number(newStart.toFixed(3)), currentEnd: newEnd } : null);
+          onTimeSeek(newStart);
+        }
       }
     };
 
@@ -169,9 +199,15 @@ export const Timeline: React.FC<TimelineProps> = ({
           onTrimChange({ startTime: short.startTime, endTime: trimPreviewEnd });
         }
       }
+      if (captionDrag) {
+        if (onUpdateCaptionTiming) {
+          onUpdateCaptionTiming(captionDrag.id, captionDrag.currentStart, captionDrag.currentEnd);
+        }
+        setCaptionDrag(null);
+      }
     };
 
-    if (isDraggingPlayhead || isTrimmingStart || isTrimmingEnd) {
+    if (isDraggingPlayhead || isTrimmingStart || isTrimmingEnd || captionDrag) {
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleEnd);
       window.addEventListener('touchmove', handleMove);
@@ -188,9 +224,11 @@ export const Timeline: React.FC<TimelineProps> = ({
     isDraggingPlayhead,
     isTrimmingStart,
     isTrimmingEnd,
+    captionDrag,
     calculateTimeFromClientX,
     onTimeSeek,
     onTrimChange,
+    onUpdateCaptionTiming,
     duration,
     short.startTime,
     short.endTime,
@@ -520,13 +558,16 @@ export const Timeline: React.FC<TimelineProps> = ({
               </div>
             </div>
 
-            {/* TRACK 3: CAPTIONS TRACK */}
+            {/* TRACK 3: CAPTIONS TRACK (Part 10: actual blocks with draggable left & right edges) */}
             <div className="relative h-9 bg-neutral-900/90 rounded-r-lg border border-neutral-800 overflow-hidden flex items-center px-1">
               <div className="w-full h-full relative">
                 {short.captions?.map((cap) => {
-                  const leftPct = (cap.start / duration) * 100;
-                  const widthPct = Math.max(2, ((cap.end - cap.start) / duration) * 100);
-                  const isCurrent = currentTime >= cap.start && currentTime <= cap.end;
+                  const isBeingDragged = captionDrag?.id === cap.id;
+                  const startSec = isBeingDragged ? captionDrag.currentStart : cap.start;
+                  const endSec = isBeingDragged ? captionDrag.currentEnd : cap.end;
+                  const leftPct = (startSec / duration) * 100;
+                  const widthPct = Math.max(2, ((endSec - startSec) / duration) * 100);
+                  const isCurrent = currentTime >= startSec && currentTime <= endSec;
                   const isSelected = selectedItemId === cap.id;
 
                   return (
@@ -535,18 +576,72 @@ export const Timeline: React.FC<TimelineProps> = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelectCaption?.(cap);
-                        onTimeSeek(cap.start);
+                        onTimeSeek(startSec);
+                      }}
+                      onMouseDown={(e) => {
+                        // Drag caption body to move interval
+                        if ((e.target as HTMLElement).dataset.handle) return;
+                        e.stopPropagation();
+                        onSelectCaption?.(cap);
+                        setCaptionDrag({
+                          id: cap.id,
+                          type: 'move',
+                          initialStart: cap.start,
+                          initialEnd: cap.end,
+                          currentStart: cap.start,
+                          currentEnd: cap.end,
+                        });
                       }}
                       style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                      className={`absolute h-7 top-1 rounded border px-2 flex items-center text-[10px] font-bold truncate transition-all cursor-pointer ${
+                      className={`absolute h-7 top-1 rounded border px-1 flex items-center justify-between text-[10px] font-bold transition-all select-none cursor-grab active:cursor-grabbing group/cap ${
                         isSelected
-                          ? 'bg-cyan-500/50 border-cyan-300 text-white ring-2 ring-cyan-400 shadow-md'
+                          ? 'bg-cyan-500/50 border-cyan-300 text-white ring-2 ring-cyan-400 shadow-lg z-25'
                           : isCurrent
-                          ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-sm'
-                          : 'bg-cyan-950/40 border-cyan-800/40 text-cyan-300/80 hover:bg-cyan-900/50'
+                          ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-sm z-20'
+                          : 'bg-cyan-950/50 border-cyan-800/60 text-cyan-300/80 hover:bg-cyan-900/60 z-10'
                       }`}
                     >
-                      <span className="truncate">{cap.text}</span>
+                      {/* Left Drag Handle (Adjust Start Time) */}
+                      <div
+                        data-handle="start"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          onSelectCaption?.(cap);
+                          setCaptionDrag({
+                            id: cap.id,
+                            type: 'start',
+                            initialStart: cap.start,
+                            initialEnd: cap.end,
+                            currentStart: cap.start,
+                            currentEnd: cap.end,
+                          });
+                        }}
+                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize bg-cyan-400/80 hover:bg-cyan-300 rounded-l transition-opacity opacity-70 group-hover/cap:opacity-100 z-30"
+                        title="Drag to change caption start time"
+                      />
+
+                      <span className="truncate mx-2 pointer-events-none select-none">
+                        {cap.text}
+                      </span>
+
+                      {/* Right Drag Handle (Adjust End Time) */}
+                      <div
+                        data-handle="end"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          onSelectCaption?.(cap);
+                          setCaptionDrag({
+                            id: cap.id,
+                            type: 'end',
+                            initialStart: cap.start,
+                            initialEnd: cap.end,
+                            currentStart: cap.start,
+                            currentEnd: cap.end,
+                          });
+                        }}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize bg-cyan-400/80 hover:bg-cyan-300 rounded-r transition-opacity opacity-70 group-hover/cap:opacity-100 z-30"
+                        title="Drag to change caption end time"
+                      />
                     </div>
                   );
                 })}

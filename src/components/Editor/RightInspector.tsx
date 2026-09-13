@@ -34,6 +34,8 @@ import {
   FolderPlus,
   Pause,
   VolumeX,
+  Mic,
+  UserCheck,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -51,6 +53,9 @@ import {
 } from '../../types';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { TranscriptEditor } from './TranscriptEditor';
+import { VoiceStudioInspector } from './VoiceStudioInspector';
+import { PresenterStudioInspector } from './PresenterStudioInspector';
+import { AIChatEditor } from './AIChatEditor';
 import { ALL_CAPTION_STYLES, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
 import {
   BUILTIN_SFX_CATALOG,
@@ -58,11 +63,29 @@ import {
   searchSFXCatalog,
   buildSmartSFXPrompt,
 } from '../../utils/sfxCatalog';
+import { AIEditPlanModal } from './AIEditPlanModal';
+import { AIEditPlan, AIEditPlanItem } from '../../utils/creatorStudio/types';
+import { CREATOR_STYLES_REGISTRY } from '../../utils/creatorStudio/creatorStyleEngine';
+
+export type InspectorTabType =
+  | 'captions'
+  | 'transcript'
+  | 'voice'
+  | 'presenter'
+  | 'chat'
+  | 'hooks'
+  | 'sfx'
+  | 'vfx'
+  | 'silence'
+  | 'broll'
+  | 'audio'
+  | 'metadata';
 
 interface RightInspectorProps {
   short: ShortCandidate;
-  activeTab: 'captions' | 'transcript' | 'hooks' | 'sfx' | 'vfx' | 'silence' | 'broll' | 'audio' | 'metadata';
-  onTabChange: (tab: 'captions' | 'transcript' | 'hooks' | 'sfx' | 'vfx' | 'silence' | 'broll' | 'audio' | 'metadata') => void;
+  activeTab: InspectorTabType;
+  onTabChange: (tab: InspectorTabType) => void;
+  onUpdateShort?: (updated: ShortCandidate) => void;
   captionConfig: CaptionCustomization;
   onCaptionConfigChange: (config: CaptionCustomization) => void;
   onSelectHook: (hookText: string, category: HookCategory) => void;
@@ -99,7 +122,6 @@ interface RightInspectorProps {
   onApprovalModeChange?: (mode: ApprovalMode) => void;
   onRegenerateElements?: (type: 'all' | 'captions' | 'broll' | 'sfx' | 'vfx') => void;
   isRegeneratingElements?: boolean;
-  onUpdateShort?: (short: ShortCandidate) => void;
   onUpdateBRoll?: (id: string, updates: Partial<BRollSuggestion>) => void;
 }
 
@@ -134,19 +156,24 @@ const VERIFIED_BROLL_ASSETS = [
 ];
 
 const SUPPORTED_LANGUAGES = [
-  { code: 'auto', label: 'Auto Detect (Content-Driven)' },
+  { code: 'auto', label: 'AUTO — Detect spoken language' },
   { code: 'en', label: 'English (US/UK)' },
   { code: 'hi', label: 'Hindi (हिन्दी)' },
+  { code: 'pa', label: 'Punjabi (ਪੰਜਾਬੀ)' },
   { code: 'hi-Latn', label: 'Hinglish (Hindi Latin)' },
   { code: 'es', label: 'Spanish (Español)' },
+  { code: 'pt', label: 'Portuguese (Português)' },
   { code: 'fr', label: 'French (Français)' },
   { code: 'de', label: 'German (Deutsch)' },
-  { code: 'pt', label: 'Portuguese (Português)' },
   { code: 'it', label: 'Italian (Italiano)' },
   { code: 'ja', label: 'Japanese (日本語)' },
   { code: 'ko', label: 'Korean (한국어)' },
   { code: 'zh', label: 'Chinese (中文)' },
   { code: 'ar', label: 'Arabic (العربية)' },
+  { code: 'ur', label: 'Urdu (اردو)' },
+  { code: 'bn', label: 'Bengali (বাংলা)' },
+  { code: 'ta', label: 'Tamil (தமிழ்)' },
+  { code: 'te', label: 'Telugu (తెలుగు)' },
   { code: 'ru', label: 'Russian (Русский)' },
   { code: 'id', label: 'Indonesian (Bahasa)' },
   { code: 'tr', label: 'Turkish (Türkçe)' },
@@ -154,9 +181,6 @@ const SUPPORTED_LANGUAGES = [
   { code: 'nl', label: 'Dutch (Nederlands)' },
   { code: 'pl', label: 'Polish (Polski)' },
   { code: 'th', label: 'Thai (ไทย)' },
-  { code: 'ta', label: 'Tamil (தமிழ்)' },
-  { code: 'te', label: 'Telugu (తెలుగు)' },
-  { code: 'bn', label: 'Bengali (বাংলা)' },
 ];
 
 export const RightInspector: React.FC<RightInspectorProps> = ({
@@ -193,7 +217,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   speakerPosition,
   onSpeakerPositionChange,
   currentTime,
-  language = 'en',
+  language = 'auto',
   onLanguageChange,
   approvalMode = 'auto_apply',
   onApprovalModeChange,
@@ -220,6 +244,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [isPolishingBroll, setIsPolishingBroll] = useState<boolean>(false);
   const [polishMessage, setPolishMessage] = useState<string | null>(null);
   const [isRegeneratingBrollId, setIsRegeneratingBrollId] = useState<string | null>(null);
+  const [isAIEditPlanModalOpen, setIsAIEditPlanModalOpen] = useState<boolean>(false);
+  const [aiEditPlan, setAiEditPlan] = useState<AIEditPlan | null>(null);
+  const [isLoadingAIEditPlan, setIsLoadingAIEditPlan] = useState<boolean>(false);
 
   // Stock search state
   const [brollSearchQuery, setBrollSearchQuery] = useState<string>('');
@@ -489,27 +516,73 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   };
 
   const handleAIPolish = async () => {
-    if (!short.projectId || !short.id) return;
     setIsPolishingBroll(true);
+    setIsLoadingAIEditPlan(true);
+    setIsAIEditPlanModalOpen(true);
     setPolishMessage(null);
     try {
-      const res = await fetch('/api/broll/ai-polish', {
+      const res = await fetch('/api/creator-studio/ai-polish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: short.projectId, shortId: short.id }),
+        body: JSON.stringify({
+          projectId: short.projectId || 'current_project',
+          shortId: short.id,
+          styleId: (short as any).creatorStyle || 'reference_mix',
+        }),
       });
       const data = await res.json();
-      if (data.success) {
-        setPolishMessage(data.message || 'AI Polish complete!');
-        if (data.short && onUpdateShort) {
-          onUpdateShort(data.short);
-        }
+      if (data.success && data.editPlan) {
+        setAiEditPlan(data.editPlan);
       }
     } catch (err) {
       console.error('Error in AI Polish:', err);
     } finally {
       setIsPolishingBroll(false);
+      setIsLoadingAIEditPlan(false);
     }
+  };
+
+  const handleApplyEditPlan = (selectedItems: AIEditPlanItem[]) => {
+    if (!onUpdateShort) return;
+    const updated = { ...short } as any;
+
+    for (const it of selectedItems) {
+      if (it.category === 'color') {
+        updated.colorTreatment = 'cinematic_red';
+      }
+      if (it.category === 'broll' && it.editBeat?.broll) {
+        const b = it.editBeat.broll;
+        updated.brollSuggestions = [
+          ...(updated.brollSuggestions || []),
+          {
+            id: b.id,
+            timestamp: it.editBeat.startTime,
+            duration: Number((it.editBeat.endTime - it.editBeat.startTime).toFixed(2)),
+            concept: b.concept,
+            imageUrl: b.assetUrl,
+            videoUrl: b.assetUrl,
+            enabled: true,
+            isPIP: b.isPIP,
+          },
+        ];
+      }
+      if (it.category === 'sfx' && it.editBeat?.sfx) {
+        const s = it.editBeat.sfx;
+        updated.sfxMarkers = [
+          ...(updated.sfxMarkers || []),
+          {
+            id: s.id,
+            timestamp: it.editBeat.startTime,
+            category: s.category,
+            name: s.name,
+            audioUrl: s.assetUrl,
+            volume: s.volume,
+          },
+        ];
+      }
+    }
+    onUpdateShort(updated);
+    setPolishMessage(`Applied ${selectedItems.length} AI enhancements successfully!`);
   };
 
   const handleRegenerateSingleBroll = async (brollId: string) => {
@@ -619,6 +692,31 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           </div>
         </div>
 
+        {/* Creator Style Profile Selector (15 Styles + Reference Mix) */}
+        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-neutral-800/80">
+          <span className="text-[11px] font-semibold text-neutral-400">Creator Style:</span>
+          <select
+            value={(short as any).creatorStyle || 'reference_mix'}
+            onChange={(e) => {
+              const newStyle = e.target.value;
+              if (onUpdateShort) {
+                onUpdateShort({
+                  ...short,
+                  creatorStyle: newStyle,
+                  colorTreatment: CREATOR_STYLES_REGISTRY[newStyle as keyof typeof CREATOR_STYLES_REGISTRY]?.visuals.colorTreatment || 'cinematic_red',
+                } as any);
+              }
+            }}
+            className="flex-1 bg-neutral-900 border border-neutral-700 text-neutral-200 text-[11px] font-semibold rounded px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer"
+          >
+            {Object.values(CREATOR_STYLES_REGISTRY).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} {s.isRecommendedDefault ? '★ (Default)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Human Approval Mode Pills */}
         <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
           {[
@@ -670,6 +768,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         {[
           { id: 'captions' as const, label: 'Captions', icon: Layers },
           { id: 'transcript' as const, label: 'Transcript', icon: AlignLeft },
+          { id: 'voice' as const, label: 'Voice Studio', icon: Mic },
+          { id: 'presenter' as const, label: 'Presenter', icon: UserCheck },
+          { id: 'chat' as const, label: 'AI Director', icon: Wand2 },
           { id: 'hooks' as const, label: 'Hooks', icon: Flame },
           { id: 'sfx' as const, label: 'SFX', icon: Volume2 },
           { id: 'vfx' as const, label: 'VFX', icon: Zap },
@@ -697,6 +798,41 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
 
       {/* Main Tab Panel Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* TAB: VOICE STUDIO */}
+        {activeTab === 'voice' && (
+          <div className="h-full">
+            <VoiceStudioInspector
+              short={short}
+              currentTime={currentTime}
+              onUpdateShort={onUpdateShort || (() => {})}
+              onTimeSeek={onSeekToTime}
+            />
+          </div>
+        )}
+
+        {/* TAB: AI PRESENTER */}
+        {activeTab === 'presenter' && (
+          <div className="h-full">
+            <PresenterStudioInspector
+              short={short}
+              currentTime={currentTime}
+              onUpdateShort={onUpdateShort || (() => {})}
+              onTimeSeek={onSeekToTime}
+            />
+          </div>
+        )}
+
+        {/* TAB: AI CHAT EDITOR / DIRECTOR */}
+        {activeTab === 'chat' && (
+          <div className="h-full">
+            <AIChatEditor
+              short={short}
+              currentTime={currentTime}
+              onUpdateShort={onUpdateShort || (() => {})}
+            />
+          </div>
+        )}
+
         {/* TAB: TRANSCRIPT-BASED EDITING */}
         {activeTab === 'transcript' && (
           <div className="h-full">
@@ -755,6 +891,34 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                 <span className={`px-1 py-0.5 rounded font-mono ${captionCoverage.quartileCoverage.q4 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-neutral-900 text-neutral-600'}`}>Q4 (75-100%)</span>
               </div>
             </div>
+
+            {/* Detected Language & Code-Switching Badge (Section 6) */}
+            {(short.detectedLanguages?.length || short.canonicalTranscript?.language || short.detectedLanguage) && (
+              <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/80 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-neutral-400 font-medium">Detected Language:</span>
+                  <span className="font-bold text-cyan-300">
+                    {short.canonicalTranscript?.language || short.detectedLanguage || 'Auto-Detected'}
+                  </span>
+                </div>
+                {short.detectedLanguages && short.detectedLanguages.length > 1 ? (
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {short.detectedLanguages.map((lang, idx) => (
+                      <span key={idx} className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono">
+                        {lang.language} {lang.percentage}%
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  short.canonicalTranscript?.languageConfidence && (
+                    <span className="text-[10px] font-mono text-neutral-400">
+                      Confidence: {Math.round(short.canonicalTranscript.languageConfidence * 100)}%
+                    </span>
+                  )
+                )}
+              </div>
+            )}
 
             {/* Category Filter Chips */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -2359,6 +2523,12 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
 
                 {/* Results Grid */}
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {stockResults.length === 0 && !isSearchingBroll && (
+                    <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 text-center space-y-1">
+                      <div className="text-xs font-semibold text-neutral-300">No suitable B-roll found.</div>
+                      <div className="text-[10px] text-neutral-500">Try a different keyword or topic phrase.</div>
+                    </div>
+                  )}
                   {stockResults.map((item) => (
                     <div
                       key={item.id}
@@ -2579,6 +2749,15 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           </div>
         )}
       </div>
+
+      {/* AI Edit Plan Modal */}
+      <AIEditPlanModal
+        isOpen={isAIEditPlanModalOpen}
+        onClose={() => setIsAIEditPlanModalOpen(false)}
+        plan={aiEditPlan}
+        isLoading={isLoadingAIEditPlan}
+        onApplyPlan={handleApplyEditPlan}
+      />
     </div>
   );
 };

@@ -28,6 +28,7 @@ import { AudioVisualizerCanvas } from './AudioVisualizerCanvas';
 import { TypingCaptionOverlay } from './TypingCaptionOverlay';
 import { getCaptionStateAtTime } from '../../utils/captionEngine';
 import { sfxEngine } from '../../utils/sfxAudio';
+import { getColorGradingProfile } from '../../utils/creatorStudio/videoEffectsEngine';
 
 interface VideoCanvasProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -228,6 +229,49 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     }
   }, [currentTime, isPlaying, short.sfxMarkers]);
 
+  // Synchronize Voiceover Audio in Canvas Preview
+  const voiceoverAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (!voiceoverAudioRef.current) {
+      voiceoverAudioRef.current = new Audio();
+    }
+    const audio = voiceoverAudioRef.current;
+    const activeVo = short.voiceoverEvents?.find(
+      (vo) => currentTime >= vo.start && currentTime < vo.end
+    );
+
+    if (activeVo && isPlaying && !isMuted) {
+      const offset = currentTime - activeVo.start;
+      const targetSrc = activeVo.audioUrl.startsWith('http') ? activeVo.audioUrl : `${window.location.origin}${activeVo.audioUrl}`;
+      if (audio.src !== targetSrc) {
+        audio.src = activeVo.audioUrl;
+        audio.currentTime = Math.max(0, offset);
+        audio.volume = localVolume;
+        audio.play().catch(() => {});
+      } else {
+        if (Math.abs(audio.currentTime - offset) > 0.25) {
+          audio.currentTime = Math.max(0, offset);
+        }
+        if (audio.paused) {
+          audio.play().catch(() => {});
+        }
+      }
+    } else {
+      if (!audio.paused) {
+        audio.pause();
+      }
+    }
+  }, [currentTime, isPlaying, isMuted, localVolume, short.voiceoverEvents]);
+
+  useEffect(() => {
+    return () => {
+      if (voiceoverAudioRef.current) {
+        voiceoverAudioRef.current.pause();
+        voiceoverAudioRef.current = null;
+      }
+    };
+  }, []);
+
   // Deterministic seek-safe caption state calculation
   const captionState = getCaptionStateAtTime(short.captions || [], currentTime, captionConfig);
   const activeCaption = captionState.activeCaption;
@@ -258,13 +302,13 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     }
   };
 
-  // Dynamic Reframing Subject Alignment
+  // Dynamic Reframing Subject Alignment (Subject-aware without destructive upscaling)
   const getSpeakerReframeStyle = () => {
     switch (speakerPosition) {
       case 'left':
-        return 'object-left scale-110';
+        return 'object-[28%_center]';
       case 'right':
-        return 'object-right scale-110';
+        return 'object-[72%_center]';
       case 'auto_switch':
       case 'center':
       default:
@@ -278,6 +322,10 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const isFlash = activeVfx?.type === 'glow';
   const isBlur = activeVfx?.type === 'motion_blur';
   const isGlitch = activeVfx?.type === 'glitch';
+
+  // Pro Creator Color Grading Profile (CSS Preview Parity)
+  const colorTreatmentId = (short as any).colorTreatment || 'cinematic_red';
+  const colorGrade = getColorGradingProfile(colorTreatmentId);
 
   // Check if Audio-to-Video mode is active
   const isAudioMode = Boolean(short.audioToVideoConfig || short.audioUrl);
@@ -351,6 +399,10 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           }}
           onError={handleMediaError}
           onClick={onPlayPause}
+          style={{
+            imageRendering: 'auto' as any,
+            filter: colorGrade.cssFilter,
+          }}
           className={`relative z-10 w-full h-full object-cover cursor-pointer transition-all duration-300 ${
             isAudioMode ? 'opacity-0 pointer-events-auto' : ''
           } ${getSpeakerReframeStyle()} ${
@@ -427,9 +479,15 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           <div className="absolute inset-0 z-15 bg-white/30 pointer-events-none animate-pulse" />
         )}
 
-        {/* B-Roll Cutaway Overlay if active */}
+        {/* B-Roll Cutaway Overlay if active (Full Cover or PIP Card) */}
         {activeBRoll && (
-          <div className="absolute inset-0 z-15 transition-opacity duration-300 animate-fade-in overflow-hidden">
+          <div
+            className={`z-15 transition-all duration-300 animate-fade-in overflow-hidden ${
+              (activeBRoll as any).isPIP
+                ? 'absolute top-4 right-4 w-32 h-56 rounded-xl border-2 border-white/90 shadow-2xl z-25 bg-black'
+                : 'absolute inset-0'
+            }`}
+          >
             {(activeBRoll.videoUrl || (activeBRoll as any).assetUrl?.endsWith('.mp4')) ? (
               <video
                 src={activeBRoll.videoUrl || (activeBRoll as any).assetUrl}
@@ -452,15 +510,6 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                 }}
               />
             )}
-            <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-amber-300 font-semibold border border-amber-400/30 flex items-center gap-1.5 shadow-md">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-              <span>B-Roll: {activeBRoll.concept}</span>
-              {activeBRoll.shotType && (
-                <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[8px] font-mono border border-amber-500/30 ml-1">
-                  {activeBRoll.shotType}
-                </span>
-              )}
-            </div>
           </div>
         )}
 

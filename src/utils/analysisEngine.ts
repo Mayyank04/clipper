@@ -46,6 +46,8 @@ export interface BRollAssetDefinition {
   assetUrl: string;
   aspectRatio: string;
   license: string;
+  assetType?: 'video' | 'image';
+  duration?: number;
 }
 
 export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
@@ -58,9 +60,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['coding', 'programming', 'debugging', 'developing', 'building apps', 'refactoring', 'writing software'],
     concepts: ['software development', 'coding', 'algorithms', 'tech stack', 'programming languages'],
     keywords: ['developer', 'coding', 'programming', 'software', 'engineer', 'code', 'python', 'javascript', 'algorithm', 'app'],
-    assetUrl: '/assets/broll/coding.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/coding_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'ai-neural-model-02',
@@ -71,9 +75,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['analyzing data', 'generating predictions', 'training models', 'processing intelligence', 'automating'],
     concepts: ['artificial intelligence', 'automation', 'neural networks', 'machine learning', 'future of tech'],
     keywords: ['ai', 'intelligence', 'neural', 'artificial', 'gpt', 'model', 'machine', 'deep', 'transformer', 'agent'],
-    assetUrl: '/assets/broll/ai_interface.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/ai_interface_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'analytics-growth-metrics-03',
@@ -84,9 +90,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['scaling', 'growing', 'analyzing metrics', 'measuring performance', 'spiking', 'tracking results'],
     concepts: ['business growth', 'exponential curve', 'analytics', 'revenue growth', 'performance data'],
     keywords: ['growth', 'analytics', 'metrics', 'chart', 'finance', 'revenue', 'money', 'business', 'profit', 'market', 'scale'],
-    assetUrl: '/assets/broll/analytics.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/analytics_growth_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'creator-studio-workspace-04',
@@ -97,9 +105,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['creating content', 'editing video', 'working', 'focusing', 'producing', 'building'],
     concepts: ['creator workflow', 'productivity', 'studio setup', 'high performance workspace'],
     keywords: ['creator', 'studio', 'desk', 'workspace', 'work', 'focus', 'setup', 'productivity', 'office'],
-    assetUrl: '/assets/broll/workspace.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/workspace_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'cityscape-urban-future-05',
@@ -110,9 +120,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['expanding', 'urbanizing', 'traveling', 'operating globally'],
     concepts: ['global scale', 'metropolis', 'future city', 'architecture'],
     keywords: ['city', 'future', 'world', 'global', 'travel', 'industry', 'skyline', 'urban'],
-    assetUrl: '/assets/broll/city_skyline.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/city_skyline_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'strategic-system-architecture-06',
@@ -123,9 +135,11 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['planning', 'designing systems', 'executing framework', 'structuring strategy'],
     concepts: ['mental models', 'systems thinking', 'strategic planning', 'execution framework'],
     keywords: ['strategy', 'plan', 'framework', 'concept', 'system', 'architecture', 'design', 'idea', 'thinking'],
-    assetUrl: '/assets/broll/strategy.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/creator_studio_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
   {
     id: 'cinema-production-camera-07',
@@ -136,9 +150,26 @@ export const VERIFIED_BROLL_CATALOG: BRollAssetDefinition[] = [
     actions: ['filming', 'shooting video', 'recording', 'capturing shots', 'cinematography'],
     concepts: ['video production', 'filmmaking', 'visual storytelling', 'content creation'],
     keywords: ['camera', 'filming', 'video', 'youtube', 'shorts', 'content', 'production', 'record'],
-    assetUrl: '/assets/broll/camera.jpg',
-    aspectRatio: '16:9',
+    assetUrl: '/assets/broll/creator_studio_broll.mp4',
+    aspectRatio: '9:16',
     license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
+  },
+  {
+    id: 'animal-dog-golden-retriever-08',
+    concept: 'Golden Retriever Dog Playing Outdoors',
+    topic: 'animals_pets',
+    visualConcept: 'Happy golden retriever dog running and playing outdoors in natural sunlight',
+    entities: ['dog', 'puppy', 'pet', 'golden retriever', 'animal', 'canine', 'hound'],
+    actions: ['running', 'playing', 'wagging tail', 'fetching'],
+    concepts: ['pets', 'animals', 'companionship', 'joy'],
+    keywords: ['dog', 'puppy', 'pet', 'retriever', 'animal', 'cute', 'bark', 'canine'],
+    assetUrl: '/assets/broll/animal_dog_broll.mp4',
+    aspectRatio: '9:16',
+    license: 'royalty_free',
+    assetType: 'video',
+    duration: 10,
   },
 ];
 

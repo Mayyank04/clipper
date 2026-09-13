@@ -96,8 +96,28 @@ export type CaptionStyleId =
   | 'center_stage'
   | 'subtle'
   | 'high_contrast'
-  // Backward compatibility aliases:
+  // Production Reference Presets (Part 6):
+  | 'reference_mix'
+  | 'REFERENCE_MIX'
   | 'viral_bold'
+  | 'VIRAL_BOLD'
+  | 'cinematic_social'
+  | 'CINEMATIC_SOCIAL'
+  | 'creator_punch'
+  | 'CREATOR_PUNCH'
+  | 'meme_impact'
+  | 'MEME_IMPACT'
+  | 'podcast_pro'
+  | 'PODCAST_PRO'
+  | 'storytelling'
+  | 'STORYTELLING'
+  | 'dark_cinematic'
+  | 'DARK_CINEMATIC'
+  | 'clean_social'
+  | 'CLEAN_SOCIAL'
+  | 'news_pro'
+  | 'NEWS_PRO'
+  // Backward compatibility aliases:
   | 'hormozi'
   | 'kinetic'
   | 'clean_subtitle'
@@ -260,6 +280,35 @@ export interface WordTiming {
   emphasisCategory?: 'emotion' | 'action' | 'surprise' | 'names' | 'numbers' | 'strong' | 'keyword' | 'none';
 }
 
+// Canonical Caption Timing Pipeline Types (Part 2)
+export interface CaptionWord extends WordTiming {
+  id?: string;
+  text?: string;
+  word: string;
+  start: number;
+  end: number;
+  confidence?: number;
+  isHighlight?: boolean;
+  highlightColor?: string;
+  scale?: number;
+  emphasisCategory?: 'emotion' | 'action' | 'surprise' | 'names' | 'numbers' | 'strong' | 'keyword' | 'none';
+}
+
+export type CaptionPosition = 'center' | 'top' | 'bottom' | 'upper_center' | 'lower_center';
+export type CaptionAnimation = 'reference_mix' | 'scale_subtle' | 'pop' | 'fade' | 'typewriter' | 'none';
+
+export type CaptionEvent = {
+  id: string;
+  start: number;
+  end: number;
+  words: CaptionWord[];
+  text: string;
+  emphasisWordIds: string[];
+  styleId: string;
+  position: CaptionPosition;
+  animation: CaptionAnimation;
+};
+
 export interface CaptionSegment {
   id: string;
   text: string;
@@ -267,6 +316,63 @@ export interface CaptionSegment {
   end: number;
   speaker?: string;
   words: WordTiming[];
+  language?: string;
+  styleId?: string;
+  position?: CaptionPosition;
+  animation?: CaptionAnimation;
+}
+
+// Canonical Transcript Format (Section 2)
+export type TranscriptWord = {
+  id: string;
+  text: string;
+  word?: string; // compatibility alias
+  start: number;
+  end: number;
+  confidence?: number;
+  isHighlight?: boolean;
+  highlightColor?: string;
+  scale?: number;
+};
+
+export type TranscriptSegment = {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+  words: TranscriptWord[];
+  speaker?: string;
+  language?: string;
+};
+
+export interface DetectedLanguageBreakdown {
+  language: string;
+  percentage: number;
+}
+
+export type Transcript = {
+  language: string;
+  languageConfidence: number;
+  detectedLanguages?: DetectedLanguageBreakdown[];
+  isCodeSwitching?: boolean;
+  duration: number;
+  segments: TranscriptSegment[];
+  words: TranscriptWord[];
+  speechDuration?: number;
+  speechCoverage?: number;
+};
+
+// Auto Script Story Structure (Section 14)
+export type ScriptSectionType = 'hook' | 'context' | 'keypoint' | 'supporting' | 'payoff' | 'cta';
+
+export interface ScriptSection {
+  id: string;
+  type: ScriptSectionType;
+  title: string;
+  text: string;
+  start: number;
+  end: number;
+  keyTakeaway?: string;
 }
 
 export interface SFXMarker {
@@ -392,8 +498,19 @@ export interface ShortCandidate {
     vfxCount: number;
   };
   language?: string | LanguageDetectionResult;
+  detectedLanguage?: string;
   projectAnalysis?: ProjectAnalysis;
   transcript?: string;
+  canonicalTranscript?: Transcript;
+  scriptSections?: ScriptSection[];
+  detectedLanguages?: DetectedLanguageBreakdown[];
+  speechCoverage?: number;
+  renderPlan?: RenderPlan;
+  voiceoverEvents?: VoiceoverEvent[];
+  presenterEvents?: PresenterEvent[];
+  dubEvents?: DubEvent[];
+  provenanceList?: AssetProvenance[];
+  captionCustomization?: CaptionCustomization;
   sfxTrack?: any[];
   vfxTrack?: any[];
 }
@@ -422,6 +539,7 @@ export interface VideoProject {
   status?: 'ready' | 'processing' | 'error';
   videoUrl?: string; // direct playable MP4 demo source
   audioUrl?: string;
+  extractedAudioPath?: string;
   sourceMedia?: SourceMedia;
   demoMode?: boolean;
   editingPersonality?: EditingPersonality;
@@ -477,8 +595,6 @@ export interface CaptionCustomization {
   exitAnimation?: string;
   uppercase: boolean;
 }
-
-export type CaptionWord = WordTiming;
 
 export interface LanguageDetectionResult {
   primaryLanguage: string;
@@ -810,12 +926,32 @@ export interface BrollOpportunity {
   confidence: number;
 }
 
+// Canonical B-Roll Asset & Event Architecture (Parts 14-20)
+export type BrollAssetType = 'video' | 'image';
+export type BrollProvider = 'pixabay' | 'pexels' | 'pinterest' | 'verified_catalog' | 'uploaded';
+
+export type BrollAsset = {
+  id: string;
+  type: BrollAssetType;
+  provider: BrollProvider;
+  url: string;
+  previewUrl?: string;
+  thumbnailUrl?: string;
+  width: number;
+  height: number;
+  duration?: number;
+  query: string;
+  licenseInfo?: string;
+};
+
 export interface BrollEvent {
   id: string;
   start: number;
   end: number;
-  source: 'pexels' | 'pinterest' | 'uploaded';
+  source?: 'pexels' | 'pinterest' | 'uploaded' | 'pixabay' | 'verified_catalog';
+  provider?: BrollProvider;
   assetId: string;
+  assetType?: BrollAssetType;
   assetUrl: string;
   thumbnailUrl?: string;
   query: string;
@@ -824,12 +960,15 @@ export interface BrollEvent {
   semanticScore: number;
   visualScore: number;
   temporalScore: number;
-  continuityScore: number;
+  continuityScore?: number;
   crop: CropPlan;
-  opacity: number;
+  opacity?: number;
   audioEnabled: boolean;
-  audioVolume: number;
+  audioVolume?: number;
+  volume?: number;
   approved: boolean;
+  isPIP?: boolean;
+  transition?: 'hard_cut' | 'quick_zoom' | 'subtle_push' | 'fade';
   shotType?: ShotType;
   topic?: string;
   purpose?: BrollPurpose;
@@ -856,20 +995,39 @@ export interface ImportantMoment {
   type: 'hook' | 'keypoint' | 'contrast' | 'summary' | 'climax';
 }
 
+export interface AnimalEvent {
+  type: 'animal';
+  subject: string;
+  start: number;
+  end: number;
+  confidence: number;
+}
+
 export interface VideoSemanticAnalysis {
   duration: number;
+  language?: string;
+  languagesDetected?: DetectedLanguageBreakdown[];
   scenes: { start: number; end: number; description?: string; cameraMotion?: string }[];
+  sceneChanges?: number[];
+  speakers?: string[];
+  speakerChanges?: number[];
   transcript: string;
-  words: WordTiming[];
+  words: (WordTiming | CaptionWord)[];
+  sentences?: { text: string; start: number; end: number }[];
   topics: string[];
   entities: string[];
   locations: string[];
   people: PersonAnalysis[];
+  animals?: AnimalEvent[];
   objects: string[];
   visualThemes: string[];
   emotionalTone: string[];
   energyCurve: EnergyPoint[];
+  speechRate?: number;
   importantMoments: ImportantMoment[];
+  hookMoments?: ImportantMoment[];
+  punchlines?: ImportantMoment[];
+  visualOpportunities?: BrollOpportunity[];
   brollOpportunities: BrollOpportunity[];
 }
 
@@ -934,6 +1092,113 @@ export interface BrollCandidateScore {
   passed: boolean;
 }
 
+export type AssetProvenanceType =
+  | 'USER_VIDEO'
+  | 'PEXELS_VIDEO'
+  | 'USER_SFX'
+  | 'AI_SFX'
+  | 'TTS_AUDIO'
+  | 'VOICE_CLONE'
+  | 'AI_PRESENTER'
+  | 'DUBBED_VIDEO'
+  | 'MUSIC'
+  | 'BROLL';
+
+export interface AssetProvenance {
+  id: string;
+  type: AssetProvenanceType;
+  provider: string;
+  source: string;
+  license: string;
+  hash: string;
+  duration: number;
+  createdAt: string;
+  metadata?: Record<string, any>;
+}
+
+export interface VoicePreset {
+  id: string;
+  name: string;
+  provider: 'system' | 'omnivoice' | 'heygen';
+  language: string;
+  gender: 'male' | 'female' | 'neutral';
+  previewUrl?: string;
+  description?: string;
+  styles?: string[];
+}
+
+export interface VoiceProfile {
+  voiceId: string;
+  name: string;
+  provider: 'system' | 'omnivoice' | 'heygen';
+  referenceAsset: string;
+  language: string;
+  consentStatus: boolean;
+  createdAt: string;
+}
+
+export interface VoiceoverEvent {
+  id: string;
+  start: number;
+  end: number;
+  duration: number;
+  text: string;
+  sectionType: ScriptSectionType;
+  audioUrl: string;
+  voiceId: string;
+  volume: number;
+}
+
+export interface DubEvent {
+  id: string;
+  start: number;
+  end: number;
+  originalText: string;
+  translatedText: string;
+  targetLanguage: string;
+  audioUrl?: string;
+  speaker?: string;
+}
+
+export interface PresenterEvent {
+  id: string;
+  start: number;
+  end: number;
+  avatarId: string;
+  avatarName: string;
+  videoUrl: string;
+  scriptText: string;
+  aspectRatio: AspectRatio;
+  crop?: { x: number; y: number; width: number; height: number };
+  approved: boolean;
+}
+
+export interface EditDecision {
+  id: string;
+  start: number;
+  end: number;
+  primaryTrack: 'presenter' | 'broll' | 'original';
+  reason: string;
+  confidence: number;
+  captionAction?: string;
+  brollId?: string;
+  presenterId?: string;
+}
+
+export interface AIEditPlanItem {
+  type: 'add_broll' | 'change_caption_style' | 'add_voiceover' | 'remove_silence' | 'translate' | 'add_presenter';
+  description: string;
+  details: Record<string, any>;
+}
+
+export interface AIEditPlan {
+  id: string;
+  userCommand: string;
+  items: AIEditPlanItem[];
+  summary: string;
+  createdAt: string;
+}
+
 export interface RenderPlan {
   projectId: string;
   shortId: string;
@@ -941,9 +1206,26 @@ export interface RenderPlan {
   brollEvents: BrollEvent[];
   captions: CaptionSegment[];
   sfxMarkers: SFXMarker[];
+  voiceoverEvents?: VoiceoverEvent[];
+  presenterEvents?: PresenterEvent[];
+  dubEvents?: DubEvent[];
+  vfxMarkers?: VFXMarker[];
+  editDecisions?: EditDecision[];
+  assetProvenance?: AssetProvenance[];
   audioTrack: {
     originalVolume: number;
     brollDuckingDb: number;
+    voiceoverVolume?: number;
   };
 }
+
+export interface HeyGenAvatar {
+  avatarId: string;
+  avatarName: string;
+  previewImageUrl: string;
+  previewVideoUrl?: string;
+  gender: 'male' | 'female';
+  category: string;
+}
+
 

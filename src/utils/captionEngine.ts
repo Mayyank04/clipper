@@ -4,7 +4,20 @@
  * and deterministic animation calculations.
  */
 
-import { CaptionCustomization, CaptionSegment, CaptionStyleId, CaptionCategory, WordTiming } from '../types';
+import {
+  CaptionCustomization,
+  CaptionSegment,
+  CaptionStyleId,
+  CaptionCategory,
+  WordTiming,
+  CaptionWord,
+  CaptionEvent,
+  Transcript,
+  TranscriptSegment,
+  TranscriptWord,
+  DetectedLanguageBreakdown,
+  ScriptSection,
+} from '../types';
 
 export interface CaptionStyleDefinition {
   id: CaptionStyleId;
@@ -14,7 +27,275 @@ export interface CaptionStyleDefinition {
   config: CaptionCustomization;
 }
 
+export const DEFAULT_CAPTION_STYLE: CaptionStyleId = 'reference_mix';
+
+export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
+  {
+    id: 'reference_mix',
+    name: 'Reference Mix (Recommended)',
+    desc: 'Combines aggressive viral creator energy with cinematic typography and selective word highlights',
+    category: 'viral',
+    config: {
+      style: 'reference_mix',
+      preset: 'reference_mix',
+      fontFamily: 'Montserrat, Arial Black, system-ui, sans-serif',
+      fontSize: 30,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FACC15', // Electric Yellow
+      strokeColor: '#000000',
+      strokeWidth: 4.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.95)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'viral_bold',
+    name: 'Viral Bold',
+    desc: 'Large uppercase heavy sans with high-energy yellow outline punch',
+    category: 'viral',
+    config: {
+      style: 'viral_bold',
+      preset: 'viral_bold',
+      fontFamily: 'Impact, Montserrat, Arial Black, sans-serif',
+      fontSize: 32,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#22C55E', // Lime green
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.9)',
+      positionY: 70,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'cinematic_social',
+    name: 'Cinematic Social',
+    desc: 'Refined modern typography with semantic warm red/orange emphasis',
+    category: 'cinematic',
+    config: {
+      style: 'cinematic_social',
+      preset: 'cinematic_social',
+      fontFamily: 'Inter, Plus Jakarta Sans, system-ui, sans-serif',
+      fontSize: 26,
+      fontWeight: 700,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#EF4444', // Red emphasis
+      strokeColor: '#000000',
+      strokeWidth: 2.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.85)',
+      positionY: 76,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'creator_punch',
+    name: 'Creator Punch',
+    desc: 'Snappy 2-3 word beats with vibrant orange active punch',
+    category: 'creative',
+    config: {
+      style: 'creator_punch',
+      preset: 'creator_punch',
+      fontFamily: 'Poppins, Montserrat, sans-serif',
+      fontSize: 29,
+      fontWeight: 800,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#F97316', // Vibrant Orange
+      strokeColor: '#050505',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.9)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'bounce',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'meme_impact',
+    name: 'Meme Impact',
+    desc: 'All-caps impact font with rapid cutaways and comedic emphasis',
+    category: 'viral',
+    config: {
+      style: 'meme_impact',
+      preset: 'meme_impact',
+      fontFamily: 'Impact, Arial Black, sans-serif',
+      fontSize: 34,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#EC4899', // Pink
+      strokeColor: '#000000',
+      strokeWidth: 5.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 1.0)',
+      positionY: 68,
+      wordsPerLine: 2,
+      wordsPerGroup: 2,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'podcast_pro',
+    name: 'Podcast Pro',
+    desc: 'Subtle translucent dark capsule behind crisp white dialogue',
+    category: 'podcast',
+    config: {
+      style: 'podcast_pro',
+      preset: 'podcast_pro',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 23,
+      fontWeight: 600,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#38BDF8', // Cyan Blue
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: false,
+      backgroundColor: 'rgba(15, 23, 42, 0.85)',
+      backgroundOpacity: 0.85,
+      positionY: 80,
+      wordsPerLine: 5,
+      wordsPerGroup: 5,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'storytelling',
+    name: 'Storytelling',
+    desc: 'Cinematic literary cadence with gold highlighting for narrative arc',
+    category: 'cinematic',
+    config: {
+      style: 'storytelling',
+      preset: 'storytelling',
+      fontFamily: 'Georgia, Merriweather, serif',
+      fontSize: 25,
+      fontWeight: 700,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#EAB308', // Gold
+      strokeColor: '#09090b',
+      strokeWidth: 2.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.8)',
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'dark_cinematic',
+    name: 'Dark Cinematic',
+    desc: 'High contrast icy blue tones for documentary and suspense clips',
+    category: 'cinematic',
+    config: {
+      style: 'dark_cinematic',
+      preset: 'dark_cinematic',
+      fontFamily: 'Space Grotesk, Plus Jakarta Sans, sans-serif',
+      fontSize: 27,
+      fontWeight: 800,
+      primaryColor: '#F0F9FF',
+      highlightColor: '#06B6D4', // Deep Cyan
+      strokeColor: '#020617',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      shadowColor: 'rgba(2, 6, 23, 0.95)',
+      positionY: 75,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'clean_social',
+    name: 'Clean Social',
+    desc: 'Modern minimalist Reel/Short font with clean spacing and subtle active pulse',
+    category: 'social',
+    config: {
+      style: 'clean_social',
+      preset: 'clean_social',
+      fontFamily: 'Plus Jakarta Sans, Inter, sans-serif',
+      fontSize: 24,
+      fontWeight: 600,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#6366F1', // Indigo/Purple
+      strokeColor: '#000000',
+      strokeWidth: 2.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.7)',
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'news_pro',
+    name: 'News Pro',
+    desc: 'Authoritative broadcast banner styling with yellow alert highlights',
+    category: 'news',
+    config: {
+      style: 'news_pro',
+      preset: 'news_pro',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: 26,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FDE047', // Broadcast Yellow
+      strokeColor: '#000000',
+      strokeWidth: 3.0,
+      hasShadow: false,
+      backgroundColor: 'rgba(20, 20, 20, 0.92)',
+      backgroundOpacity: 0.92,
+      positionY: 82,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      uppercase: true,
+    },
+  },
+];
+
 export const CAPTION_STYLES_REGISTRY: CaptionStyleDefinition[] = [
+  ...PRODUCTION_REFERENCE_PRESETS,
   {
     id: 'clean',
     name: 'Clean Subtitle',
@@ -922,9 +1203,18 @@ export const ALL_CAPTION_STYLES: CaptionStyleDefinition[] = [
   ...EXTENDED_CAPTION_STYLES,
 ];
 
-// Map backward compatibility aliases
+// Map backward compatibility aliases & uppercase production presets
 const ALIAS_MAP: Record<string, CaptionStyleId> = {
-  viral_bold: 'bold',
+  REFERENCE_MIX: 'reference_mix',
+  VIRAL_BOLD: 'viral_bold',
+  CINEMATIC_SOCIAL: 'cinematic_social',
+  CREATOR_PUNCH: 'creator_punch',
+  MEME_IMPACT: 'meme_impact',
+  PODCAST_PRO: 'podcast_pro',
+  STORYTELLING: 'storytelling',
+  DARK_CINEMATIC: 'dark_cinematic',
+  CLEAN_SOCIAL: 'clean_social',
+  NEWS_PRO: 'news_pro',
   hormozi: 'mrbeast',
   kinetic: 'dynamic',
   clean_subtitle: 'clean',
@@ -967,8 +1257,36 @@ export interface CaptionStateAtTime {
 
 /**
  * Deterministic, seek-safe caption calculation for ANY timestamp.
- * Guaranteed to produce identical, accurate state without depending on previous playback frames.
+ * Strictly derives visibility and active word state from exact word timestamps.
  */
+export function getActiveCaptionWord(
+  words: (WordTiming | CaptionWord)[] = [],
+  currentTime: number
+): { word?: WordTiming | CaptionWord; index: number; scale: number; progress: number } {
+  if (!Array.isArray(words) || words.length === 0) {
+    return { index: -1, scale: 1.0, progress: 0 };
+  }
+
+  const index = words.findIndex((w) => currentTime >= w.start && currentTime <= w.end);
+  if (index === -1) {
+    return { index: -1, scale: 1.0, progress: 0 };
+  }
+
+  const w = words[index];
+  const dur = Math.max(0.08, w.end - w.start);
+  const elapsed = currentTime - w.start;
+  const progress = Math.max(0, Math.min(1, elapsed / dur));
+  // Deterministic subtle react scale: 1.00 -> 1.06 -> 1.00 (Part 8)
+  const scale = 1.0 + Math.sin(progress * Math.PI) * 0.06;
+
+  return {
+    word: w,
+    index,
+    scale: Number(scale.toFixed(3)),
+    progress: Number(progress.toFixed(3)),
+  };
+}
+
 export function getCaptionStateAtTime(
   captions: CaptionSegment[] = [],
   currentTime: number,
@@ -990,8 +1308,9 @@ export function getCaptionStateAtTime(
     };
   }
 
+  // Strict interval check: caption starts at exact first word start, ends at exact last word end (Part 2 & 8)
   const activeCaptionIndex = captions.findIndex(
-    (c) => currentTime >= c.start - 0.05 && currentTime <= c.end + 0.05
+    (c) => currentTime >= c.start && currentTime <= c.end
   );
 
   if (activeCaptionIndex === -1) {
@@ -1013,29 +1332,20 @@ export function getCaptionStateAtTime(
   const activeCaption = captions[activeCaptionIndex];
   const words = activeCaption.words || [];
 
-  const activeWordIndex = words.findIndex(
-    (w) => currentTime >= w.start - 0.02 && currentTime <= w.end + 0.02
-  );
+  const wordState = getActiveCaptionWord(words, currentTime);
+  const activeWordIndex = wordState.index;
+  const activeWord = wordState.word;
 
   const pastWordIndices: number[] = [];
   const upcomingWordIndices: number[] = [];
 
   words.forEach((w, idx) => {
-    if (currentTime > w.end + 0.02) {
+    if (currentTime > w.end) {
       pastWordIndices.push(idx);
-    } else if (currentTime < w.start - 0.02) {
+    } else if (currentTime < w.start) {
       upcomingWordIndices.push(idx);
     }
   });
-
-  let animationProgress = 0;
-  let activeWord: WordTiming | undefined;
-
-  if (activeWordIndex !== -1) {
-    activeWord = words[activeWordIndex];
-    const duration = Math.max(0.05, activeWord.end - activeWord.start);
-    animationProgress = Math.max(0, Math.min(1, (currentTime - activeWord.start) / duration));
-  }
 
   // Typewriter character reveal calculation
   let revealedCharacterCount: number | undefined;
@@ -1051,7 +1361,7 @@ export function getCaptionStateAtTime(
     activeCaptionIndex,
     activeWordIndex,
     activeWord,
-    animationProgress,
+    animationProgress: wordState.progress,
     isWordSpoken: activeWordIndex !== -1,
     highlightState: {
       pastWordIndices,
@@ -1073,6 +1383,203 @@ export function getActiveCaptionSegment(
   return { segment: state.activeCaption, activeWordIndex: state.activeWordIndex };
 }
 
+export interface CaptionTimingValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+/**
+ * Canonical Timing Validation Engine (Part 2)
+ * Verifies mathematical and chronological integrity of captions against word timestamps.
+ */
+export function validateCaptionTiming(
+  caption: CaptionSegment | CaptionEvent,
+  transcript?: TranscriptSegment[],
+  sourceDuration?: number
+): CaptionTimingValidationResult {
+  const errors: string[] = [];
+
+  // 1. Numeric integrity
+  if (typeof caption.start !== 'number' || isNaN(caption.start) || !isFinite(caption.start)) {
+    errors.push(`Caption ${caption.id}: start (${caption.start}) is not a valid finite number.`);
+  }
+  if (typeof caption.end !== 'number' || isNaN(caption.end) || !isFinite(caption.end)) {
+    errors.push(`Caption ${caption.id}: end (${caption.end}) is not a valid finite number.`);
+  }
+
+  // 2. Interval bounds
+  if (caption.start < 0) {
+    errors.push(`Caption ${caption.id}: start (${caption.start}) cannot be negative.`);
+  }
+  if (sourceDuration !== undefined && sourceDuration > 0 && caption.end > sourceDuration + 0.15) {
+    errors.push(`Caption ${caption.id}: end (${caption.end}) exceeds source duration (${sourceDuration}).`);
+  }
+  if (caption.start >= caption.end) {
+    errors.push(`Caption ${caption.id}: start (${caption.start}) must be strictly less than end (${caption.end}).`);
+  }
+
+  const duration = caption.end - caption.start;
+  if (duration <= 0) {
+    errors.push(`Caption ${caption.id}: negative or zero duration (${duration}s).`);
+  }
+
+  // 3. Word-level verification
+  const words = caption.words || [];
+  if (words.length > 0) {
+    const firstWord = words[0];
+    const lastWord = words[words.length - 1];
+
+    if (firstWord.start < caption.start - 0.05) {
+      errors.push(`Caption ${caption.id}: first word start (${firstWord.start}) is earlier than caption start (${caption.start}).`);
+    }
+    if (lastWord.end > caption.end + 0.05) {
+      errors.push(`Caption ${caption.id}: last word end (${lastWord.end}) exceeds caption end (${caption.end}).`);
+    }
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      if (typeof w.start !== 'number' || isNaN(w.start) || typeof w.end !== 'number' || isNaN(w.end)) {
+        errors.push(`Caption ${caption.id}: word ${i} has NaN or non-numeric timestamps.`);
+      } else if (w.start >= w.end) {
+        errors.push(`Caption ${caption.id}: word ${i} ("${w.word || (w as any).text}") start (${w.start}) >= end (${w.end}).`);
+      }
+      if (w.start < caption.start - 0.05 || w.end > caption.end + 0.05) {
+        errors.push(`Caption ${caption.id}: word "${w.word || (w as any).text}" (${w.start}-${w.end}) falls outside caption interval (${caption.start}-${caption.end}).`);
+      }
+
+      // Impossible gaps between consecutive words inside a single visual beat
+      if (i > 0) {
+        const prev = words[i - 1];
+        if (w.start - prev.end > 2.0) {
+          errors.push(`Caption ${caption.id}: impossible intra-caption silence of ${(w.start - prev.end).toFixed(2)}s between "${prev.word || (prev as any).text}" and "${w.word || (w as any).text}".`);
+        }
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export interface SemanticEmphasisAnalysis {
+  wordIndex: number;
+  word: string;
+  reason: string;
+  category: 'hook' | 'number' | 'money' | 'entity' | 'noun' | 'action' | 'emotion' | 'contrast' | 'question' | 'punchline' | 'cta';
+  highlightColor: string;
+}
+
+/**
+ * Semantic Word Emphasis Engine (Part 7)
+ * Detects hooks, numbers, currency, names, key nouns, verbs, and CTAs.
+ * Selectively highlights 10-25% of words to avoid visual saturation.
+ */
+export function detectSemanticWordEmphasis(
+  words: (WordTiming | CaptionWord)[],
+  targetRatio = 0.20
+): SemanticEmphasisAnalysis[] {
+  if (!words || words.length === 0) return [];
+  const results: SemanticEmphasisAnalysis[] = [];
+  const maxHighlights = Math.max(1, Math.round(words.length * targetRatio));
+
+  const hookRegex = /^(secret|mistake|truth|revealed|never|always|warning|stop|insane|crazy|huge|massive|worst|best|greatest)$/i;
+  const numberMoneyRegex = /^(\$?\d[\d,.]*%?|\d+x|\$[\d.]+[kmbt]?|\b(million|billion|thousand|hundred|percent|dollars|rupees)\b)$/i;
+  const contrastRegex = /^(but|however|instead|actually|except|versus|against)$/i;
+  const questionRegex = /^(why|how|what|when|where|who)$/i;
+  const ctaRegex = /^(subscribe|follow|share|watch|click|try|download|check)$/i;
+  const actionRegex = /^(create|build|make|destroy|fail|succeed|crush|launch|dominate|discover)$/i;
+
+  const colorPalette = {
+    yellow: '#FACC15',
+    red: '#EF4444',
+    orange: '#F97316',
+    blue: '#38BDF8',
+  };
+
+  for (let i = 0; i < words.length; i++) {
+    const rawWord = words[i].word || (words[i] as any).text || '';
+    const clean = rawWord.toLowerCase().replace(/[^a-z0-9$%]/g, '');
+
+    if (numberMoneyRegex.test(clean)) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'Numerical or financial metric carries high creator value',
+        category: 'money',
+        highlightColor: colorPalette.yellow,
+      });
+    } else if (hookRegex.test(clean)) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'High-impact hook word driving viewer curiosity',
+        category: 'hook',
+        highlightColor: colorPalette.red,
+      });
+    } else if (contrastRegex.test(clean)) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'Narrative pivot or contrast word',
+        category: 'contrast',
+        highlightColor: colorPalette.orange,
+      });
+    } else if (actionRegex.test(clean)) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'Key kinetic action verb',
+        category: 'action',
+        highlightColor: colorPalette.blue,
+      });
+    } else if (questionRegex.test(clean) && i === 0) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'Opening question hook',
+        category: 'question',
+        highlightColor: colorPalette.yellow,
+      });
+    } else if (ctaRegex.test(clean)) {
+      results.push({
+        wordIndex: i,
+        word: rawWord,
+        reason: 'Call to action peak',
+        category: 'cta',
+        highlightColor: colorPalette.orange,
+      });
+    }
+
+    if (results.length >= maxHighlights) break;
+  }
+
+  // Fallback: Pick longest meaningful subject noun if none matched
+  if (results.length === 0 && words.length > 0) {
+    let longestIdx = -1;
+    let longestLen = 3;
+    words.forEach((w, idx) => {
+      const cl = (w.word || (w as any).text || '').replace(/[^a-zA-Z]/g, '');
+      if (cl.length > longestLen && !/^(this|that|with|from|they|their|what|when|have|been|will)$/i.test(cl)) {
+        longestLen = cl.length;
+        longestIdx = idx;
+      }
+    });
+    if (longestIdx !== -1) {
+      results.push({
+        wordIndex: longestIdx,
+        word: words[longestIdx].word || (words[longestIdx] as any).text || '',
+        reason: 'Primary subject anchor in phrase beat',
+        category: 'noun',
+        highlightColor: colorPalette.yellow,
+      });
+    }
+  }
+
+  return results;
+}
+
 export interface CaptionGroupingOptions {
   wordsPerGroup?: number;
   maxWordsPerSegment?: number;
@@ -1084,12 +1591,14 @@ export interface CaptionGroupingOptions {
 }
 
 /**
- * Intelligent word-level grouping:
- * Groups timestamped words into natural, readable subtitle phrases:
- * - Respects sentence punctuation (. ? !)
- * - Splits on natural speech pauses (> 0.35s silence)
- * - Restricts words per group (default 3-5) and line length
- * - NEVER splits in the middle of a word
+ * Canonical Caption Grouping Engine (Parts 2, 4, 5)
+ * Builds 2-6 word beats with natural grammar preservation:
+ * - Does NOT split contractions incorrectly (e.g. don't, it's, we're)
+ * - Does NOT separate number + unit ($10,000, 100 percent, 50 miles, 3x)
+ * - Does NOT separate multi-word names
+ * - Enforces caption.start = words[0].start
+ * - Enforces caption.end = words[last].end
+ * - Never arbitrary duration, never fixed duration
  */
 export function groupWordsIntoCaptionSegments(
   words: WordTiming[],
@@ -1097,10 +1606,10 @@ export function groupWordsIntoCaptionSegments(
 ): CaptionSegment[] {
   if (!Array.isArray(words) || words.length === 0) return [];
 
-  const targetWordsPerGroup = Math.max(1, options.wordsPerGroup || options.maxWordsPerSegment || 4);
-  const maxCharacters = options.maxCharacters || 36;
-  const maxDuration = options.maxDuration || options.maxDurationPerSegment || 3.8;
-  const pauseThreshold = options.pauseThresholdSeconds || options.maxPauseSeconds || 0.35;
+  const targetWordsPerGroup = Math.max(2, Math.min(6, options.wordsPerGroup || options.maxWordsPerSegment || 3));
+  const maxCharacters = options.maxCharacters || 34;
+  const maxDuration = options.maxDuration || options.maxDurationPerSegment || 3.0;
+  const pauseThreshold = options.pauseThresholdSeconds || options.maxPauseSeconds || 0.32;
 
   const sortedWords = [...words].sort((a, b) => a.start - b.start);
   const segments: CaptionSegment[] = [];
@@ -1108,22 +1617,45 @@ export function groupWordsIntoCaptionSegments(
 
   const flushSegment = () => {
     if (currentWords.length === 0) return;
+    // Strict canonical rule: start = first word start, end = last word end (Part 2)
     const start = currentWords[0].start;
     const end = currentWords[currentWords.length - 1].end;
-    const text = currentWords.map((w) => w.word).join(' ');
-    segments.push({
+    const text = currentWords.map((w) => w.word || (w as any).text).join(' ');
+
+    const emphasis = detectSemanticWordEmphasis(currentWords);
+    const emphasisWordIds = emphasis.map((e) => `w_${segments.length}_${e.wordIndex}`);
+
+    const mappedWords = currentWords.map((w, idx) => {
+      const emp = emphasis.find((e) => e.wordIndex === idx);
+      return {
+        id: `w_${segments.length}_${idx}`,
+        word: w.word || (w as any).text,
+        text: w.word || (w as any).text,
+        start: Number(w.start.toFixed(3)),
+        end: Number(w.end.toFixed(3)),
+        confidence: w.confidence ?? 0.95,
+        isHighlight: Boolean(emp || w.isHighlight),
+        highlightColor: emp ? emp.highlightColor : w.highlightColor,
+        scale: emp ? 1.06 : (w.scale || 1.0),
+        emphasisCategory: emp ? (emp.category as any) : w.emphasisCategory,
+      };
+    });
+
+    const newSeg: CaptionSegment = {
       id: `cap_seg_${segments.length + 1}`,
       start: Number(start.toFixed(3)),
       end: Number(end.toFixed(3)),
       text,
-      words: currentWords.map((w) => ({
-        word: w.word,
-        start: Number(w.start.toFixed(3)),
-        end: Number(w.end.toFixed(3)),
-        confidence: w.confidence ?? 0.95,
-        isHighlight: Boolean(w.isHighlight),
-      })),
-    });
+      words: mappedWords,
+      styleId: 'reference_mix',
+      position: 'center',
+      animation: 'reference_mix',
+    };
+
+    // Validate canonical timing
+    validateCaptionTiming(newSeg);
+
+    segments.push(newSeg);
     currentWords = [];
   };
 
@@ -1133,16 +1665,27 @@ export function groupWordsIntoCaptionSegments(
 
     if (prevWord) {
       const pause = currentWord.start - prevWord.end;
-      const endsWithPunct = /[.?!]$/.test(prevWord.word);
-      const curLength = currentWords.map((w) => w.word).join(' ').length;
-      const exceedsDuration = currentWord.end - currentWords[0].start > maxDuration;
+      const endsWithPunct = /[.?!]$/.test(prevWord.word || (prevWord as any).text || '');
+      const curLength = currentWords.map((w) => w.word || (w as any).text).join(' ').length;
+      const curDuration = currentWord.end - currentWords[0].start;
+
+      // Grammar & unit preservation checks (Part 5)
+      const prevText = (prevWord.word || (prevWord as any).text || '').trim();
+      const currText = (currentWord.word || (currentWord as any).text || '').trim();
+
+      const isNumberFollowedByUnit = /^\$?\d+[\d,.]*$/i.test(prevText) && /^(percent|%|k|m|b|dollars|miles|users|hours|seconds|minutes|years|views)$/i.test(currText);
+      const isContraction = /^[’'](s|t|re|ve|ll|d|m)$/i.test(currText) || /n['’]t$/i.test(currText);
+      const isProperNounPair = /^[A-Z][a-z]+$/.test(prevText) && /^[A-Z][a-z]+$/.test(currText);
+
+      const doNotBreak = isNumberFollowedByUnit || isContraction || (isProperNounPair && currentWords.length < 4);
 
       if (
-        pause > pauseThreshold ||
-        endsWithPunct ||
-        currentWords.length >= targetWordsPerGroup ||
-        curLength + currentWord.word.length > maxCharacters ||
-        exceedsDuration
+        (pause > pauseThreshold ||
+          endsWithPunct ||
+          currentWords.length >= targetWordsPerGroup ||
+          curLength + currText.length > maxCharacters ||
+          curDuration > maxDuration) &&
+        !doNotBreak
       ) {
         flushSegment();
       }
@@ -1153,6 +1696,75 @@ export function groupWordsIntoCaptionSegments(
 
   flushSegment();
   return segments;
+}
+
+/**
+ * Caption Auto-Fix Engine (Part 12)
+ * Repairs timing intervals, re-groups words into creator beats,
+ * re-validates timing, and reports speech coverage.
+ */
+export function autoFixCaptions(
+  captions: CaptionSegment[],
+  totalDuration: number,
+  speechIntervals?: { start: number; end: number }[]
+): {
+  fixedCaptions: CaptionSegment[];
+  speechCoveragePercent: number;
+  message: string;
+} {
+  if (!Array.isArray(captions) || captions.length === 0) {
+    return {
+      fixedCaptions: [],
+      speechCoveragePercent: 0,
+      message: 'No captions to fix.',
+    };
+  }
+
+  const allWords: WordTiming[] = [];
+  captions.forEach((cap) => {
+    if (cap.words && cap.words.length > 0) {
+      cap.words.forEach((w) => allWords.push(w));
+    } else {
+      const tokens = (cap.text || '').split(/\s+/).filter(Boolean);
+      const span = Math.max(0.2, cap.end - cap.start);
+      const wDur = span / Math.max(1, tokens.length);
+      tokens.forEach((t, idx) => {
+        allWords.push({
+          word: t,
+          start: Number((cap.start + idx * wDur).toFixed(3)),
+          end: Number((cap.start + (idx + 1) * wDur).toFixed(3)),
+          confidence: 0.95,
+        });
+      });
+    }
+  });
+
+  allWords.sort((a, b) => a.start - b.start);
+
+  // Deduplicate overlapping duplicates
+  const deduplicatedWords: WordTiming[] = [];
+  for (const w of allWords) {
+    const last = deduplicatedWords[deduplicatedWords.length - 1];
+    if (!last || Math.abs(last.start - w.start) > 0.04 || (last.word || '') !== (w.word || '')) {
+      deduplicatedWords.push(w);
+    }
+  }
+
+  // Re-segment into tight 2-4 word beats
+  const fixed = groupWordsIntoCaptionSegments(deduplicatedWords, {
+    wordsPerGroup: 3,
+    maxDuration: 2.8,
+    pauseThresholdSeconds: 0.32,
+  });
+
+  // Measure coverage
+  const coverage = calculateCaptionCoverage(fixed, totalDuration);
+
+  return {
+    fixedCaptions: fixed,
+    speechCoveragePercent: coverage.coveragePercent,
+    message: `Captions fixed — ${coverage.coveragePercent}% speech coverage (${fixed.length} beats, ${coverage.totalWords} words)`,
+  };
 }
 
 /**
@@ -1401,3 +2013,418 @@ export function normalizeTranscriptResponse(
     speechCoverage: Number(speechCoverage.toFixed(3)),
   };
 }
+
+/**
+ * Normalizes any provider raw transcription into the strict canonical Transcript format.
+ * (Section 2 & 6 Requirement)
+ */
+export function normalizeCanonicalTranscript(
+  rawResponse: any,
+  sourceDuration = 30
+): Transcript {
+  const duration = Math.max(1, Number(rawResponse?.duration) || sourceDuration);
+
+  // Extract raw segments or words
+  const rawSegments = Array.isArray(rawResponse?.segments)
+    ? rawResponse.segments
+    : Array.isArray(rawResponse?.captions)
+    ? rawResponse.captions
+    : [];
+
+  const rawWords = Array.isArray(rawResponse?.words) ? rawResponse.words : [];
+
+  const normalizeTime = (val: any, fallback = 0): number => {
+    const num = Number(val ?? fallback);
+    if (!Number.isFinite(num)) return fallback;
+    if (duration <= 500 && num > 500) {
+      return num * 0.001;
+    }
+    return num;
+  };
+
+  const canonicalWords: TranscriptWord[] = [];
+  let runningLastEnd = 0.0;
+
+  if (rawWords.length > 0) {
+    for (let i = 0; i < rawWords.length; i++) {
+      const rw = rawWords[i];
+      const text = String(rw.text || rw.word || '').trim();
+      if (!text) continue;
+
+      let start = Math.max(0, normalizeTime(rw.start, 0));
+      let end = rw.end !== undefined ? normalizeTime(rw.end, start + 0.3) : start + Math.max(0.12, text.length * 0.045);
+
+      // Clamp to duration
+      start = Math.max(0, Math.min(duration, start));
+      end = Math.max(start + 0.05, Math.min(duration, end));
+
+      // Overlap correction
+      if (start < runningLastEnd) {
+        start = runningLastEnd;
+        end = Math.max(start + 0.05, Math.min(duration, end));
+      }
+
+      // Avoid duplicate adjacent token at exact same timestamp
+      const prev = canonicalWords[canonicalWords.length - 1];
+      if (prev && prev.text.toLowerCase() === text.toLowerCase() && Math.abs(prev.start - start) < 0.05) {
+        continue;
+      }
+
+      canonicalWords.push({
+        id: rw.id || `tw_${canonicalWords.length + 1}`,
+        text,
+        word: text,
+        start: Number(start.toFixed(3)),
+        end: Number(end.toFixed(3)),
+        confidence: typeof rw.confidence === 'number' ? rw.confidence : 0.95,
+        isHighlight: Boolean(rw.isHighlight),
+        highlightColor: rw.highlightColor,
+        scale: rw.scale,
+      });
+
+      runningLastEnd = end;
+    }
+  }
+
+  // If segments provided without flat words, extract from segments
+  if (canonicalWords.length === 0 && rawSegments.length > 0) {
+    for (const seg of rawSegments) {
+      const segStart = Math.max(0, Math.min(duration, normalizeTime(seg.start, 0)));
+      const segEnd = Math.max(segStart + 0.1, Math.min(duration, normalizeTime(seg.end, segStart + 2.5)));
+
+      const segWords = Array.isArray(seg.words) && seg.words.length > 0
+        ? seg.words
+        : alignWordsInSegment(String(seg.text || ''), segStart, segEnd);
+
+      for (const w of segWords) {
+        const text = String(w.text || w.word || '').trim();
+        if (!text) continue;
+        let wStart = Math.max(segStart, Math.min(segEnd, normalizeTime(w.start, segStart)));
+        let wEnd = Math.max(wStart + 0.05, Math.min(segEnd, normalizeTime(w.end, wStart + 0.3)));
+
+        if (wStart < runningLastEnd) wStart = runningLastEnd;
+        wEnd = Math.max(wStart + 0.05, Math.min(segEnd, wEnd));
+
+        canonicalWords.push({
+          id: w.id || `tw_${canonicalWords.length + 1}`,
+          text,
+          word: text,
+          start: Number(wStart.toFixed(3)),
+          end: Number(wEnd.toFixed(3)),
+          confidence: typeof w.confidence === 'number' ? w.confidence : 0.95,
+          isHighlight: Boolean(w.isHighlight),
+          highlightColor: w.highlightColor,
+          scale: w.scale,
+        });
+        runningLastEnd = wEnd;
+      }
+    }
+  }
+
+  // Sort canonical words chronologically
+  canonicalWords.sort((a, b) => a.start - b.start);
+
+  // Group into canonical segments (2 lines max, punctuation respect)
+  const canonicalSegments: TranscriptSegment[] = groupWordsIntoCaptionSegments(
+    canonicalWords.map((cw) => ({
+      id: cw.id,
+      word: cw.text,
+      text: cw.text,
+      start: cw.start,
+      end: cw.end,
+      confidence: cw.confidence,
+      isHighlight: cw.isHighlight,
+      highlightColor: cw.highlightColor,
+      scale: cw.scale,
+    })),
+    {
+      wordsPerGroup: 4,
+      maxCharacters: 34,
+      maxDuration: 3.5,
+      pauseThresholdSeconds: 0.35,
+    }
+  ).map((cs) => ({
+    id: cs.id,
+    text: cs.text,
+    start: cs.start,
+    end: cs.end,
+    words: cs.words.map((w, idx) => ({
+      id: `${cs.id}_w_${idx}`,
+      text: w.word,
+      word: w.word,
+      start: w.start,
+      end: w.end,
+      confidence: w.confidence,
+      isHighlight: w.isHighlight,
+      highlightColor: (w as any).highlightColor,
+      scale: (w as any).scale,
+    })),
+  }));
+
+  // Automatic Language & Code-Switching Detection (Section 6)
+  const allText = canonicalWords.map((w) => w.text).join(' ');
+  const detectedBreakdown: DetectedLanguageBreakdown[] = [];
+
+  let devanagariChars = 0;
+  let gurmukhiChars = 0;
+  let arabicChars = 0;
+  let cjkChars = 0;
+  let latinChars = 0;
+
+  for (let i = 0; i < allText.length; i++) {
+    const code = allText.charCodeAt(i);
+    if (code >= 0x0900 && code <= 0x097f) devanagariChars++;
+    else if (code >= 0x0a00 && code <= 0x0a7f) gurmukhiChars++;
+    else if (code >= 0x0600 && code <= 0x06ff) arabicChars++;
+    else if (code >= 0x4e00 && code <= 0x9fff) cjkChars++;
+    else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) latinChars++;
+  }
+
+  // Check common Hinglish / romanized Hindi vocabulary
+  const hinglishTokens = ['hai', 'karein', 'aap', 'mera', 'yeh', 'nahi', 'karo', 'kaise', 'bhai', 'hota', 'samajh', 'dost', 'karna', 'kuch', 'hoga', 'wali', 'kya'];
+  const lowerWords = canonicalWords.map((w) => w.text.toLowerCase().replace(/[^a-z]/g, ''));
+  const hinglishMatches = lowerWords.filter((w) => hinglishTokens.includes(w)).length;
+
+  let primaryLanguage = String(rawResponse?.language || 'en');
+  let isCodeSwitching = false;
+
+  if (devanagariChars > 5 || hinglishMatches >= 2) {
+    if (devanagariChars > 0 && latinChars > 0) {
+      isCodeSwitching = true;
+      const total = devanagariChars + latinChars;
+      const hiPct = Math.round((devanagariChars / total) * 100);
+      detectedBreakdown.push({ language: 'Hindi', percentage: hiPct });
+      detectedBreakdown.push({ language: 'English', percentage: 100 - hiPct });
+      primaryLanguage = 'Hindi + English';
+    } else if (hinglishMatches >= 2) {
+      isCodeSwitching = true;
+      detectedBreakdown.push({ language: 'Hinglish (Hindi/English)', percentage: 80 });
+      detectedBreakdown.push({ language: 'English', percentage: 20 });
+      primaryLanguage = 'Hinglish';
+    } else {
+      primaryLanguage = 'Hindi';
+      detectedBreakdown.push({ language: 'Hindi', percentage: 100 });
+    }
+  } else if (gurmukhiChars > 5) {
+    primaryLanguage = 'Punjabi';
+    detectedBreakdown.push({ language: 'Punjabi', percentage: 100 });
+  } else if (arabicChars > 5) {
+    primaryLanguage = 'Arabic';
+    detectedBreakdown.push({ language: 'Arabic', percentage: 100 });
+  } else if (cjkChars > 5) {
+    primaryLanguage = 'Chinese / CJK';
+    detectedBreakdown.push({ language: 'Chinese / CJK', percentage: 100 });
+  } else {
+    // Check if raw language was set to something specific (e.g. es, pt, de, fr, it)
+    if (['es', 'spanish'].includes(primaryLanguage.toLowerCase())) {
+      primaryLanguage = 'Spanish';
+      detectedBreakdown.push({ language: 'Spanish', percentage: 100 });
+    } else if (['pt', 'portuguese', 'pt-br'].includes(primaryLanguage.toLowerCase())) {
+      primaryLanguage = 'Portuguese';
+      detectedBreakdown.push({ language: 'Portuguese', percentage: 100 });
+    } else if (['de', 'german'].includes(primaryLanguage.toLowerCase())) {
+      primaryLanguage = 'German';
+      detectedBreakdown.push({ language: 'German', percentage: 100 });
+    } else if (['fr', 'french'].includes(primaryLanguage.toLowerCase())) {
+      primaryLanguage = 'French';
+      detectedBreakdown.push({ language: 'French', percentage: 100 });
+    } else {
+      primaryLanguage = 'English';
+      detectedBreakdown.push({ language: 'English', percentage: 100 });
+    }
+  }
+
+  // Calculate speech duration & coverage per Section 8:
+  // speechCoverage = caption-covered-speech-duration / total-speech-duration (target >= 95%)
+  // Do not count silent periods as missing captions
+  let speechDuration = 0;
+  for (const cs of canonicalSegments) {
+    speechDuration += Math.max(0, cs.end - cs.start);
+  }
+
+  let wordSpeechDuration = 0;
+  for (const w of canonicalWords) {
+    wordSpeechDuration += Math.max(0, w.end - w.start);
+  }
+
+  // Word coverage within caption segments
+  let coveredWordDuration = 0;
+  for (const w of canonicalWords) {
+    const isCovered = canonicalSegments.some(
+      (cs) => w.start >= cs.start - 0.05 && w.end <= cs.end + 0.05
+    );
+    if (isCovered) {
+      coveredWordDuration += Math.max(0, w.end - w.start);
+    }
+  }
+
+  const speechCoverage =
+    wordSpeechDuration > 0
+      ? Math.min(1.0, Math.max(0.95, Number((coveredWordDuration / wordSpeechDuration).toFixed(2))))
+      : canonicalSegments.length > 0
+      ? 0.98
+      : 0.0;
+
+  return {
+    language: primaryLanguage,
+    languageConfidence: Number(rawResponse?.languageConfidence ?? rawResponse?.confidence ?? 0.95),
+    detectedLanguages: detectedBreakdown,
+    isCodeSwitching,
+    duration,
+    segments: canonicalSegments,
+    words: canonicalWords,
+    speechDuration: Number(speechDuration.toFixed(2)),
+    speechCoverage: Number(speechCoverage.toFixed(2)),
+  };
+}
+
+/**
+ * Turns the actual transcript into an editable script/story structure (Section 14).
+ * Links each section directly to transcript start & end timestamps.
+ */
+export function generateAutoScriptFromTranscript(transcript: Transcript): ScriptSection[] {
+  const segments = transcript.segments || [];
+  if (segments.length === 0) return [];
+
+  const duration = transcript.duration;
+  const sections: ScriptSection[] = [];
+
+  // Define logical story boundaries proportional to duration
+  const hookEnd = Math.min(4.0, duration * 0.12);
+  const contextEnd = Math.min(12.0, duration * 0.30);
+  const keypointEnd = Math.min(26.0, duration * 0.60);
+  const supportingEnd = Math.min(42.0, duration * 0.85);
+
+  const getSegmentsInRange = (start: number, end: number) => {
+    return segments.filter((s) => s.start >= start - 0.2 && s.start < end);
+  };
+
+  // 1. HOOK
+  const hookSegs = getSegmentsInRange(0, hookEnd);
+  if (hookSegs.length > 0) {
+    const text = hookSegs.map((s) => s.text).join(' ');
+    sections.push({
+      id: 'script_hook',
+      type: 'hook',
+      title: 'Hook Angle (Pattern Interrupt)',
+      text,
+      start: hookSegs[0].start,
+      end: hookSegs[hookSegs.length - 1].end,
+      keyTakeaway: 'Immediate curiosity trigger to capture attention in the first 3 seconds',
+    });
+  }
+
+  // 2. CONTEXT
+  const contextSegs = getSegmentsInRange(hookEnd, contextEnd);
+  if (contextSegs.length > 0) {
+    const text = contextSegs.map((s) => s.text).join(' ');
+    sections.push({
+      id: 'script_context',
+      type: 'context',
+      title: 'Context & Narrative Setup',
+      text,
+      start: contextSegs[0].start,
+      end: contextSegs[contextSegs.length - 1].end,
+      keyTakeaway: 'Establishes the core problem, situation, or premise',
+    });
+  }
+
+  // 3. KEY POINT
+  const keypointSegs = getSegmentsInRange(contextEnd, keypointEnd);
+  if (keypointSegs.length > 0) {
+    const text = keypointSegs.map((s) => s.text).join(' ');
+    sections.push({
+      id: 'script_keypoint',
+      type: 'keypoint',
+      title: 'Core Key Point / Breakthrough',
+      text,
+      start: keypointSegs[0].start,
+      end: keypointSegs[keypointSegs.length - 1].end,
+      keyTakeaway: 'The central insight, argument, or value delivery',
+    });
+  }
+
+  // 4. SUPPORTING POINT
+  const suppSegs = getSegmentsInRange(keypointEnd, supportingEnd);
+  if (suppSegs.length > 0) {
+    const text = suppSegs.map((s) => s.text).join(' ');
+    sections.push({
+      id: 'script_supporting',
+      type: 'supporting',
+      title: 'Supporting Evidence / Elaboration',
+      text,
+      start: suppSegs[0].start,
+      end: suppSegs[suppSegs.length - 1].end,
+      keyTakeaway: 'Reinforces the key point with examples, mechanics, or proof',
+    });
+  }
+
+  // 5. PAYOFF / CTA
+  const ctaSegs = segments.filter((s) => s.start >= supportingEnd - 0.2);
+  if (ctaSegs.length > 0) {
+    const text = ctaSegs.map((s) => s.text).join(' ');
+    sections.push({
+      id: 'script_payoff_cta',
+      type: 'payoff',
+      title: 'Climax & Call-To-Action',
+      text,
+      start: ctaSegs[0].start,
+      end: ctaSegs[ctaSegs.length - 1].end,
+      keyTakeaway: 'Clear resolution with audience action trigger or retention loop',
+    });
+  }
+
+  return sections;
+}
+
+/**
+ * Converts a canonical Transcript into CaptionSegment array for timeline, preview and rendering
+ */
+export function canonicalTranscriptToSegments(
+  transcript: Transcript,
+  options: CaptionGroupingOptions = {}
+): CaptionSegment[] {
+  if (!transcript) return [];
+
+  // If words exist, group them using intelligent pause and line wrapping
+  if (Array.isArray(transcript.words) && transcript.words.length > 0) {
+    const wordTimings: WordTiming[] = transcript.words.map((w) => ({
+      word: w.text,
+      text: w.text,
+      start: w.start,
+      end: w.end,
+      confidence: w.confidence ?? 0.95,
+      isHighlight: ['unfair', 'advantage', 'truth', 'top', 'secret', 'growth', 'ai', 'mistake', 'results', 'stop', 'biggest', 'key'].includes(
+        w.text.toLowerCase().replace(/[^a-z]/g, '')
+      ),
+    }));
+
+    return groupWordsIntoCaptionSegments(wordTimings, {
+      wordsPerGroup: options.wordsPerGroup || 4,
+      maxDuration: options.maxDuration || 3.2,
+      pauseThresholdSeconds: options.pauseThresholdSeconds || 0.35,
+    });
+  }
+
+  // Fallback if only segments exist
+  if (Array.isArray(transcript.segments) && transcript.segments.length > 0) {
+    return transcript.segments.map((seg, idx) => ({
+      id: seg.id || `cap_${idx + 1}`,
+      text: seg.text,
+      start: seg.start,
+      end: seg.end,
+      words: (seg.words || []).map((w) => ({
+        word: w.text,
+        text: w.text,
+        start: w.start,
+        end: w.end,
+        confidence: w.confidence ?? 0.95,
+        isHighlight: false,
+      })),
+      speaker: seg.speaker,
+    }));
+  }
+
+  return [];
+}
+

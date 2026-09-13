@@ -1,4 +1,5 @@
 import {
+  AnimalEvent,
   BrollOpportunity,
   BrollPurpose,
   CaptionSegment,
@@ -21,6 +22,17 @@ interface DomainCluster {
 }
 
 const DOMAIN_CLUSTERS: DomainCluster[] = [
+  {
+    topic: 'Animals, Pets & Wildlife',
+    keywords: ['dog', 'puppy', 'puppies', 'pet', 'pets', 'cat', 'kitten', 'animal', 'animals', 'retriever', 'hound', 'canine', 'wildlife'],
+    visualThemes: ['Happy golden retriever dog playing outdoors', 'Cute domestic pet running in park', 'Playful puppy outdoors in sunlight'],
+    sampleQueries: (ctx) => [
+      'golden retriever dog playing outdoors',
+      'happy puppy running in grass',
+      'cute pet dog outdoors',
+      'canine animal playing nature',
+    ],
+  },
   {
     topic: 'Computer Science & Higher Education',
     keywords: ['university', 'student', 'students', 'campus', 'college', 'orientation', 'professor', 'lecture', 'degree', 'academic', 'classroom', 'study', 'education', 'computer science', 'coding', 'programming', 'software', 'robotics', 'engineering', 'algorithm'],
@@ -452,6 +464,42 @@ export function analyzeVideoSemantics(
     dynamicTopics.entities
   );
 
+  // Detect animals in transcript/words
+  const detectedAnimals: AnimalEvent[] = [];
+  const animalPattern = /\b(dog|puppy|puppies|cat|kitten|kittens|pet|pets|retriever|hound|canine|feline|bird|horse)\b/i;
+  
+  if (Array.isArray(words)) {
+    for (const w of words) {
+      const cleanWord = ((w as any).word || (w as any).text || '').toLowerCase().replace(/[^a-z]/g, '');
+      const m = cleanWord.match(animalPattern);
+      if (m) {
+        detectedAnimals.push({
+          type: 'animal',
+          subject: m[1].toLowerCase(),
+          start: w.start,
+          end: w.end,
+          confidence: 0.95,
+        });
+      }
+    }
+  }
+
+  if (detectedAnimals.length === 0 && segments.length > 0) {
+    for (const seg of segments) {
+      const segText = seg.text.toLowerCase();
+      const m = segText.match(animalPattern);
+      if (m) {
+        detectedAnimals.push({
+          type: 'animal',
+          subject: m[1].toLowerCase(),
+          start: seg.start,
+          end: seg.end,
+          confidence: 0.90,
+        });
+      }
+    }
+  }
+
   return {
     duration,
     scenes: detectedScenes,
@@ -461,6 +509,7 @@ export function analyzeVideoSemantics(
     entities: dynamicTopics.entities,
     locations: ['Studio', 'Academic Campus', 'Urban Tech Center'],
     people,
+    animals: detectedAnimals,
     objects: dynamicTopics.entities.slice(0, 10),
     visualThemes: dynamicTopics.visualThemes,
     emotionalTone: dynamicTopics.emotionalTone,

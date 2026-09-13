@@ -1,0 +1,120 @@
+/**
+ * VIRALCLIP STUDIO — SUBTITLE FORMATTER
+ * Formats high-precision ASS (Advanced SubStation Alpha) v4+ subtitles for 1080x1920 MP4 export.
+ * Preserves per-word highlighting, scripts/fonts (Devanagari, Gurmukhi, CJK, etc.), and timing parity.
+ */
+
+export function hexToAssColor(hex: string = '#ffffff'): string {
+  const clean = hex.replace('#', '').trim();
+  if (clean.length === 6) {
+    const r = clean.substring(0, 2);
+    const g = clean.substring(2, 4);
+    const b = clean.substring(4, 6);
+    return `&H00${b}${g}${r}&`;
+  }
+  return '&H00FFFFFF&';
+}
+
+export function detectScriptFont(text: string, defaultFont: string): string {
+  if (!text) return defaultFont || 'Arial';
+  // Devanagari (Hindi, Marathi, Sanskrit)
+  if (/[\u0900-\u097F]/.test(text)) return 'Noto Sans Devanagari';
+  // Gurmukhi (Punjabi)
+  if (/[\u0A00-\u0A7F]/.test(text)) return 'Noto Sans Gurmukhi';
+  // Arabic / Urdu
+  if (/[\u0600-\u06FF]/.test(text)) return 'Geeza Pro';
+  // Bengali
+  if (/[\u0980-\u09FF]/.test(text)) return 'Noto Sans Bengali';
+  // Gujarati
+  if (/[\u0A80-\u0AFF]/.test(text)) return 'Noto Sans Gujarati';
+  // Tamil
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'Noto Sans Tamil';
+  // Telugu
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'Noto Sans Telugu';
+  // Kannada
+  if (/[\u0C80-\u0CFF]/.test(text)) return 'Noto Sans Kannada';
+  // Malayalam
+  if (/[\u0D00-\u0D7F]/.test(text)) return 'Noto Sans Malayalam';
+  // CJK (Chinese, Japanese, Korean)
+  if (/[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(text)) return 'PingFang SC';
+  return defaultFont || 'Arial';
+}
+
+export function formatAssTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const cs = Math.floor((seconds - Math.floor(seconds)) * 100);
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+}
+
+// Helper to generate ASS subtitles for burning into exported video
+export function formatAssSubtitle(captions: any[] = [], captionConfig?: any): string {
+  const allText = (captions || []).map((c: any) => c.text || '').join(' ');
+  const baseFont = captionConfig?.fontFamily?.split(',')[0]?.replace(/['"]/g, '').trim() || 'Arial';
+  const font = detectScriptFont(allText, baseFont);
+  // Crisp typography for 1080x1920: scale font size appropriately
+  const fontSize = Math.round((captionConfig?.fontSize || 28) * 2.2);
+  const primaryColor = hexToAssColor(captionConfig?.primaryColor || '#ffffff');
+  const highlightColor = hexToAssColor(captionConfig?.highlightColor || '#facc15');
+  const strokeColor = hexToAssColor(captionConfig?.strokeColor || '#000000');
+  const strokeWidth = captionConfig?.strokeWidth !== undefined ? Math.round(captionConfig.strokeWidth * 1.5) : 4;
+  const shadow = captionConfig?.hasShadow ? 3 : 0;
+  const marginV = Math.round(1920 * (1 - (captionConfig?.positionY ?? 72) / 100));
+
+  let content = `[Script Info]
+Title: ViralClip Subtitles
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+PlayResX: 1080
+PlayResY: 1920
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${font},${fontSize},${primaryColor},${highlightColor},${strokeColor},&HA0000000,-1,0,0,0,100,100,0,0,1,${strokeWidth},${shadow},2,40,40,${marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  for (const cap of captions) {
+    const start = Math.max(0, Number(cap.start) || 0);
+    const end = Math.max(start + 0.1, Number(cap.end) || (start + 1));
+    const words = Array.isArray(cap.words) && cap.words.length > 0 ? cap.words : null;
+
+    if (words && words.length > 0) {
+      // Per-word active timing events so exported MP4 highlights spoken words
+      for (let wIdx = 0; wIdx < words.length; wIdx++) {
+        const activeW = words[wIdx];
+        const wStart = Math.max(start, Number(activeW.start) || start);
+        const wEnd = Math.min(end, Math.max(wStart + 0.08, Number(activeW.end) || (wStart + 0.35)));
+        const sTime = formatAssTime(wStart);
+        const eTime = formatAssTime(wEnd);
+
+        // Active word wrapped in highlight color
+        const lineParts = words.map((w: any, idx: number) => {
+          let wordStr = String(w.word || w.text || '').trim();
+          if (captionConfig?.uppercase) wordStr = wordStr.toUpperCase();
+          if (idx === wIdx) {
+            return `{\\c${highlightColor}&\\b1}${wordStr}{\\c${primaryColor}&\\b0}`;
+          }
+          return wordStr;
+        });
+        const lineText = lineParts.join(' ').replace(/[\r\n]+/g, ' ').trim();
+        if (lineText) {
+          content += `Dialogue: 0,${sTime},${eTime},Default,,0,0,0,,${lineText}\n`;
+        }
+      }
+    } else {
+      const sTime = formatAssTime(start);
+      const eTime = formatAssTime(end);
+      let text = String(cap.text || '').replace(/[\r\n]+/g, ' ').replace(/{/g, '').replace(/}/g, '').trim();
+      if (captionConfig?.uppercase) text = text.toUpperCase();
+      if (text) {
+        content += `Dialogue: 0,${sTime},${eTime},Default,,0,0,0,,${text}\n`;
+      }
+    }
+  }
+  return content;
+}

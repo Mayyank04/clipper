@@ -16,4 +16,5 @@ public/assets/sfx/generated/*
 !public/assets/sfx/generated/.gitkeep
 public/audio/*
 !public/audio/.gitkeep
+.cache/
 

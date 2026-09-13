@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download,
   X,
@@ -60,8 +60,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
 }) => {
   const [resolution, setResolution] = useState<VideoResolution>('1080x1920');
-  const [frameRate, setFrameRate] = useState<FrameRate>(60);
-  const [quality, setQuality] = useState<'standard' | 'high' | 'ultra'>('high');
+  const [frameRate, setFrameRate] = useState<FrameRate>(30);
+  const [qualityMode, setQualityMode] = useState<'HIGH' | 'MASTER' | 'BALANCED' | 'FAST'>('HIGH');
   const [isRendering, setIsRendering] = useState<boolean>(false);
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderStage, setRenderStage] = useState<string>('Preparing video encoder...');
@@ -69,152 +69,144 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [previewPlaying, setPreviewPlaying] = useState<boolean>(false);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [sourceQuality, setSourceQuality] = useState<{
+    info?: any;
+    score?: any;
+    loading: boolean;
+  }>({ loading: false });
+
+  // Fetch source media quality diagnostics when modal opens
+  useEffect(() => {
+    if (!isOpen || !short) return;
+    const mediaUrl = short.videoProxyUrl || short.audioUrl || '';
+    if (!mediaUrl) return;
+
+    setSourceQuality({ loading: true });
+    fetch(`/api/media/quality-analysis?path=${encodeURIComponent(mediaUrl)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setSourceQuality({
+            info: data.sourceInfo,
+            score: data.sourceQualityScore,
+            loading: false,
+          });
+          if (data.sourceInfo?.sourceFPS) {
+            const rawFps = Math.round(data.sourceInfo.sourceFPS);
+            if (rawFps >= 50) setFrameRate(60);
+            else setFrameRate(30);
+          }
+        } else {
+          setSourceQuality({ loading: false });
+        }
+      })
+      .catch(() => setSourceQuality({ loading: false }));
+  }, [isOpen, short]);
 
   if (!isOpen || !short) return null;
 
   const handleStartExport = async () => {
     setIsRendering(true);
-    setRenderProgress(5);
-    setRenderStage('Initializing render canvas...');
+    setRenderProgress(10);
+    setRenderStage('Initializing server-side Lanczos 9:16 render pipeline...');
     setRenderError(null);
     setRenderResult(null);
 
     try {
-      // 1. Try real server-side FFmpeg 9:16 render if projectId is available
-      if (short.projectId) {
-        setRenderStage('Queuing server-side FFmpeg 9:16 vertical render...');
-        setRenderProgress(20);
+      const projectId = short.projectId || 'proj_active';
+      const exportRes = await fetch(`/api/projects/${projectId}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortId: short.id,
+          short,
+          resolution,
+          format: 'mp4',
+          qualityMode,
+          brandKit,
+          captionConfig,
+        }),
+      });
+
+      if (!exportRes.ok) {
+        const errData = await exportRes.json().catch(() => ({}));
+        throw new Error(errData.error || `Export initialization failed with status ${exportRes.status}`);
+      }
+
+      const expData = await exportRes.json();
+      const exportId = expData.exportId;
+
+      if (!exportId) {
+        throw new Error('No export job ID received from server');
+      }
+
+      // Poll export status until completion
+      let attempts = 0;
+      const maxAttempts = 60; // 30 seconds max
+      let completed = false;
+
+      while (attempts < maxAttempts && !completed) {
+        attempts++;
+        await new Promise((r) => setTimeout(r, 500));
         try {
-          const exportRes = await fetch(`/api/projects/${short.projectId}/export`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              shortId: short.id,
-              short,
-              resolution,
-              format: 'mp4',
-            }),
-          });
-          if (exportRes.ok) {
-            const expData = await exportRes.json();
-            const exportId = expData.exportId;
+          const pollRes = await fetch(`/api/exports/${exportId}`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            const job = pollData.job;
+            if (job) {
+              setRenderProgress(Math.min(98, job.progress || 20 + attempts * 2));
+              setRenderStage(
+                job.progress < 50
+                  ? 'Probing streams & calculating smart 9:16 crop...'
+                  : job.progress < 85
+                  ? `Lanczos scaling & CRF ${job.renderProfile?.crf || 16} H.264 encode...`
+                  : 'Burning kinetic subtitles & mixing audio tracks...'
+              );
 
-            if (exportId) {
-              // Poll export status
-              let attempts = 0;
-              const maxAttempts = 30; // 15 seconds max
-              while (attempts < maxAttempts) {
-                attempts++;
-                await new Promise((r) => setTimeout(r, 500));
-                try {
-                  const pollRes = await fetch(`/api/exports/${exportId}`);
-                  if (pollRes.ok) {
-                    const pollData = await pollRes.json();
-                    const job = pollData.job;
-                    if (job) {
-                      setRenderProgress(Math.min(95, job.progress || 35 + attempts * 2));
-                      setRenderStage(`Server FFmpeg encoding (${job.status})...`);
-                      if (job.status === 'completed' && job.downloadUrl) {
-                        setRenderProgress(100);
-                        setRenderStage('FFmpeg render complete!');
-                        const resObj = {
-                          blobUrl: job.downloadUrl,
-                          fileName: `${short.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_9x16.mp4`,
-                          fileSizeMb: 4.8,
-                          durationSeconds: short.duration || 30,
-                        };
-                        setRenderResult(resObj);
-                        setIsRendering(false);
+              if (job.status === 'completed' && job.downloadUrl) {
+                completed = true;
+                setRenderProgress(100);
+                setRenderStage('Export completed successfully!');
+                const resObj: RenderResult = {
+                  blobUrl: job.downloadUrl,
+                  fileName: job.fileName || `${short.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_9x16.mp4`,
+                  fileSizeMb: job.fileSizeMb || 5.2,
+                  durationSeconds: short.duration || 30,
+                };
+                setRenderResult(resObj);
+                setIsRendering(false);
 
-                        recordExport({
-                          id: `exp_${Date.now()}`,
-                          shortId: short.id,
-                          title: short.title,
-                          resolution,
-                          fps: frameRate,
-                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                          downloadUrl: resObj.blobUrl,
-                        });
-                        return;
-                      } else if (job.status === 'failed') {
-                        break;
-                      }
-                    }
-                  }
-                } catch {
-                  // retry
-                }
+                recordExport({
+                  id: `exp_${Date.now()}`,
+                  shortId: short.id,
+                  title: short.title,
+                  resolution,
+                  fps: frameRate,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  downloadUrl: resObj.blobUrl,
+                });
+                return;
+              } else if (job.status === 'failed') {
+                throw new Error(job.error || 'Server FFmpeg export failed');
               }
-            } else if (expData.downloadUrl) {
-              setRenderProgress(100);
-              setRenderStage('FFmpeg render complete!');
-              const resObj = {
-                blobUrl: expData.downloadUrl,
-                fileName: expData.fileName || `${short.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_9x16.mp4`,
-                fileSizeMb: expData.fileSizeMb || 4.8,
-                durationSeconds: short.duration || 30,
-              };
-              setRenderResult(resObj);
-              setIsRendering(false);
-
-              recordExport({
-                id: `exp_${Date.now()}`,
-                shortId: short.id,
-                title: short.title,
-                resolution,
-                fps: frameRate,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                downloadUrl: resObj.blobUrl,
-              });
-              return;
             }
           }
-        } catch (srvErr) {
-          console.warn('Server FFmpeg render skipped, falling back to client canvas encoder:', srvErr);
+        } catch (pollErr: any) {
+          if (completed) return;
+          if (pollErr.message && !pollErr.message.includes('fetch')) {
+            throw pollErr;
+          }
         }
       }
 
-      const settings: ExportSettings = {
-        resolution,
-        fps: frameRate,
-        format: 'mp4',
-        quality,
-        socialPreset: 'shorts',
-        includeWatermark: brandKit.enabled,
-        burnCaptions: true,
-      };
-
-      const result = await renderShortVideo(
-        null,
-        short,
-        captionConfig,
-        brandKit,
-        settings,
-        (progress, stage) => {
-          setRenderProgress(progress);
-          setRenderStage(stage);
-        }
-      );
-
-      setRenderResult(result);
-      setIsRendering(false);
-      setRenderProgress(100);
-
-      // Record in persistent storage
-      recordExport({
-        id: `exp_${Date.now()}`,
-        shortId: short.id,
-        title: short.title,
-        resolution,
-        fps: frameRate,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        downloadUrl: result.blobUrl,
-      });
+      if (!completed) {
+        throw new Error('Export render timed out on server. Please try again.');
+      }
     } catch (err: any) {
       console.error('Export failed:', err);
       setIsRendering(false);
       setRenderProgress(0);
-      setRenderError(err.message || 'Export rendering failed. Please check your media source and try again.');
+      setRenderError(err.message || 'Export rendering failed. Please verify media source and try again.');
       setRenderResult(null);
     }
   };
@@ -259,14 +251,65 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+          {/* Real Source Media Quality Diagnostics Banner */}
+          <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2 select-none">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-neutral-300 flex items-center gap-2">
+                <Tv className="w-4 h-4 text-cyan-400" />
+                Source Media Quality Analysis
+              </span>
+              {sourceQuality.loading ? (
+                <span className="text-[10px] text-neutral-400 animate-pulse">Probing streams...</span>
+              ) : sourceQuality.score ? (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                  sourceQuality.score.rating === 'POOR'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    : sourceQuality.score.rating === 'FAIR'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                }`}>
+                  {sourceQuality.score.overallScore}/100 • {sourceQuality.score.rating}
+                </span>
+              ) : null}
+            </div>
+
+            {sourceQuality.info && (
+              <div className="grid grid-cols-4 gap-2 text-center text-[10px] text-neutral-400 font-mono bg-neutral-900/60 p-2 rounded-lg">
+                <div>
+                  <div className="text-neutral-500">RESOLUTION</div>
+                  <div className="text-white font-bold">{sourceQuality.info.sourceWidth}×{sourceQuality.info.sourceHeight}</div>
+                </div>
+                <div>
+                  <div className="text-neutral-500">FRAME RATE</div>
+                  <div className="text-white font-bold">{sourceQuality.info.sourceFPS} FPS</div>
+                </div>
+                <div>
+                  <div className="text-neutral-500">BITRATE</div>
+                  <div className="text-white font-bold">{(sourceQuality.info.sourceBitrate / 1000000).toFixed(1)} Mbps</div>
+                </div>
+                <div>
+                  <div className="text-neutral-500">COLOR SPACE</div>
+                  <div className="text-white font-bold">{sourceQuality.info.sourceColorSpace?.toUpperCase() || 'BT.709'}</div>
+                </div>
+              </div>
+            )}
+
+            {sourceQuality.score?.warningMessage && (
+              <div className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{sourceQuality.score.warningMessage}</span>
+              </div>
+            )}
+          </div>
+
           {/* Resolution Options */}
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-              Resolution
+              Target Output Format
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { id: '1080x1920' as VideoResolution, label: '1080p FHD', desc: '9:16 Vertical', icon: Smartphone },
+                { id: '1080x1920' as VideoResolution, label: '1080×1920', desc: '9:16 Vertical Short', icon: Smartphone },
                 { id: '2160x3840' as VideoResolution, label: '4K Ultra', desc: '9:16 Master', icon: Sparkles },
                 { id: '1080x1080' as VideoResolution, label: 'Square', desc: '1:1 Feed', icon: Square },
                 { id: '1920x1080' as VideoResolution, label: '1080p HD', desc: '16:9 Landscape', icon: Tv },
@@ -291,11 +334,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
-          {/* Frame Rate & Quality */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Frame Rate & Production Quality Modes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Frame Rate
+                Frame Rate (FPS)
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {[30, 60].map((fps) => (
@@ -308,7 +351,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         : 'bg-neutral-950/60 border-neutral-800 text-neutral-400'
                     }`}
                   >
-                    {fps} FPS {fps === 60 ? '⚡ Smooth' : ''}
+                    {fps} FPS {fps === 60 ? '⚡ Smooth' : '(Source)'}
                   </button>
                 ))}
               </div>
@@ -316,20 +359,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Quality Preset
+                Quality Mode (CRF)
               </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(['standard', 'high', 'ultra'] as const).map((q) => (
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { id: 'HIGH' as const, label: 'High', desc: 'CRF 16' },
+                  { id: 'MASTER' as const, label: 'Master', desc: 'CRF 14' },
+                  { id: 'BALANCED' as const, label: 'Balanced', desc: 'CRF 19' },
+                  { id: 'FAST' as const, label: 'Fast', desc: 'CRF 23' },
+                ].map((q) => (
                   <button
-                    key={q}
-                    onClick={() => setQuality(q)}
-                    className={`p-2 rounded-xl border text-center text-[11px] font-bold capitalize transition-all ${
-                      quality === q
+                    key={q.id}
+                    onClick={() => setQualityMode(q.id)}
+                    className={`p-2 rounded-xl border text-center text-xs font-bold transition-all ${
+                      qualityMode === q.id
                         ? 'bg-amber-400/10 border-amber-400 text-amber-300'
                         : 'bg-neutral-950/60 border-neutral-800 text-neutral-400'
                     }`}
                   >
-                    {q}
+                    <div>{q.label}</div>
+                    <div className="text-[9px] font-mono opacity-60">{q.desc}</div>
                   </button>
                 ))}
               </div>
