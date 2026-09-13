@@ -531,6 +531,31 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     pushState(updated);
   };
 
+  // Update Short candidate and persist to project
+  const handleUpdateShort = (updatedShort: ShortCandidate) => {
+    pushState(updatedShort);
+    if (project) {
+      const updatedShorts = (project.shorts || []).map((s) => (s.id === updatedShort.id ? updatedShort : s));
+      const updatedProject = { ...project, shorts: updatedShorts };
+      fetch(`/api/projects/${project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: updatedProject }),
+      }).catch(console.error);
+    }
+  };
+
+  // Update specific B-roll suggestion properties
+  const handleUpdateBRoll = (id: string, updates: Partial<BRollSuggestion>) => {
+    const updated = {
+      ...currentShort,
+      brollSuggestions: (currentShort.brollSuggestions || []).map((br) =>
+        br.id === id ? { ...br, ...updates } : br
+      ),
+    };
+    handleUpdateShort(updated);
+  };
+
   // Update Caption Segment Text
   const handleUpdateCaptionText = (id: string, text: string) => {
     const updated = {
@@ -1344,6 +1369,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               onApprovalModeChange={setApprovalMode}
               onRegenerateElements={handleRegenerateElements}
               isRegeneratingElements={isRegeneratingElements}
+              onUpdateShort={handleUpdateShort}
+              onUpdateBRoll={handleUpdateBRoll}
             />
           )}
         </div>

@@ -238,9 +238,11 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   );
 
   // Find active B-Roll
-  const activeBRoll: BRollSuggestion | undefined = short.brollSuggestions?.find(
-    (br) => br.enabled && currentTime >= br.timestamp && currentTime <= br.timestamp + br.duration
-  );
+  const activeBRoll: BRollSuggestion | undefined = short.brollSuggestions?.find((br) => {
+    const bStart = br.timestamp ?? (br as any).start ?? 0;
+    const bDur = br.duration ?? (((br as any).end ?? bStart + 3) - bStart);
+    return br.enabled !== false && currentTime >= bStart && currentTime <= bStart + bDur;
+  });
 
   // Aspect ratio styling
   const getAspectRatioClasses = () => {
@@ -427,26 +429,37 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
 
         {/* B-Roll Cutaway Overlay if active */}
         {activeBRoll && (
-          <div className="absolute inset-0 z-15 transition-opacity duration-300 animate-fade-in">
-            {activeBRoll.videoUrl ? (
+          <div className="absolute inset-0 z-15 transition-opacity duration-300 animate-fade-in overflow-hidden">
+            {(activeBRoll.videoUrl || (activeBRoll as any).assetUrl?.endsWith('.mp4')) ? (
               <video
-                src={activeBRoll.videoUrl}
+                src={activeBRoll.videoUrl || (activeBRoll as any).assetUrl}
                 autoPlay
                 loop
-                muted
+                muted={!activeBRoll.audioEnabled}
                 playsInline
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-1000 ease-out"
+                style={{
+                  transform: activeBRoll.crop?.motion ? 'scale(1.04)' : 'scale(1.0)',
+                }}
               />
             ) : (
               <img
-                src={activeBRoll.imageUrl}
+                src={activeBRoll.imageUrl || (activeBRoll as any).assetUrl}
                 alt={activeBRoll.concept}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-1000 ease-out"
+                style={{
+                  transform: activeBRoll.crop?.motion ? 'scale(1.04)' : 'scale(1.0)',
+                }}
               />
             )}
-            <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-amber-300 font-semibold border border-amber-400/30 flex items-center gap-1.5 shadow-md">
+            <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-amber-300 font-semibold border border-amber-400/30 flex items-center gap-1.5 shadow-md">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-              B-Roll Cutaway: {activeBRoll.concept}
+              <span>B-Roll: {activeBRoll.concept}</span>
+              {activeBRoll.shotType && (
+                <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[8px] font-mono border border-amber-500/30 ml-1">
+                  {activeBRoll.shotType}
+                </span>
+              )}
             </div>
           </div>
         )}

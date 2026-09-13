@@ -38,8 +38,24 @@ import {
 } from './src/utils/sfxCatalog';
 import { sfxGenerator } from './src/utils/sfxGenerationProvider';
 import { SFXAsset, SFXMarker } from './src/types';
+import {
+  analyzeVideoSemantics,
+  detectBrollOpportunities,
+  extractDynamicVideoTopics,
+} from './src/utils/videoSemanticAnalyzer';
+import { OfficialPexelsProvider } from './src/utils/pexelsProvider';
+import { AuthorizedPinterestProvider } from './src/utils/pinterestProvider';
+import {
+  selectBestBrollEvents,
+  buildCanonicalRenderPlan,
+  executeAIPolish,
+  scoreBrollCandidate,
+} from './src/utils/brollRankingEngine';
 
 dotenv.config();
+
+const pexelsProvider = new OfficialPexelsProvider();
+const pinterestProvider = new AuthorizedPinterestProvider();
 
 const ffmpegPath: string = (ffmpegStatic as unknown as string) || 'ffmpeg';
 const ffprobePath: string = (ffprobeStatic && ffprobeStatic.path) ? ffprobeStatic.path : 'ffprobe';
@@ -2198,15 +2214,31 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
 
         let ffmpegArgs: string[];
 
-        // Check for B-roll item with verified asset
-        const brollItem = (short.brollSuggestions || []).find((b: any) => b.enabled !== false && (b.assetUrl || b.imageUrl || b.videoUrl));
-        let brollLocalPath = '';
-        if (brollItem) {
-          const rawBrollUrl = brollItem.assetUrl || brollItem.imageUrl || brollItem.videoUrl;
-          const cleanBroll = rawBrollUrl.replace(/^\/public\//, '/');
-          const testBrollPath = path.join(process.cwd(), 'public', cleanBroll);
-          if (fs.existsSync(testBrollPath)) {
-            brollLocalPath = testBrollPath;
+        // Collect all verified B-roll items for multi-track rendering (Sections 21, 29)
+        const validBrollList: { path: string; start: number; duration: number; crop?: any }[] = [];
+        const candidateBrolls = (short.brollSuggestions || []).filter(
+          (b: any) => b.enabled !== false && (b.assetUrl || b.imageUrl || b.videoUrl)
+        );
+
+        for (const broll of candidateBrolls) {
+          const rawUrl = broll.assetUrl || broll.imageUrl || broll.videoUrl;
+          let bPath = '';
+          if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+            const cleanUrl = rawUrl.replace(/^\/public\//, '/');
+            const p = path.join(process.cwd(), 'public', cleanUrl);
+            if (fs.existsSync(p)) bPath = p;
+          }
+          if (bPath && fs.existsSync(bPath)) {
+            const bStart = Math.max(0, broll.timestamp ?? broll.start ?? 0);
+            const bDur = Math.max(0.8, broll.duration ?? ((broll.end ?? bStart + 3) - bStart));
+            if (bStart < durSec) {
+              validBrollList.push({
+                path: bPath,
+                start: bStart,
+                duration: bDur,
+                crop: broll.crop,
+              });
+            }
           }
         }
 
@@ -2302,19 +2334,18 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
           let filterChain = `[0:v]${baseVf}[v0]`;
           let curVPad = '[v0]';
 
-          // Overlay B-roll if specified
-          if (brollLocalPath && brollItem) {
-            const bStart = Math.max(0, brollItem.timestamp || 0);
-            const bDur = Math.max(1, brollItem.duration || 5);
-            const bEnd = bStart + bDur;
+          // Overlay all B-roll clips sequentially according to RenderPlan (Sections 21, 29)
+          for (let bIdx = 0; bIdx < validBrollList.length; bIdx++) {
+            const bItem = validBrollList[bIdx];
+            const bEnd = Math.min(durSec, bItem.start + bItem.duration);
             inputFiles.push(
               '-ss', '0',
-              '-t', String(bDur),
-              '-i', brollLocalPath
+              '-t', String(bItem.duration),
+              '-i', bItem.path
             );
-            filterChain += `;[${nextInputIndex}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[vbroll]`;
-            filterChain += `;${curVPad}[vbroll]overlay=0:0:enable='between(t,${bStart},${bEnd})'[vbrolled]`;
-            curVPad = '[vbrolled]';
+            filterChain += `;[${nextInputIndex}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[vbroll_${bIdx}]`;
+            filterChain += `;${curVPad}[vbroll_${bIdx}]overlay=0:0:enable='between(t,${bItem.start},${bEnd})'[vbrolled_${bIdx}]`;
+            curVPad = `[vbrolled_${bIdx}]`;
             nextInputIndex++;
           }
 
@@ -2817,11 +2848,272 @@ app.post('/api/sfx/favorite', (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// PROFESSIONAL AI SEMANTIC B-ROLL ENGINE ENDPOINTS
+// ============================================================================
+
+// GET: Check stock media providers status (Pexels & Pinterest)
+app.get('/api/broll/providers/status', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    pexels: {
+      configured: Boolean(process.env.PEXELS_API_KEY),
+      provider: 'Official Pexels Video API',
+    },
+    pinterest: pinterestProvider.getStatus(),
+  });
+});
+
+// GET: Search B-roll videos & photos (Pexels with caching & quality filter)
+app.get('/api/broll/search', async (req: Request, res: Response) => {
+  try {
+    const query = String(req.query.query || '').trim();
+    const orientation = (req.query.orientation as any) || 'landscape';
+    const page = parseInt(String(req.query.page || '1'), 10);
+    const per_page = parseInt(String(req.query.per_page || '10'), 10);
+
+    if (!query) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const videos = await pexelsProvider.searchVideos({
+      query,
+      orientation,
+      page,
+      per_page,
+    });
+
+    const pinterestStatus = pinterestProvider.getStatus();
+
+    res.json({
+      success: true,
+      query,
+      orientation,
+      page,
+      items: videos,
+      pinterestStatus,
+    });
+  } catch (err: any) {
+    console.error('Error in B-roll search:', err);
+    res.status(500).json({ error: 'Failed to search B-roll stock media' });
+  }
+});
+
+// POST: Full video semantic analysis & dynamic topic discovery
+app.post('/api/broll/analyze', async (req: Request, res: Response) => {
+  try {
+    const { projectId, shortId, transcript, duration, captions } = req.body;
+
+    let targetTranscript = transcript || '';
+    let targetDuration = duration || 30;
+    let targetCaptions = captions || [];
+
+    if (projectId) {
+      const project = projectsStore.get(projectId);
+      if (project) {
+        if (project.transcript) targetTranscript = project.transcript;
+        if (project.duration) targetDuration = project.duration;
+        if (shortId) {
+          const short = (project.shorts || []).find((s: any) => s.id === shortId);
+          if (short) {
+            targetDuration = short.duration || (short.endTime - short.startTime) || 30;
+            if (short.captions) targetCaptions = short.captions;
+            if (!targetTranscript && short.captions) {
+              targetTranscript = short.captions.map((c: any) => c.text).join(' ');
+            }
+          }
+        }
+      }
+    }
+
+    const analysis = analyzeVideoSemantics(targetDuration, targetTranscript, targetCaptions);
+    res.json({ success: true, analysis });
+  } catch (err: any) {
+    console.error('Error analyzing video semantics:', err);
+    res.status(500).json({ error: 'Failed to analyze video semantics' });
+  }
+});
+
+// POST: Generate professional B-roll RenderPlan
+app.post('/api/broll/generate-plan', async (req: Request, res: Response) => {
+  try {
+    const { projectId, shortId } = req.body;
+    if (!projectId || !shortId) {
+      return res.status(400).json({ error: 'projectId and shortId are required' });
+    }
+
+    const project = projectsStore.get(projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const short = (project.shorts || []).find((s: any) => s.id === shortId);
+    if (!short) return res.status(404).json({ error: 'Short not found' });
+
+    const duration = short.duration || (short.endTime - short.startTime) || 30;
+    const captions = short.captions || [];
+    const transcriptText = captions.map((c: any) => c.text).join(' ');
+
+    const analysis = analyzeVideoSemantics(duration, transcriptText, captions);
+    const opportunities = analysis.brollOpportunities;
+
+    const candidatesByOpp = new Map<string, any[]>();
+    for (const opp of opportunities) {
+      const candidates = await pexelsProvider.searchMultipleQueries(opp.searchQueries);
+      candidatesByOpp.set(opp.searchQueries[0], candidates);
+    }
+
+    const brollEvents = selectBestBrollEvents(opportunities, candidatesByOpp, duration);
+    const renderPlan = buildCanonicalRenderPlan(
+      projectId,
+      shortId,
+      duration,
+      brollEvents,
+      captions,
+      short.sfxMarkers || []
+    );
+
+    // Update short's brollSuggestions to match canonical BrollEvents
+    short.brollSuggestions = brollEvents.map((ev) => ({
+      id: ev.id,
+      timestamp: ev.start,
+      duration: Number((ev.end - ev.start).toFixed(2)),
+      concept: ev.query,
+      imageUrl: ev.assetUrl,
+      videoUrl: ev.assetUrl.endsWith('.mp4') ? ev.assetUrl : undefined,
+      keyword: ev.assetId,
+      enabled: true,
+      reason: ev.reason,
+      triggerText: ev.transcriptContext,
+      confidence: ev.semanticScore,
+      purpose: ev.purpose,
+      shotType: ev.shotType,
+      topic: ev.topic,
+      searchQueries: [ev.query],
+      semanticScore: ev.semanticScore,
+      visualScore: ev.visualScore,
+      continuityScore: ev.continuityScore,
+      crop: ev.crop,
+      source: ev.source,
+      assetId: ev.assetId,
+      assetUrl: ev.assetUrl,
+      thumbnailUrl: ev.thumbnailUrl,
+      transcriptContext: ev.transcriptContext,
+      audioEnabled: ev.audioEnabled,
+      audioVolume: ev.audioVolume,
+      approved: ev.approved,
+    }));
+
+    projectsStore.set(projectId, project);
+    res.json({ success: true, renderPlan, short, analysis });
+  } catch (err: any) {
+    console.error('Error generating B-roll plan:', err);
+    res.status(500).json({ error: 'Failed to generate B-roll plan' });
+  }
+});
+
+// POST: Execute AI POLISH workflow (Requirement 24)
+app.post('/api/broll/ai-polish', async (req: Request, res: Response) => {
+  try {
+    const { projectId, shortId } = req.body;
+    if (!projectId || !shortId) {
+      return res.status(400).json({ error: 'projectId and shortId are required' });
+    }
+
+    const project = projectsStore.get(projectId);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const short = (project.shorts || []).find((s: any) => s.id === shortId);
+    if (!short) return res.status(404).json({ error: 'Short not found' });
+
+    const duration = short.duration || (short.endTime - short.startTime) || 30;
+    const captions = short.captions || [];
+    const transcriptText = captions.map((c: any) => c.text).join(' ');
+
+    const analysis = analyzeVideoSemantics(duration, transcriptText, captions);
+    const opportunities = analysis.brollOpportunities;
+
+    const candidatesByOpp = new Map<string, any[]>();
+    for (const opp of opportunities) {
+      const candidates = await pexelsProvider.searchMultipleQueries(opp.searchQueries);
+      candidatesByOpp.set(opp.searchQueries[0], candidates);
+    }
+
+    // Convert existing brollSuggestions to BrollEvents
+    const currentEvents: any[] = (short.brollSuggestions || []).map((b: any) => ({
+      id: b.id,
+      start: b.timestamp ?? b.start ?? 0,
+      end: (b.timestamp ?? b.start ?? 0) + (b.duration ?? 3),
+      source: b.source || 'pexels',
+      assetId: b.assetId || b.keyword || b.id,
+      assetUrl: b.assetUrl || b.imageUrl || b.videoUrl,
+      thumbnailUrl: b.thumbnailUrl || b.imageUrl,
+      query: b.concept || b.query || 'broll',
+      transcriptContext: b.transcriptContext || b.triggerText || '',
+      reason: b.reason || 'Existing B-roll cutaway',
+      semanticScore: b.semanticScore ?? b.confidence ?? 0.85,
+      visualScore: b.visualScore ?? 0.88,
+      temporalScore: b.temporalScore ?? 0.90,
+      continuityScore: b.continuityScore ?? 0.88,
+      crop: b.crop || { x: 0, y: 0, width: 1080, height: 1920, type: 'center' },
+      opacity: 1.0,
+      audioEnabled: b.audioEnabled ?? false,
+      audioVolume: b.audioVolume ?? 0.08,
+      approved: true,
+      shotType: b.shotType || 'CONTEXT',
+      topic: b.topic || analysis.topics[0] || 'General Subject',
+      purpose: b.purpose || 'context',
+    }));
+
+    const polishResult = executeAIPolish(currentEvents, opportunities, candidatesByOpp, duration);
+
+    // Update short
+    short.brollSuggestions = polishResult.polishedEvents.map((ev) => ({
+      id: ev.id,
+      timestamp: ev.start,
+      duration: Number((ev.end - ev.start).toFixed(2)),
+      concept: ev.query,
+      imageUrl: ev.assetUrl,
+      videoUrl: ev.assetUrl.endsWith('.mp4') ? ev.assetUrl : undefined,
+      keyword: ev.assetId,
+      enabled: true,
+      reason: ev.reason,
+      triggerText: ev.transcriptContext,
+      confidence: ev.semanticScore,
+      purpose: ev.purpose,
+      shotType: ev.shotType,
+      topic: ev.topic,
+      searchQueries: [ev.query],
+      semanticScore: ev.semanticScore,
+      visualScore: ev.visualScore,
+      continuityScore: ev.continuityScore,
+      crop: ev.crop,
+      source: ev.source,
+      assetId: ev.assetId,
+      assetUrl: ev.assetUrl,
+      thumbnailUrl: ev.thumbnailUrl,
+      transcriptContext: ev.transcriptContext,
+      audioEnabled: ev.audioEnabled,
+      audioVolume: ev.audioVolume,
+      approved: ev.approved,
+    }));
+
+    projectsStore.set(projectId, project);
+    res.json({
+      success: true,
+      polishedEvents: polishResult.polishedEvents,
+      removedCount: polishResult.removedCount,
+      addedCount: polishResult.addedCount,
+      message: polishResult.message,
+      short,
+    });
+  } catch (err: any) {
+    console.error('Error executing AI Polish:', err);
+    res.status(500).json({ error: 'Failed to execute AI Polish' });
+  }
+});
+
 // POST: Regenerate Specific AI Elements (Captions, B-roll, SFX, VFX, or All) without duplicates
 app.post('/api/projects/:id/regenerate-elements', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { shortId, target = 'all', elementTypes, targetSfxId, approvalMode = 'auto_apply', stylePreset = 'bold' } = req.body;
+    const { shortId, target = 'all', elementTypes, targetSfxId, targetBrollId, approvalMode = 'auto_apply', stylePreset = 'bold' } = req.body;
     const project = projectsStore.get(id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const short = (project.shorts || []).find((s: any) => s.id === shortId) || project.shorts?.[0];
@@ -2854,6 +3146,33 @@ app.post('/api/projects/:id/regenerate-elements', async (req: Request, res: Resp
             audioUrl: variations[0].url,
             source: 'ai_generated',
             prompt: smartPrompt,
+          };
+        }
+      }
+      projectsStore.set(id, project);
+      return res.json({ success: true, short, project });
+    }
+
+    // Single B-Roll regeneration: replace selected B-roll only (Preserving captions, SFX, VFX, other B-roll)
+    if (target === 'broll' && targetBrollId) {
+      const idx = (short.brollSuggestions || []).findIndex((b: any) => b.id === targetBrollId);
+      if (idx !== -1) {
+        const targetMarker = short.brollSuggestions[idx];
+        const searchQ = targetMarker.concept || targetMarker.topic || targetMarker.keyword || 'technology';
+        const candidates = await pexelsProvider.searchVideos({ query: searchQ, per_page: 8 });
+        const alt = candidates.find((c) => c.url !== targetMarker.imageUrl && c.url !== targetMarker.assetUrl) || candidates[0];
+        if (alt) {
+          short.brollSuggestions[idx] = {
+            ...targetMarker,
+            concept: alt.queryMatched || targetMarker.concept,
+            imageUrl: alt.url,
+            assetUrl: alt.url,
+            videoUrl: alt.url.endsWith('.mp4') ? alt.url : undefined,
+            thumbnailUrl: alt.thumbnailUrl,
+            source: alt.provider,
+            assetId: alt.id,
+            reason: `Regenerated alternative visual reinforcing "${searchQ}" context.`,
+            confidence: 0.92,
           };
         }
       }

@@ -309,6 +309,22 @@ export interface BRollSuggestion {
   reason?: string;
   triggerText?: string;
   confidence?: number;
+  // Professional Semantic Engine metadata
+  purpose?: BrollPurpose;
+  shotType?: ShotType;
+  topic?: string;
+  searchQueries?: string[];
+  semanticScore?: number;
+  visualScore?: number;
+  continuityScore?: number;
+  crop?: CropPlan;
+  source?: 'pexels' | 'pinterest' | 'uploaded';
+  assetId?: string;
+  assetUrl?: string;
+  thumbnailUrl?: string;
+  transcriptContext?: string;
+  audioEnabled?: boolean;
+  audioVolume?: number;
 }
 
 export interface HookOption {
@@ -508,7 +524,24 @@ export interface BrollSuggestion {
   assetId?: string;
   assetUrl: string;
   imageUrl?: string;
+  videoUrl?: string;
   enabled?: boolean;
+  // Professional Semantic Engine metadata
+  purpose?: BrollPurpose;
+  shotType?: ShotType;
+  topic?: string;
+  searchQueries?: string[];
+  semanticScore?: number;
+  visualScore?: number;
+  temporalScore?: number;
+  continuityScore?: number;
+  crop?: CropPlan;
+  source?: 'pexels' | 'pinterest' | 'uploaded';
+  thumbnailUrl?: string;
+  transcriptContext?: string;
+  audioEnabled?: boolean;
+  audioVolume?: number;
+  approved?: boolean;
 }
 
 export interface SilenceRange {
@@ -725,3 +758,192 @@ export interface EditorProject {
   projectAnalysis?: ProjectAnalysis;
   language?: string | LanguageDetectionResult;
 }
+
+// ============================================================================
+// PROFESSIONAL AI SEMANTIC B-ROLL ENGINE MODELS & INTERFACES
+// ============================================================================
+
+export type BrollPurpose =
+  | 'context'
+  | 'explanation'
+  | 'visual_metaphor'
+  | 'location'
+  | 'technology'
+  | 'people'
+  | 'emotion'
+  | 'object'
+  | 'environment'
+  | 'transition'
+  | 'establishing'
+  | 'detail'
+  | 'emphasis';
+
+export type ShotType =
+  | 'ESTABLISHING'
+  | 'HUMAN'
+  | 'DETAIL'
+  | 'CONTEXT'
+  | 'CONCEPTUAL'
+  | 'HERO';
+
+export interface CropPlan {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: 'smart' | 'face-safe' | 'object-safe' | 'center';
+  motion?: {
+    startScale: number;
+    endScale: number;
+    easing: 'ease-in-out' | 'linear';
+  };
+}
+
+export interface BrollOpportunity {
+  start: number;
+  end: number;
+  transcriptContext: string;
+  visualContext: string;
+  topic: string;
+  purpose: BrollPurpose;
+  searchQueries: string[];
+  confidence: number;
+}
+
+export interface BrollEvent {
+  id: string;
+  start: number;
+  end: number;
+  source: 'pexels' | 'pinterest' | 'uploaded';
+  assetId: string;
+  assetUrl: string;
+  thumbnailUrl?: string;
+  query: string;
+  transcriptContext: string;
+  reason: string;
+  semanticScore: number;
+  visualScore: number;
+  temporalScore: number;
+  continuityScore: number;
+  crop: CropPlan;
+  opacity: number;
+  audioEnabled: boolean;
+  audioVolume: number;
+  approved: boolean;
+  shotType?: ShotType;
+  topic?: string;
+  purpose?: BrollPurpose;
+}
+
+export interface PersonAnalysis {
+  id: string;
+  label?: string;
+  position: 'center' | 'left' | 'right';
+  screenShareRatio?: number;
+  timeRanges: { start: number; end: number }[];
+}
+
+export interface EnergyPoint {
+  time: number;
+  energy: number; // 0 to 1
+  isPeak: boolean;
+}
+
+export interface ImportantMoment {
+  time: number;
+  importance: number; // 0 to 1
+  reason: string;
+  type: 'hook' | 'keypoint' | 'contrast' | 'summary' | 'climax';
+}
+
+export interface VideoSemanticAnalysis {
+  duration: number;
+  scenes: { start: number; end: number; description?: string; cameraMotion?: string }[];
+  transcript: string;
+  words: WordTiming[];
+  topics: string[];
+  entities: string[];
+  locations: string[];
+  people: PersonAnalysis[];
+  objects: string[];
+  visualThemes: string[];
+  emotionalTone: string[];
+  energyCurve: EnergyPoint[];
+  importantMoments: ImportantMoment[];
+  brollOpportunities: BrollOpportunity[];
+}
+
+export interface StockMediaFile {
+  id: number;
+  quality: string;
+  file_type: string;
+  width: number;
+  height: number;
+  fps: number;
+  link: string;
+}
+
+export interface StockVideo {
+  id: string;
+  provider: 'pexels' | 'pinterest' | 'uploaded';
+  width: number;
+  height: number;
+  duration: number;
+  url: string;
+  thumbnailUrl: string;
+  videoFiles: StockMediaFile[];
+  tags?: string[];
+  author?: string;
+  license?: string;
+  queryMatched?: string;
+}
+
+export interface PexelsSearchParams {
+  query: string;
+  orientation?: 'portrait' | 'landscape' | 'square';
+  size?: 'large' | 'medium' | 'small';
+  page?: number;
+  per_page?: number;
+}
+
+export interface PexelsProvider {
+  searchVideos(params: PexelsSearchParams): Promise<StockVideo[]>;
+}
+
+export interface SequenceContinuityResult {
+  score: number;
+  previousShotMatch: number;
+  nextShotMatch: number;
+  colorConsistency: number;
+  motionFlow: number;
+  isAcceptable: boolean;
+  critique?: string;
+}
+
+export interface BrollCandidateScore {
+  semanticSimilarity: number;
+  transcriptRelevance: number;
+  visualSimilarity: number;
+  topicMatch: number;
+  emotionalMatch: number;
+  orientationMatch: number;
+  qualityScore: number;
+  temporalFit: number;
+  noveltyScore: number;
+  finalScore: number;
+  passed: boolean;
+}
+
+export interface RenderPlan {
+  projectId: string;
+  shortId: string;
+  duration: number;
+  brollEvents: BrollEvent[];
+  captions: CaptionSegment[];
+  sfxMarkers: SFXMarker[];
+  audioTrack: {
+    originalVolume: number;
+    brollDuckingDb: number;
+  };
+}
+

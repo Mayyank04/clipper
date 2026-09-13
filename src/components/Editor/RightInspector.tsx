@@ -99,6 +99,8 @@ interface RightInspectorProps {
   onApprovalModeChange?: (mode: ApprovalMode) => void;
   onRegenerateElements?: (type: 'all' | 'captions' | 'broll' | 'sfx' | 'vfx') => void;
   isRegeneratingElements?: boolean;
+  onUpdateShort?: (short: ShortCandidate) => void;
+  onUpdateBRoll?: (id: string, updates: Partial<BRollSuggestion>) => void;
 }
 
 const VERIFIED_SFX_CATALOG: { category: SFXCategory; name: string; desc: string }[] = [
@@ -197,6 +199,8 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   onApprovalModeChange,
   onRegenerateElements,
   isRegeneratingElements = false,
+  onUpdateShort,
+  onUpdateBRoll,
 }) => {
   const [copiedTitle, setCopiedTitle] = useState<boolean>(false);
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
@@ -209,6 +213,23 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [autoDucking, setAutoDucking] = useState<boolean>(true);
   const [selectedMusic, setSelectedMusic] = useState<string>('hype_trap');
   const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
+
+  // B-Roll Studio State (Professional AI Semantic Engine)
+  const [brollSubTab, setBrollSubTab] = useState<'timeline' | 'search' | 'upload'>('timeline');
+  const [selectedBrollId, setSelectedBrollId] = useState<string | null>(null);
+  const [isPolishingBroll, setIsPolishingBroll] = useState<boolean>(false);
+  const [polishMessage, setPolishMessage] = useState<string | null>(null);
+  const [isRegeneratingBrollId, setIsRegeneratingBrollId] = useState<string | null>(null);
+
+  // Stock search state
+  const [brollSearchQuery, setBrollSearchQuery] = useState<string>('');
+  const [brollOrientation, setBrollOrientation] = useState<'landscape' | 'portrait'>('landscape');
+  const [isSearchingBroll, setIsSearchingBroll] = useState<boolean>(false);
+  const [stockResults, setStockResults] = useState<any[]>([]);
+  const [pinterestStatus, setPinterestStatus] = useState<{ available: boolean; message: string }>({
+    available: false,
+    message: 'Pinterest integration unavailable. Connect Pinterest API to enable Pinterest results.',
+  });
 
   // SFX Studio State
   const [sfxSubTab, setSfxSubTab] = useState<'catalog' | 'generator' | 'active'>('catalog');
@@ -464,6 +485,101 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     if (file) {
       const url = URL.createObjectURL(file);
       onAddBRollAtCurrentTime(file.name.replace(/\.[^/.]+$/, ''), url);
+    }
+  };
+
+  const handleAIPolish = async () => {
+    if (!short.projectId || !short.id) return;
+    setIsPolishingBroll(true);
+    setPolishMessage(null);
+    try {
+      const res = await fetch('/api/broll/ai-polish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: short.projectId, shortId: short.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPolishMessage(data.message || 'AI Polish complete!');
+        if (data.short && onUpdateShort) {
+          onUpdateShort(data.short);
+        }
+      }
+    } catch (err) {
+      console.error('Error in AI Polish:', err);
+    } finally {
+      setIsPolishingBroll(false);
+    }
+  };
+
+  const handleRegenerateSingleBroll = async (brollId: string) => {
+    if (!short.projectId || !short.id) return;
+    setIsRegeneratingBrollId(brollId);
+    try {
+      const res = await fetch(`/api/projects/${short.projectId}/regenerate-elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortId: short.id,
+          target: 'broll',
+          targetBrollId: brollId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.short && onUpdateShort) {
+        onUpdateShort(data.short);
+      }
+    } catch (err) {
+      console.error('Error regenerating single B-roll:', err);
+    } finally {
+      setIsRegeneratingBrollId(null);
+    }
+  };
+
+  const handleSearchStock = async (queryText?: string) => {
+    const q = queryText || brollSearchQuery || short.title || 'technology';
+    setIsSearchingBroll(true);
+    try {
+      const res = await fetch(`/api/broll/search?query=${encodeURIComponent(q)}&orientation=${brollOrientation}`);
+      const data = await res.json();
+      if (data.success) {
+        setStockResults(data.items || []);
+        if (data.pinterestStatus) {
+          setPinterestStatus(data.pinterestStatus);
+        }
+      }
+    } catch (err) {
+      console.error('Error searching stock:', err);
+    } finally {
+      setIsSearchingBroll(false);
+    }
+  };
+
+  const handleUpdateBrollCrop = (brollId: string, cropType: 'center' | 'smart' | 'face-safe' | 'object-safe') => {
+    if (onUpdateBRoll) {
+      onUpdateBRoll(brollId, {
+        crop: {
+          x: 0,
+          y: 0,
+          width: 1080,
+          height: 1920,
+          type: cropType,
+          motion: { startScale: 1.0, endScale: 1.04, easing: 'ease-in-out' },
+        },
+      });
+    }
+  };
+
+  const handleToggleBrollMotion = (brollId: string, hasMotion: boolean) => {
+    if (onUpdateBRoll) {
+      const currentCue = (short.brollSuggestions || []).find((b) => b.id === brollId);
+      const prevCrop = currentCue?.crop || { x: 0, y: 0, width: 1080, height: 1920, type: 'center' };
+      onUpdateBRoll(brollId, {
+        crop: {
+          ...prevCrop,
+          motion: hasMotion ? { startScale: 1.0, endScale: 1.04, easing: 'ease-in-out' } : undefined,
+        },
+      });
     }
   };
 
@@ -1853,125 +1969,457 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           </div>
         )}
 
-        {/* TAB 5: B-ROLL OVERLAYS */}
+        {/* TAB 5: PROFESSIONAL AI B-ROLL STUDIO */}
         {activeTab === 'broll' && (
-          <div className="space-y-5 animate-fade-in">
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">Content-Aware AI B-Roll</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Visual cutaways semantically aligned to spoken topics</p>
+          <div className="space-y-4 animate-fade-in">
+            {/* Header with AI POLISH Action */}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                  <Film className="w-4 h-4 text-amber-400" />
+                  <span>AI Semantic B-Roll Studio</span>
+                </h3>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Transcript-driven cutaways with 9:16 smart reframing
+                </p>
+              </div>
+
+              {/* AI POLISH BUTTON (Requirement 24) */}
+              <button
+                onClick={handleAIPolish}
+                disabled={isPolishingBroll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                title="Automatically analyze, prune weak visuals, fill gaps, and balance 60-75% original footage"
+              >
+                {isPolishingBroll ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                )}
+                <span>{isPolishingBroll ? 'Polishing...' : 'AI Polish'}</span>
+              </button>
             </div>
 
-            {/* Custom Upload or Add */}
-            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2.5">
-              <div className="text-xs font-bold text-neutral-300">Add Custom B-Roll Asset</div>
-              <div className="flex items-center gap-2">
-                <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-neutral-700 hover:border-amber-400 text-xs text-neutral-300 hover:text-white cursor-pointer transition-colors">
-                  <Upload className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Upload Image File</span>
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={handleUploadCustomBRoll}
-                    className="hidden"
-                  />
-                </label>
+            {/* AI Polish Result Feedback */}
+            {polishMessage && (
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-start gap-2 text-xs text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="flex-1 leading-snug">{polishMessage}</div>
+                <button
+                  onClick={() => setPolishMessage(null)}
+                  className="text-neutral-400 hover:text-white cursor-pointer"
+                >
+                  ×
+                </button>
               </div>
+            )}
+
+            {/* Sub-tab Navigation */}
+            <div className="flex items-center gap-1 p-1 bg-neutral-950 rounded-xl border border-neutral-800 text-xs">
+              <button
+                onClick={() => {
+                  setBrollSubTab('timeline');
+                  setSelectedBrollId(null);
+                }}
+                className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-colors cursor-pointer ${
+                  brollSubTab === 'timeline'
+                    ? 'bg-neutral-800 text-white shadow'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                Timeline ({short.brollSuggestions?.length || 0})
+              </button>
+              <button
+                onClick={() => {
+                  setBrollSubTab('search');
+                  if (stockResults.length === 0) {
+                    handleSearchStock();
+                  }
+                }}
+                className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-colors cursor-pointer ${
+                  brollSubTab === 'search'
+                    ? 'bg-neutral-800 text-white shadow'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                Stock Search
+              </button>
+              <button
+                onClick={() => setBrollSubTab('upload')}
+                className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-center transition-colors cursor-pointer ${
+                  brollSubTab === 'upload'
+                    ? 'bg-neutral-800 text-white shadow'
+                    : 'text-neutral-400 hover:text-neutral-200'
+                }`}
+              >
+                Upload
+              </button>
             </div>
 
-            {/* Pre-packaged Asset Catalog */}
-            <div className="space-y-2">
-              <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                Verified Local Assets
-              </div>
-              <div className="space-y-1.5">
-                {VERIFIED_BROLL_ASSETS.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800 flex items-center gap-3"
-                  >
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0 border border-neutral-700">
-                      <img src={item.url} alt={item.concept} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-white truncate">{item.concept}</div>
-                      <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400">
-                        {item.tag}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onAddBRollAtCurrentTime(item.concept, item.url)}
-                      className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Place</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* SUB-TAB 1: TIMELINE CUES & INSPECTOR */}
+            {brollSubTab === 'timeline' && (
+              <div className="space-y-3">
+                {/* Active Clip Inspector (Requirement 23) */}
+                {selectedBrollId ? (() => {
+                  const selectedCue = (short.brollSuggestions || []).find((b) => b.id === selectedBrollId);
+                  if (!selectedCue) return null;
 
-            {/* Active Short B-Roll List with justifications */}
-            {short.brollSuggestions && short.brollSuggestions.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-neutral-800">
-                <div className="flex items-center justify-between text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                  <span>Timeline B-Roll Overlays</span>
-                  <span className="text-amber-400 text-[10px]">{short.brollSuggestions.length} items</span>
-                </div>
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {short.brollSuggestions.map((br) => (
-                    <div
-                      key={br.id}
-                      className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 transition-colors space-y-1.5"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={br.imageUrl || (br as any).assetUrl}
-                          alt={br.concept}
-                          onClick={() => onSeekToTime?.(br.timestamp)}
-                          className="w-12 h-12 rounded object-cover cursor-pointer hover:opacity-80 border border-neutral-800"
-                        />
-                        <div
-                          className="flex-1 min-w-0 cursor-pointer"
-                          onClick={() => onSeekToTime?.(br.timestamp)}
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-700/80 space-y-3 animate-fade-in shadow-xl">
+                      {/* Top Bar */}
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => setSelectedBrollId(null)}
+                          className="text-[11px] font-bold text-neutral-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
                         >
-                          <div className="text-xs font-bold text-white truncate">{br.concept}</div>
-                          <div className="text-[10px] text-neutral-400 font-mono">
-                            {br.timestamp.toFixed(1)}s - {(br.timestamp + br.duration).toFixed(1)}s ({br.duration}s)
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={br.enabled}
-                            onChange={() => onToggleBRoll(br.id)}
-                            className="w-4 h-4 accent-amber-400 cursor-pointer"
-                            title="Toggle Overlay"
-                          />
-                          {onDeleteBRoll && (
-                            <button
-                              onClick={() => onDeleteBRoll(br.id)}
-                              className="text-neutral-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
-                              title="Delete B-Roll"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          ← All Cues
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {selectedCue.shotType && (
+                            <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {selectedCue.shotType}
+                            </span>
                           )}
+                          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {selectedCue.source || 'Pexels'}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Justification details */}
-                      <div className="text-[11px] text-neutral-400 bg-neutral-900/60 p-1.5 rounded border border-neutral-800/60 flex items-center justify-between gap-2">
-                        <span className="truncate">
-                          <strong className="text-neutral-300">Keyword:</strong> {br.triggerText ? `"${br.triggerText}"` : br.reason || 'Thematic match'}
+                      {/* Thumbnail with 9:16 Aspect Ratio framing */}
+                      <div className="relative rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 aspect-[9/16] max-h-48 mx-auto flex items-center justify-center">
+                        <img
+                          src={selectedCue.imageUrl || (selectedCue as any).assetUrl}
+                          alt={selectedCue.concept}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-2 left-2 bg-black/80 backdrop-blur px-2 py-0.5 rounded text-[10px] text-white font-mono">
+                          {selectedCue.timestamp.toFixed(1)}s - {(selectedCue.timestamp + selectedCue.duration).toFixed(1)}s ({selectedCue.duration}s)
+                        </div>
+                      </div>
+
+                      {/* Concept Title */}
+                      <div>
+                        <div className="text-xs font-bold text-white leading-snug">{selectedCue.concept}</div>
+                        {selectedCue.topic && (
+                          <div className="text-[10px] text-amber-400 font-semibold mt-0.5">
+                            Topic: {selectedCue.topic}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Transcript Context */}
+                      <div className="p-2 rounded-xl bg-neutral-900/80 border border-neutral-800 space-y-1">
+                        <div className="text-[10px] uppercase font-bold text-neutral-400">Narration Context</div>
+                        <div className="text-xs text-neutral-200 italic leading-relaxed">
+                          "{selectedCue.transcriptContext || selectedCue.triggerText || 'Dialogue segment'}"
+                        </div>
+                      </div>
+
+                      {/* Why this clip? (Requirement 11) */}
+                      <div className="p-2 rounded-xl bg-neutral-900/80 border border-neutral-800 space-y-1">
+                        <div className="text-[10px] uppercase font-bold text-neutral-400 flex items-center gap-1">
+                          <Info className="w-3 h-3 text-amber-400" />
+                          <span>Why this clip?</span>
+                        </div>
+                        <div className="text-xs text-neutral-300 leading-relaxed">
+                          {selectedCue.reason || 'Selected to visually reinforce narration topic.'}
+                        </div>
+                      </div>
+
+                      {/* Relevance Scores Breakdown (Requirement 8) */}
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="p-2 rounded-lg bg-neutral-900 border border-neutral-800">
+                          <div className="text-[9px] text-neutral-400">Semantic</div>
+                          <div className="text-xs font-bold text-emerald-400">
+                            {Math.round((selectedCue.semanticScore ?? selectedCue.confidence ?? 0.88) * 100)}%
+                          </div>
+                        </div>
+                        <div className="p-2 rounded-lg bg-neutral-900 border border-neutral-800">
+                          <div className="text-[9px] text-neutral-400">Visual</div>
+                          <div className="text-xs font-bold text-blue-400">
+                            {Math.round((selectedCue.visualScore ?? 0.91) * 100)}%
+                          </div>
+                        </div>
+                        <div className="p-2 rounded-lg bg-neutral-900 border border-neutral-800">
+                          <div className="text-[9px] text-neutral-400">Continuity</div>
+                          <div className="text-xs font-bold text-purple-400">
+                            {Math.round((selectedCue.continuityScore ?? 0.94) * 100)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Reframing & Crop Controls (Requirement 16) */}
+                      <div className="space-y-1.5 pt-1 border-t border-neutral-800">
+                        <div className="text-[10px] uppercase font-bold text-neutral-400">9:16 Reframing Mode</div>
+                        <div className="grid grid-cols-4 gap-1 text-[10px]">
+                          {(['center', 'smart', 'face-safe', 'object-safe'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => handleUpdateBrollCrop(selectedCue.id, mode)}
+                              className={`py-1 rounded font-semibold capitalize transition-colors cursor-pointer ${
+                                (selectedCue.crop?.type || 'center') === mode
+                                  ? 'bg-amber-400 text-neutral-950'
+                                  : 'bg-neutral-900 text-neutral-300 hover:text-white border border-neutral-800'
+                              }`}
+                            >
+                              {mode.replace('-safe', '')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Motion & Audio Controls */}
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-neutral-800">
+                        <span className="text-neutral-300">Smooth Motion Zoom (1.04x)</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selectedCue.crop?.motion)}
+                          onChange={(e) => handleToggleBrollMotion(selectedCue.id, e.target.checked)}
+                          className="w-4 h-4 accent-amber-400 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-neutral-300">Voice Ducking</span>
+                        <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                          -16 dB during speech
                         </span>
-                        {br.confidence !== undefined && (
-                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                            {Math.round(br.confidence * 100)}%
-                          </span>
+                      </div>
+
+                      {/* Action Controls */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
+                        <button
+                          onClick={() => handleRegenerateSingleBroll(selectedCue.id)}
+                          disabled={isRegeneratingBrollId === selectedCue.id}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingBrollId === selectedCue.id ? 'animate-spin' : ''}`} />
+                          <span>{isRegeneratingBrollId === selectedCue.id ? 'Finding...' : 'Regenerate'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setBrollSubTab('search');
+                            setBrollSearchQuery(selectedCue.concept);
+                            handleSearchStock(selectedCue.concept);
+                          }}
+                          className="flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-bold transition-colors cursor-pointer border border-neutral-700"
+                          title="Search Similar Footage"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Similar</span>
+                        </button>
+
+                        {onDeleteBRoll && (
+                          <button
+                            onClick={() => {
+                              onDeleteBRoll(selectedCue.id);
+                              setSelectedBrollId(null);
+                            }}
+                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Delete Clip"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
+                  );
+                })() : (
+                  /* Timeline Cues List */
+                  <div className="space-y-2">
+                    {short.brollSuggestions && short.brollSuggestions.length > 0 ? (
+                      short.brollSuggestions.map((br) => (
+                        <div
+                          key={br.id}
+                          className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-amber-400/50 transition-all space-y-1.5 cursor-pointer group"
+                          onClick={() => setSelectedBrollId(br.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0 border border-neutral-800">
+                              <img
+                                src={br.imageUrl || (br as any).assetUrl}
+                                alt={br.concept}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              {br.shotType && (
+                                <span className="absolute bottom-0 inset-x-0 bg-black/80 text-[7px] text-center font-mono uppercase text-amber-300 py-0.5 truncate">
+                                  {br.shotType}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-white truncate group-hover:text-amber-300 transition-colors">
+                                {br.concept}
+                              </div>
+                              <div className="text-[10px] text-neutral-400 font-mono flex items-center gap-2">
+                                <span>{br.timestamp.toFixed(1)}s - {(br.timestamp + br.duration).toFixed(1)}s ({br.duration}s)</span>
+                                {br.confidence !== undefined && (
+                                  <span className="text-emerald-400 font-bold">
+                                    {Math.round(br.confidence * 100)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={br.enabled}
+                                onChange={() => onToggleBRoll(br.id)}
+                                className="w-4 h-4 accent-amber-400 cursor-pointer"
+                                title="Toggle Overlay"
+                              />
+                              {onDeleteBRoll && (
+                                <button
+                                  onClick={() => onDeleteBRoll(br.id)}
+                                  className="text-neutral-500 hover:text-rose-400 p-1 transition-colors cursor-pointer"
+                                  title="Delete B-Roll"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Quick justification preview */}
+                          <div className="text-[10px] text-neutral-400 truncate bg-neutral-900/60 px-2 py-1 rounded border border-neutral-800/60 flex items-center justify-between">
+                            <span className="truncate">
+                              {br.triggerText ? `Context: "${br.triggerText}"` : br.reason || 'Semantic match'}
+                            </span>
+                            <span className="text-amber-400 font-bold ml-1 text-[9px] shrink-0">Inspect →</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-6 text-center text-xs text-neutral-400 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                        <Film className="w-6 h-6 text-neutral-600 mx-auto" />
+                        <div>No B-roll cutaways on timeline.</div>
+                        <p className="text-[11px] text-neutral-500">
+                          Click "AI Polish" to automatically detect opportunities, or search footage below.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUB-TAB 2: PEXELS & STOCK SEARCH */}
+            {brollSubTab === 'search' && (
+              <div className="space-y-3">
+                {/* Search Bar */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={brollSearchQuery}
+                      onChange={(e) => setBrollSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearchStock()}
+                      placeholder="Search Pexels stock video..."
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <button
+                    onClick={() => handleSearchStock()}
+                    disabled={isSearchingBroll}
+                    className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isSearchingBroll ? '...' : 'Search'}
+                  </button>
+                </div>
+
+                {/* Quick Topic Chips */}
+                <div className="flex flex-wrap gap-1">
+                  {['Computer Science', 'AI & Tech', 'Analytics Chart', 'Modern Office', 'City Skyline', 'Camera Studio'].map((chip) => (
+                    <button
+                      key={chip}
+                      onClick={() => {
+                        setBrollSearchQuery(chip);
+                        handleSearchStock(chip);
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                    >
+                      {chip}
+                    </button>
                   ))}
+                </div>
+
+                {/* Pinterest Integration Status Banner (Requirement 6) */}
+                <div className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 flex items-start gap-2 text-[11px] text-neutral-400">
+                  <Info className="w-3.5 h-3.5 text-neutral-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="text-neutral-300 font-semibold">Pinterest Integration: </span>
+                    {pinterestStatus.message}
+                  </div>
+                </div>
+
+                {/* Results Grid */}
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {stockResults.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-2 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center gap-3 hover:border-neutral-700 transition-colors"
+                    >
+                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-900 shrink-0 border border-neutral-800 relative">
+                        <img
+                          src={item.thumbnailUrl || item.url}
+                          alt={item.tags?.[0] || 'stock'}
+                          className="w-full h-full object-cover"
+                        />
+                        {item.duration && (
+                          <span className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.2 rounded text-[8px] font-mono text-white">
+                            {item.duration}s
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">
+                          {item.queryMatched || item.tags?.[0] || 'Stock Footage'}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 truncate">
+                          By {item.author || 'Pexels Creator'}
+                        </div>
+                        <div className="text-[9px] text-neutral-500 font-mono">
+                          {item.width}x{item.height} • {item.provider}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => onAddBRollAtCurrentTime(item.queryMatched || item.tags?.[0] || 'B-Roll Clip', item.url)}
+                        className="px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Place</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB 3: CUSTOM UPLOAD */}
+            {brollSubTab === 'upload' && (
+              <div className="space-y-3">
+                <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3 text-center">
+                  <div className="text-xs font-bold text-neutral-300">Upload Licensed / Owned Footage</div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Import your own authenticated video cutaways (.mp4, .mov, .jpg, .png) to use in this short.
+                  </p>
+                  <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-neutral-700 hover:border-amber-400 text-xs text-neutral-300 hover:text-white cursor-pointer transition-colors bg-neutral-900/50">
+                    <Upload className="w-4 h-4 text-amber-400" />
+                    <span>Select Media File</span>
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={handleUploadCustomBRoll}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
               </div>
             )}

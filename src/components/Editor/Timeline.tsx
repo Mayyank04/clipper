@@ -557,9 +557,11 @@ export const Timeline: React.FC<TimelineProps> = ({
             <div className="relative h-8 bg-neutral-900/90 rounded-r-lg border border-neutral-800 overflow-hidden flex items-center px-1">
               <div className="w-full h-full relative">
                 {short.brollSuggestions?.map((br) => {
-                  const leftPct = (br.timestamp / duration) * 100;
-                  const widthPct = Math.max(3, (br.duration / duration) * 100);
-                  const isCurrent = currentTime >= br.timestamp && currentTime <= br.timestamp + br.duration;
+                  const bStart = br.timestamp ?? (br as any).start ?? 0;
+                  const bDur = br.duration ?? (((br as any).end ?? (bStart + 3)) - bStart);
+                  const leftPct = (bStart / duration) * 100;
+                  const widthPct = Math.max(3, (bDur / duration) * 100);
+                  const isCurrent = currentTime >= bStart && currentTime <= bStart + bDur;
                   const isSelected = selectedItemId === br.id;
 
                   return (
@@ -568,7 +570,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelectBRoll?.(br);
-                        onTimeSeek(br.timestamp);
+                        onTimeSeek(bStart);
                       }}
                       style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                       className={`absolute h-6 top-1 rounded border px-2 flex items-center text-[10px] font-bold truncate transition-all cursor-pointer ${
