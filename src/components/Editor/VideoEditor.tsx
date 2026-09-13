@@ -260,17 +260,24 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   }, [initialShort?.id, project?.id]);
 
   const [captionConfig, setCaptionConfig] = useState<CaptionCustomization>({
-    preset: 'viral_bold',
-    fontFamily: 'Impact, sans-serif',
-    fontSize: 28,
+    preset: 'reference_typing',
+    style: 'reference_typing',
+    fontFamily: 'Lemon Milk, American Captain, Montserrat, sans-serif',
+    fontSize: 32,
+    fontWeight: 800,
     primaryColor: '#ffffff',
     highlightColor: '#facc15',
     strokeColor: '#000000',
-    strokeWidth: 3,
-    positionY: 68,
+    strokeWidth: 4,
+    positionY: 72,
     uppercase: true,
     hasShadow: true,
+    shadowColor: 'rgba(0, 0, 0, 0.95)',
     wordsPerLine: 3,
+    wordsPerGroup: 3,
+    maxLines: 2,
+    animationType: 'pop',
+    animationMode: 'REFERENCE_TYPING',
   });
 
   // Playhead update handler
@@ -1698,6 +1705,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             zoomPunchEnabled={zoomPunchEnabled}
             speakerPosition={speakerPosition}
             onRelinkMedia={handleRelinkFile}
+            onSelectCaption={(captionId) => setSelectedItemId(captionId)}
             onBack={onBack}
             onVideoLoaded={(meta) => {
               if (meta.duration && Number.isFinite(meta.duration)) {
@@ -1803,6 +1811,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             caption={selectedCaption}
             currentTime={currentTime}
             duration={currentShort.duration || 30}
+            currentFontFamily={captionConfig.fontFamily}
+            onUpdateFont={(fontFamily) => setCaptionConfig((prev) => ({ ...prev, fontFamily }))}
             onUpdateCaption={handleUpdateCaption}
             onSplitCaption={handleSplitCaption}
             onMergeWithNext={handleMergeCaptions}

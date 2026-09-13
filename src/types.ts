@@ -99,6 +99,8 @@ export type CaptionStyleId =
   // Production Reference Presets (Part 6):
   | 'reference_mix'
   | 'REFERENCE_MIX'
+  | 'reference_typing'
+  | 'REFERENCE_TYPING'
   | 'viral_bold'
   | 'VIRAL_BOLD'
   | 'cinematic_social'
@@ -588,6 +590,7 @@ export interface CaptionCustomization {
   lineSpacing?: number;
   letterSpacing?: number;
   animationType?: 'pop' | 'fade' | 'bounce' | 'highlight' | 'scale' | 'karaoke' | 'typewriter' | 'glitch' | 'none';
+  animationMode?: CaptionAnimationMode;
   animation?: any;
   animationSpeed?: number;
   wordAnimation?: string;
@@ -595,6 +598,15 @@ export interface CaptionCustomization {
   exitAnimation?: string;
   uppercase: boolean;
 }
+
+export type CaptionAnimationMode =
+  | 'WORD_BY_WORD'
+  | 'KARAOKE'
+  | 'TYPE_ON'
+  | 'POP_WORD'
+  | 'ACTIVE_WORD'
+  | 'PHRASE_BEAT'
+  | 'REFERENCE_TYPING';
 
 export interface LanguageDetectionResult {
   primaryLanguage: string;

@@ -4,6 +4,7 @@
  * dynamic subject-aware 9:16 cropping, and professional audio normalization.
  */
 
+import path from 'path';
 import { ExportQualityMode, RenderQualityProfile, SourceMediaQualityInfo } from './types';
 import { generateSmartCropPlan, getCropRectAtTime } from './smartCropEngine';
 import { getColorGradingProfile } from '../creatorStudio/videoEffectsEngine';
@@ -267,9 +268,10 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     curVPad = '[vvfx]';
   }
 
-  // 7. Crisp Subtitle Burn-In
+  // 7. Crisp Subtitle Burn-In with Exact User Font Directory Parity (Part 5 & 31)
   if (subtitlePath) {
-    filterChain += `;${curVPad}subtitles='${subtitlePath.replace(/'/g, "'\\''")}'[vsub]`;
+    const fontsDir = path.join(process.cwd(), 'public', 'assets', 'fonts').replace(/\\/g, '/').replace(/:/g, '\\:');
+    filterChain += `;${curVPad}subtitles='${subtitlePath.replace(/'/g, "'\\''")}':fontsdir='${fontsDir}'[vsub]`;
     curVPad = '[vsub]';
   }
 

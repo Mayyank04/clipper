@@ -36,7 +36,9 @@ import {
   VolumeX,
   Mic,
   UserCheck,
+  Type,
 } from 'lucide-react';
+import { FontPickerModal } from './FontPickerModal';
 import {
   ShortCandidate,
   CaptionCustomization,
@@ -237,6 +239,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [autoDucking, setAutoDucking] = useState<boolean>(true);
   const [selectedMusic, setSelectedMusic] = useState<string>('hype_trap');
   const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
+  const [showFontPickerModal, setShowFontPickerModal] = useState<boolean>(false);
 
   // B-Roll Studio State (Professional AI Semantic Engine)
   const [brollSubTab, setBrollSubTab] = useState<'timeline' | 'search' | 'upload'>('timeline');
@@ -985,7 +988,33 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
 
             {/* Position & Styling Controls */}
             <div className="pt-4 border-t border-neutral-800 space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Position & Styling</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Position & Typography</h4>
+                <button
+                  onClick={() => setShowFontPickerModal(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-400 border border-amber-400/30 text-xs font-bold transition cursor-pointer"
+                  title="Browse 24 creator fonts with live previews"
+                >
+                  <Type className="w-3.5 h-3.5" />
+                  <span>Font Studio</span>
+                </button>
+              </div>
+
+              {/* Active Creator Font Card */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-amber-500/40 transition">
+                <div className="min-w-0 pr-2">
+                  <span className="text-[10px] text-neutral-500 font-mono uppercase block">Active Font Family</span>
+                  <span className="text-xs font-black text-white truncate block">
+                    {captionConfig.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'Lemon Milk'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowFontPickerModal(true)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-400 text-neutral-950 text-xs font-bold hover:bg-amber-300 transition cursor-pointer shrink-0"
+                >
+                  Change Font
+                </button>
+              </div>
 
               {/* Vertical Position */}
               <div className="space-y-1.5">
@@ -2757,6 +2786,19 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
         plan={aiEditPlan}
         isLoading={isLoadingAIEditPlan}
         onApplyPlan={handleApplyEditPlan}
+      />
+
+      {/* Creator Font Library Modal */}
+      <FontPickerModal
+        isOpen={showFontPickerModal}
+        currentFontFamily={captionConfig.fontFamily}
+        onSelectFont={(font) => {
+          onCaptionConfigChange({
+            ...captionConfig,
+            fontFamily: `${font.family}, sans-serif`,
+          });
+        }}
+        onClose={() => setShowFontPickerModal(false)}
       />
     </div>
   );

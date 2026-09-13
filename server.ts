@@ -2381,7 +2381,7 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
     qualityMode: rawQualityMode,
     resolution: body.resolution || '1080x1920',
     frameRate: body.frameRate || body.fps,
-    brandKit: body.brandKit,
+    brandKit: (body.brandKit?.enabled && body.brandKit?.brandName) ? body.brandKit : undefined,
     captionConfig: body.captionConfig || targetShort?.captionConfig,
     captions,
     brollList,

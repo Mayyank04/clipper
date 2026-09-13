@@ -48,13 +48,13 @@ const DEFAULT_CAPTION_CONFIG: CaptionCustomization = {
 };
 
 const DEFAULT_BRAND_KIT: BrandKit = {
-  brandName: 'ViralClip',
+  brandName: '',
   logoUrl: '',
   primaryColor: '#facc15',
   accentColor: '#f43f5e',
   watermarkPosition: 'top-right',
   watermarkOpacity: 80,
-  enabled: true,
+  enabled: false,
 };
 
 function formatTimecode(seconds: number): string {

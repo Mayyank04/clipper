@@ -6,15 +6,15 @@ const BRAND_KIT_STORAGE_KEY = 'viralclip_brandkit_v4';
 const EXPORT_HISTORY_KEY = 'viralclip_exports_v4';
 
 export const DEFAULT_BRAND_KIT: BrandKit = {
-  brandName: '@ViralMaster',
+  brandName: '',
   primaryColor: '#facc15',
   secondaryColor: '#38bdf8',
   accentColor: '#f43f5e',
-  fontFamily: 'Cabinet Grotesk',
+  fontFamily: 'Lemon Milk',
   watermarkPosition: 'top-right',
   watermarkOpacity: 80,
-  watermarkText: '@ViralMaster',
-  enabled: true,
+  watermarkText: '',
+  enabled: false,
 };
 
 export function loadStoredProjects(): VideoProject[] {

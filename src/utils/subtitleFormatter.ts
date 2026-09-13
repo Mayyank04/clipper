@@ -92,12 +92,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         const sTime = formatAssTime(wStart);
         const eTime = formatAssTime(wEnd);
 
-        // Active word wrapped in highlight color
+        // Active word wrapped in highlight color and subtle kinetic pop (115% scale)
         const lineParts = words.map((w: any, idx: number) => {
           let wordStr = String(w.word || w.text || '').trim();
           if (captionConfig?.uppercase) wordStr = wordStr.toUpperCase();
           if (idx === wIdx) {
-            return `{\\c${highlightColor}&\\b1}${wordStr}{\\c${primaryColor}&\\b0}`;
+            return `{\\c${highlightColor}\\b1\\fscx115\\fscy115}${wordStr}{\\c${primaryColor}\\b0\\fscx100\\fscy100}`;
+          }
+          if (captionConfig?.animationMode === 'WORD_BY_WORD' && idx > wIdx) {
+            return `{\\alpha&HFF&}${wordStr}{\\alpha&H00&}`;
           }
           return wordStr;
         });

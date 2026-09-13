@@ -199,7 +199,7 @@ class RenderWorkerManager {
         qualityMode: profile.qualityMode,
         speakerPosition: rawPlan.speakerPosition || 'center',
         subtitlePath: prepared.subtitleAssPath,
-        watermarkText: rawPlan.brandKit?.enabled ? rawPlan.brandKit.brandName : undefined,
+        watermarkText: (rawPlan.brandKit?.enabled && rawPlan.brandKit?.brandName) ? rawPlan.brandKit.brandName : undefined,
         watermarkOpacity: rawPlan.brandKit?.watermarkOpacity,
         colorTreatment: rawPlan.colorTreatment,
         brollList: prepared.validatedBrolls,

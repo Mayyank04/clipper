@@ -27,20 +27,20 @@ export interface CaptionStyleDefinition {
   config: CaptionCustomization;
 }
 
-export const DEFAULT_CAPTION_STYLE: CaptionStyleId = 'reference_mix';
+export const DEFAULT_CAPTION_STYLE: CaptionStyleId = 'reference_typing';
 
 export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
   {
-    id: 'reference_mix',
-    name: 'Reference Mix (Recommended)',
-    desc: 'Combines aggressive viral creator energy with cinematic typography and selective word highlights',
+    id: 'reference_typing',
+    name: 'Reference Typing (Creator Drive Pack)',
+    desc: 'Exact reproduction of After Effects kinetic typing reference: Lemon Milk Bold, bottom-to-up blurred lift, electric yellow highlights, zero lag',
     category: 'viral',
     config: {
-      style: 'reference_mix',
-      preset: 'reference_mix',
-      fontFamily: 'Montserrat, Arial Black, system-ui, sans-serif',
-      fontSize: 30,
-      fontWeight: 900,
+      style: 'reference_typing',
+      preset: 'reference_typing',
+      fontFamily: 'Lemon Milk, American Captain, Montserrat, sans-serif',
+      fontSize: 32,
+      fontWeight: 800,
       primaryColor: '#FFFFFF',
       highlightColor: '#FACC15', // Electric Yellow
       strokeColor: '#000000',
@@ -53,19 +53,47 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'pop',
+      animationMode: 'REFERENCE_TYPING',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'reference_mix',
+    name: 'Reference Mix (Recommended)',
+    desc: 'Combines aggressive viral creator energy with cinematic typography and selective word highlights',
+    category: 'viral',
+    config: {
+      style: 'reference_mix',
+      preset: 'reference_mix',
+      fontFamily: 'Lemon Milk, American Captain, Montserrat, sans-serif',
+      fontSize: 30,
+      fontWeight: 800,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FACC15', // Electric Yellow
+      strokeColor: '#000000',
+      strokeWidth: 4.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.95)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      animationMode: 'REFERENCE_TYPING',
       uppercase: true,
     },
   },
   {
     id: 'viral_bold',
     name: 'Viral Bold',
-    desc: 'Large uppercase heavy sans with high-energy yellow outline punch',
+    desc: 'Large uppercase heavy condensed sans with high-energy lime punch',
     category: 'viral',
     config: {
       style: 'viral_bold',
       preset: 'viral_bold',
-      fontFamily: 'Impact, Montserrat, Arial Black, sans-serif',
-      fontSize: 32,
+      fontFamily: 'American Captain, Impact, Montserrat, sans-serif',
+      fontSize: 34,
       fontWeight: 900,
       primaryColor: '#FFFFFF',
       highlightColor: '#22C55E', // Lime green
@@ -79,6 +107,7 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'pop',
+      animationMode: 'POP_WORD',
       uppercase: true,
     },
   },
@@ -111,13 +140,13 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
   {
     id: 'creator_punch',
     name: 'Creator Punch',
-    desc: 'Snappy 2-3 word beats with vibrant orange active punch',
+    desc: 'Snappy 2-3 word beats with Coolvetica punch and vibrant orange active highlight',
     category: 'creative',
     config: {
       style: 'creator_punch',
       preset: 'creator_punch',
-      fontFamily: 'Poppins, Montserrat, sans-serif',
-      fontSize: 29,
+      fontFamily: 'Coolvetica, Montserrat, sans-serif',
+      fontSize: 31,
       fontWeight: 800,
       primaryColor: '#FFFFFF',
       highlightColor: '#F97316', // Vibrant Orange
@@ -131,18 +160,19 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'bounce',
+      animationMode: 'POP_WORD',
       uppercase: true,
     },
   },
   {
     id: 'meme_impact',
     name: 'Meme Impact',
-    desc: 'All-caps impact font with rapid cutaways and comedic emphasis',
+    desc: 'All-caps Couture display font with rapid cutaways and comedic emphasis',
     category: 'viral',
     config: {
       style: 'meme_impact',
       preset: 'meme_impact',
-      fontFamily: 'Impact, Arial Black, sans-serif',
+      fontFamily: 'Couture, Impact, Arial Black, sans-serif',
       fontSize: 34,
       fontWeight: 900,
       primaryColor: '#FFFFFF',
@@ -157,6 +187,7 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'pop',
+      animationMode: 'POP_WORD',
       uppercase: true,
     },
   },
@@ -184,6 +215,7 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'fade',
+      animationMode: 'KARAOKE',
       uppercase: false,
     },
   },
@@ -210,19 +242,20 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
       uppercase: false,
     },
   },
   {
     id: 'dark_cinematic',
     name: 'Dark Cinematic',
-    desc: 'High contrast icy blue tones for documentary and suspense clips',
+    desc: 'High contrast God of Thunder typography with icy blue tones for documentary and suspense clips',
     category: 'cinematic',
     config: {
       style: 'dark_cinematic',
       preset: 'dark_cinematic',
-      fontFamily: 'Space Grotesk, Plus Jakarta Sans, sans-serif',
-      fontSize: 27,
+      fontFamily: 'God of Thunder, Montserrat, sans-serif',
+      fontSize: 28,
       fontWeight: 800,
       primaryColor: '#F0F9FF',
       highlightColor: '#06B6D4', // Deep Cyan
@@ -236,6 +269,7 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       maxLines: 2,
       alignment: 'center',
       animationType: 'pop',
+      animationMode: 'REFERENCE_TYPING',
       uppercase: true,
     },
   },
@@ -1205,15 +1239,27 @@ export const ALL_CAPTION_STYLES: CaptionStyleDefinition[] = [
 
 // Map backward compatibility aliases & uppercase production presets
 const ALIAS_MAP: Record<string, CaptionStyleId> = {
+  reference_typing: 'reference_typing',
+  REFERENCE_TYPING: 'reference_typing',
+  reference_mix: 'reference_mix',
   REFERENCE_MIX: 'reference_mix',
+  viral_bold: 'viral_bold',
   VIRAL_BOLD: 'viral_bold',
+  cinematic_social: 'cinematic_social',
   CINEMATIC_SOCIAL: 'cinematic_social',
+  creator_punch: 'creator_punch',
   CREATOR_PUNCH: 'creator_punch',
+  meme_impact: 'meme_impact',
   MEME_IMPACT: 'meme_impact',
+  podcast_pro: 'podcast_pro',
   PODCAST_PRO: 'podcast_pro',
+  storytelling: 'storytelling',
   STORYTELLING: 'storytelling',
+  dark_cinematic: 'dark_cinematic',
   DARK_CINEMATIC: 'dark_cinematic',
+  clean_social: 'clean_social',
   CLEAN_SOCIAL: 'clean_social',
+  news_pro: 'news_pro',
   NEWS_PRO: 'news_pro',
   hormozi: 'mrbeast',
   kinetic: 'dynamic',
@@ -1272,15 +1318,13 @@ export function getActiveCaptionWord(
     return { index: -1, scale: 1.0, progress: 0 };
   }
 
-  const w = words[index];
-  const dur = Math.max(0.08, w.end - w.start);
-  const elapsed = currentTime - w.start;
-  const progress = Math.max(0, Math.min(1, elapsed / dur));
-  // Deterministic subtle react scale: 1.00 -> 1.06 -> 1.00 (Part 8)
-  const scale = 1.0 + Math.sin(progress * Math.PI) * 0.06;
+  const word = words[index];
+  const dur = Math.max(0.05, word.end - word.start);
+  const progress = Math.max(0, Math.min(1, (currentTime - word.start) / dur));
+  const scale = 1.0 + Math.sin(progress * Math.PI) * 0.15;
 
   return {
-    word: w,
+    word,
     index,
     scale: Number(scale.toFixed(3)),
     progress: Number(progress.toFixed(3)),
@@ -1381,6 +1425,204 @@ export function getActiveCaptionSegment(
 ): { segment: CaptionSegment | undefined; activeWordIndex: number } {
   const state = getCaptionStateAtTime(captions, currentTime);
   return { segment: state.activeCaption, activeWordIndex: state.activeWordIndex };
+}
+
+export interface WordAnimationState {
+  word: string;
+  isSpoken: boolean;
+  isPast: boolean;
+  isFuture: boolean;
+  progress: number;
+  scale: number;
+  translateY: number;
+  opacity: number;
+  color: string;
+  highlighted: boolean;
+  visible: boolean;
+  revealedText?: string;
+  strokeWidth: number;
+  strokeColor: string;
+}
+
+/**
+ * High-performance speech-synchronized word animation state calculation.
+ * Resolves deterministic motion curves (translateY, scale, opacity, highlight color)
+ * based strictly on currentTime and word timing. Zero setInterval, seek-safe.
+ */
+export function computeWordAnimationState(
+  wordObj: any,
+  index: number,
+  currentTime: number,
+  captionConfig: CaptionCustomization,
+  captionWords: any[] = []
+): WordAnimationState {
+  const curWordStr = typeof wordObj === 'string' ? wordObj : (wordObj?.word || wordObj?.text || String(wordObj || ''));
+  const wordStart = Number(wordObj?.start) || 0;
+  const wordEnd = Number(wordObj?.end) || (wordStart + 0.3);
+  const isSpoken = currentTime >= wordStart && currentTime <= wordEnd;
+  const isPast = currentTime > wordEnd;
+  const isFuture = currentTime < wordStart;
+
+  const mode = captionConfig.animationMode ||
+    (captionConfig.animationType === 'karaoke' ? 'KARAOKE' :
+     captionConfig.animationType === 'typewriter' ? 'TYPE_ON' :
+     captionConfig.animationType === 'bounce' ? 'POP_WORD' :
+     captionConfig.style === 'reference_typing' || captionConfig.preset === 'reference_typing' ? 'REFERENCE_TYPING' :
+     'REFERENCE_TYPING');
+
+  const dur = Math.max(0.05, wordEnd - wordStart);
+  const rawProgress = isSpoken ? Math.min(1, Math.max(0, (currentTime - wordStart) / dur)) : (isPast ? 1 : 0);
+
+  let scale = 1.0;
+  let translateY = 0;
+  let opacity = 1.0;
+  let visible = true;
+  let highlighted = false;
+  let color = captionConfig.primaryColor;
+  let revealedText: string | undefined = undefined;
+
+  switch (mode) {
+    case 'WORD_BY_WORD': {
+      if (isFuture) {
+        visible = false;
+        opacity = 0;
+      } else if (isSpoken) {
+        visible = true;
+        opacity = 1;
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        scale = 1.08;
+      } else {
+        visible = true;
+        opacity = 1;
+        highlighted = false;
+        color = captionConfig.primaryColor;
+      }
+      break;
+    }
+
+    case 'KARAOKE': {
+      visible = true;
+      if (isSpoken) {
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        scale = 1.08;
+        opacity = 1;
+      } else if (isPast) {
+        color = captionConfig.primaryColor;
+        opacity = 1;
+      } else {
+        color = captionConfig.primaryColor;
+        opacity = 0.65;
+      }
+      break;
+    }
+
+    case 'TYPE_ON': {
+      visible = true;
+      if (isFuture) {
+        visible = false;
+        opacity = 0;
+      } else if (isSpoken) {
+        const charCount = curWordStr.length;
+        const revealedChars = Math.max(1, Math.floor(rawProgress * charCount));
+        revealedText = curWordStr.slice(0, revealedChars);
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+      } else {
+        revealedText = curWordStr;
+        color = captionConfig.primaryColor;
+      }
+      break;
+    }
+
+    case 'POP_WORD': {
+      visible = true;
+      if (isSpoken) {
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        const bounce = Math.sin(rawProgress * Math.PI);
+        scale = 1.18 + bounce * 0.1;
+        translateY = -3 * bounce;
+      } else {
+        color = isPast && captionConfig.style === 'podcast' ? '#64748b' : captionConfig.primaryColor;
+        scale = 1.0;
+        translateY = 0;
+      }
+      break;
+    }
+
+    case 'ACTIVE_WORD': {
+      visible = true;
+      if (isSpoken) {
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        scale = 1.12;
+      } else {
+        color = captionConfig.primaryColor;
+        opacity = isPast ? 0.9 : 0.75;
+      }
+      break;
+    }
+
+    case 'PHRASE_BEAT': {
+      visible = true;
+      if (isSpoken) {
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        scale = 1.1;
+      } else {
+        color = captionConfig.primaryColor;
+      }
+      break;
+    }
+
+    case 'REFERENCE_TYPING':
+    default: {
+      // After Effects Bottom To Up Blurred motion preset curve
+      visible = true;
+      if (isSpoken) {
+        highlighted = true;
+        color = wordObj?.highlightColor || captionConfig.highlightColor;
+        // 120ms ease-out lift
+        const liftProgress = Math.min(1, (currentTime - wordStart) / Math.min(0.14, dur));
+        const ease = 1 - Math.pow(1 - liftProgress, 3);
+        translateY = 4 * (1 - ease);
+        scale = 0.98 + 0.14 * ease;
+        opacity = 0.5 + 0.5 * ease;
+      } else if (isPast) {
+        highlighted = false;
+        color = captionConfig.primaryColor;
+        scale = 1.0;
+        translateY = 0;
+        opacity = 1.0;
+      } else {
+        highlighted = false;
+        color = captionConfig.primaryColor;
+        scale = 1.0;
+        translateY = 0;
+        opacity = 0.5;
+      }
+      break;
+    }
+  }
+
+  return {
+    word: revealedText !== undefined ? revealedText : curWordStr,
+    isSpoken,
+    isPast,
+    isFuture,
+    progress: rawProgress,
+    scale,
+    translateY,
+    opacity,
+    color,
+    highlighted,
+    visible,
+    revealedText,
+    strokeWidth: captionConfig.strokeWidth || 0,
+    strokeColor: captionConfig.strokeColor || '#000000',
+  };
 }
 
 export interface CaptionTimingValidationResult {

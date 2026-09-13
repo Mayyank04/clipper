@@ -26,7 +26,7 @@ import {
 import { formatTime, formatTimeWithTenths } from '../../utils/timeFormat';
 import { AudioVisualizerCanvas } from './AudioVisualizerCanvas';
 import { TypingCaptionOverlay } from './TypingCaptionOverlay';
-import { getCaptionStateAtTime } from '../../utils/captionEngine';
+import { getCaptionStateAtTime, computeWordAnimationState } from '../../utils/captionEngine';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { getColorGradingProfile } from '../../utils/creatorStudio/videoEffectsEngine';
 
@@ -47,6 +47,7 @@ interface VideoCanvasProps {
   volume?: number; // 0 to 1
   onVideoLoaded?: (meta: { duration: number; videoWidth: number; videoHeight: number }) => void;
   onRelinkMedia?: (file: File) => void;
+  onSelectCaption?: (captionId: string) => void;
   onBack?: () => void;
 }
 
@@ -67,6 +68,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   volume = 0.85,
   onVideoLoaded,
   onRelinkMedia,
+  onSelectCaption,
   onBack,
 }) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -562,11 +564,21 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         ) : (
           captionState.activeCaption && (
             <div
-              className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-none px-2 transition-all duration-150"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (captionState.activeCaption) {
+                  onSelectCaption?.(captionState.activeCaption.id);
+                }
+              }}
+              className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-auto cursor-pointer group px-2 transition-all duration-150"
               style={{ top: `${captionConfig.positionY}%` }}
+              title="Click to edit caption text, timing, font, or split/merge"
             >
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-[9px] font-mono font-bold bg-amber-400 text-neutral-950 px-2 py-0.5 rounded shadow pointer-events-none">
+                Click to edit caption
+              </div>
               <div
-                className={`text-center leading-snug max-w-[95%] transition-all ${
+                className={`text-center leading-snug max-w-[95%] transition-all group-hover:ring-1 group-hover:ring-amber-400/50 rounded-xl p-1 ${
                   captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
                 } ${
                   captionConfig.backgroundColor ? 'px-3 py-1.5 rounded-xl backdrop-blur-sm' : ''
@@ -582,55 +594,33 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                   letterSpacing: captionConfig.letterSpacing ? `${captionConfig.letterSpacing}px` : undefined,
                 }}
               >
-                {(captionState.activeCaption.words || []).map((w: any, idx: number) => {
-                  const isWordSpoken = idx === captionState.activeWordIndex;
-                  const isPast = captionState.highlightState.pastWordIndices.includes(idx);
+                {(() => {
+                  const words = captionState.activeCaption.words || [];
+                  return words.map((w: any, idx: number) => {
+                    const anim = computeWordAnimationState(w, idx, currentTime, captionConfig, words);
+                    if (!anim.visible) return null;
 
-                  let color = captionConfig.primaryColor;
-                  if (isWordSpoken) {
-                    color = w?.highlightColor || captionConfig.highlightColor;
-                  } else if (isPast) {
-                    color = captionConfig.style === 'podcast' ? '#64748b' : '#e2e8f0';
-                  }
-
-                  let wordScale = isWordSpoken ? (w?.scale || 1.15) : 1;
-                  if (captionConfig.animationType === 'bounce' && isWordSpoken) {
-                    wordScale = 1.18 + Math.sin(captionState.animationProgress * Math.PI) * 0.08;
-                  }
-
-                  const curWordStr = typeof w === 'string' ? w : (w?.word || w?.text || String(w || ''));
-                  let displayWord = curWordStr;
-                  if (captionConfig.animationType === 'typewriter' && captionState.revealedCharacterCount !== undefined) {
-                    const wordStartChar = (captionState.activeCaption?.words || [])
-                      .slice(0, idx)
-                      .reduce((acc: number, prevW: any) => {
-                        const prevStr = typeof prevW === 'string' ? prevW : (prevW?.word || prevW?.text || '');
-                        return acc + prevStr.length + 1;
-                      }, 0);
-                    const wordEndChar = wordStartChar + curWordStr.length;
-                    if (captionState.revealedCharacterCount < wordStartChar) {
-                      return null;
-                    } else if (captionState.revealedCharacterCount < wordEndChar) {
-                      displayWord = curWordStr.slice(0, captionState.revealedCharacterCount - wordStartChar);
-                    }
-                  }
-
-                  return (
-                    <span
-                      key={idx}
-                      className={`inline-block mx-1 transition-all duration-75 ${
-                        isWordSpoken ? 'scale-110 font-black' : 'font-bold'
-                      } ${captionConfig.strokeWidth > 0 ? 'text-stroke-sm' : ''}`}
-                      style={{
-                        color: color,
-                        transform: `scale(${wordScale})`,
-                        WebkitTextStroke: `${captionConfig.strokeWidth}px ${captionConfig.strokeColor}`,
-                      }}
-                    >
-                      {displayWord}
-                    </span>
-                  );
-                })}
+                    return (
+                      <span
+                        key={idx}
+                        className={`inline-block mx-1 transition-all duration-75 ${
+                          anim.highlighted ? 'scale-110 font-black' : 'font-bold'
+                        } ${anim.strokeWidth > 0 ? 'text-stroke-sm' : ''}`}
+                        style={{
+                          color: anim.color,
+                          transform: `translateY(${anim.translateY}px) scale(${anim.scale})`,
+                          opacity: anim.opacity,
+                          WebkitTextStroke: anim.strokeWidth > 0 ? `${anim.strokeWidth}px ${anim.strokeColor}` : undefined,
+                          textShadow: anim.highlighted && captionConfig.hasShadow
+                            ? `0 0 16px ${anim.color}80, 0 4px 10px rgba(0,0,0,0.95)`
+                            : undefined,
+                        }}
+                      >
+                        {anim.word}
+                      </span>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )
