@@ -162,8 +162,8 @@ async function runVideoBrollTests() {
     15,
     'Look at our golden retriever dog running in the park while we talk about coding',
     [
-      { id: '1', start: 0, end: 7, text: 'Look at our golden retriever dog running in the park' },
-      { id: '2', start: 7, end: 14, text: 'while we talk about coding software' },
+      { id: '1', start: 0, end: 7, text: 'Look at our golden retriever dog running in the park', words: [] },
+      { id: '2', start: 7, end: 14, text: 'while we talk about coding software', words: [] },
     ],
     [
       { word: 'golden', start: 1.0, end: 1.5 },

@@ -37,7 +37,7 @@ async function runRenderPlanParityTests() {
       text: 'BUILDING VIRAL SHORTS',
       words: [
         { word: 'BUILDING', start: 0.5, end: 1.0 },
-        { word: 'VIRAL', start: 1.05, end: 1.5, isEmphasized: true, highlightColor: '#FACC15' },
+        { word: 'VIRAL', start: 1.05, end: 1.5, isEmphasized: true, highlightColor: '#FACC15' } as any,
         { word: 'SHORTS', start: 1.55, end: 2.2 },
       ],
     },
@@ -49,12 +49,12 @@ async function runRenderPlanParityTests() {
       words: [
         { word: 'WITH', start: 2.3, end: 2.7 },
         { word: 'PURE', start: 2.75, end: 3.2 },
-        { word: 'CODE', start: 3.25, end: 4.8, isEmphasized: true, highlightColor: '#38BDF8' },
+        { word: 'CODE', start: 3.25, end: 4.8, isEmphasized: true, highlightColor: '#38BDF8' } as any,
       ],
     },
   ];
 
-  const brollEvents: BrollEvent[] = [
+  const brollEvents: any[] = [
     {
       id: 'broll_1',
       start: 1.0,

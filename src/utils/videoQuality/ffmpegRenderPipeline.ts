@@ -30,43 +30,60 @@ export interface FFmpegRenderOptions {
 }
 
 /**
- * Builds an optimal production RenderQualityProfile based on export mode and source diagnostics
+ * Builds an optimal production RenderQualityProfile based on export mode and source diagnostics.
+ * Section 9 & 10: Smart Source-Aware Render Profile.
+ * - 640x360: upscale required, high-quality Lanczos, CRF 18-20 recommended
+ * - 1080x1920: no upscale, preserve detail, CRF 16-19
+ * - 4K source: high quality downscale, CRF 16-18
+ * Section 19: FPS preservation (e.g. 29.97 preserved without forced 30/60 conversions)
  */
-export function buildQualityProfile(
+export function getRenderQualityProfile(
+  sourceInfo: SourceMediaQualityInfo,
+  targetFormat: string = '1080x1920',
   mode: ExportQualityMode = 'HIGH',
-  sourceInfo: SourceMediaQualityInfo
+  requestedFPS?: number
 ): RenderQualityProfile {
+  const isLowRes = sourceInfo.sourceWidth < 1280 || sourceInfo.sourceHeight < 720;
+  const is4K = sourceInfo.sourceWidth >= 3840 || sourceInfo.sourceHeight >= 2160;
+
   let crf = 16;
   let encoderPreset = 'slow';
 
   switch (mode) {
     case 'FAST':
-      crf = 23;
+      crf = isLowRes ? 22 : 23;
       encoderPreset = 'veryfast';
       break;
     case 'BALANCED':
-      crf = 19;
+      crf = isLowRes ? 19 : 19;
       encoderPreset = 'medium';
       break;
     case 'MASTER':
-      crf = 14;
+      crf = isLowRes ? 16 : 14;
       encoderPreset = 'slower';
       break;
     case 'HIGH':
     default:
-      crf = 16;
+      // For low-resolution sources (e.g. 640x360), CRF 18 avoids bloated files while preserving upscale crispness
+      crf = isLowRes ? 18 : is4K ? 16 : 16;
       encoderPreset = 'slow';
       break;
   }
 
-  // Determine if subtle sharpening is appropriate (especially for low-res or 720p scaling)
-  const isLowRes = sourceInfo.sourceWidth < 1280 || sourceInfo.sourceHeight < 720;
+  // Preserve native source FPS (e.g. 29.97, 23.98, 25, 30) unless user explicitly requested 60 FPS
+  const targetFPS = requestedFPS && requestedFPS === 60
+    ? 60
+    : Number((sourceInfo.sourceFPS || 29.97).toFixed(2));
+
+  // Determine subtle sharpening for low-res upscale
   const sharpening = isLowRes ? 'subtle' : (mode === 'MASTER' ? 'subtle' : 'off');
+
+  const [tWidth, tHeight] = targetFormat === '1080x1920' ? [1080, 1920] : [1080, 1920];
 
   return {
     qualityMode: mode,
-    targetResolution: { width: 1080, height: 1920 },
-    targetFPS: Math.min(60, Math.max(24, sourceInfo.sourceFPS || 30)),
+    targetResolution: { width: tWidth, height: tHeight },
+    targetFPS,
     crf,
     encoderPreset,
     pixelFormat: 'yuv420p',
@@ -80,6 +97,12 @@ export function buildQualityProfile(
     audioSampleRate: 48000,
   };
 }
+
+export const buildQualityProfile = (
+  mode: ExportQualityMode = 'HIGH',
+  sourceInfo: SourceMediaQualityInfo
+): RenderQualityProfile => getRenderQualityProfile(sourceInfo, '1080x1920', mode);
+
 
 /**
  * Generates the complete, authoritative FFmpeg argument array for a single-stage render
@@ -259,7 +282,9 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
   }
 
   // 7. Multi-track Audio Mixing (Voiceover + SFX + Speech Ducking)
+  const hasSourceAudio = !!(sourceInfo.sourceAudioCodec && sourceInfo.sourceAudioCodec !== 'none');
   let curAPad = '0:a';
+
   if (voiceoverList.length > 0 || sfxList.length > 0) {
     const extraAudioPads: string[] = [];
 
@@ -282,11 +307,21 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
       nextInputIndex++;
     });
 
-    const origAudioFilter = voiceoverList.length > 0 ? 'volume=0.30' : 'volume=1.0';
-    filterChain += `;[0:a]${origAudioFilter}[a_orig_ducked]`;
-    const totalInputs = extraAudioPads.length + 1;
-    filterChain += `;[a_orig_ducked]${extraAudioPads.join('')}amix=inputs=${totalInputs}:duration=first:dropout_transition=2[aout]`;
+    if (hasSourceAudio) {
+      const origAudioFilter = voiceoverList.length > 0 ? 'volume=0.30' : 'volume=1.0';
+      filterChain += `;[0:a]${origAudioFilter}[a_orig_ducked]`;
+      const totalInputs = extraAudioPads.length + 1;
+      filterChain += `;[a_orig_ducked]${extraAudioPads.join('')}amix=inputs=${totalInputs}:duration=first:dropout_transition=2[aout]`;
+    } else {
+      filterChain += `;${extraAudioPads.join('')}amix=inputs=${extraAudioPads.length}:duration=first:dropout_transition=2[aout]`;
+    }
     curAPad = '[aout]';
+  } else if (hasSourceAudio) {
+    curAPad = '0:a';
+  } else {
+    // Generate silent AAC track so shorts always have compliant audio
+    filterChain += `;aevalsrc=0:d=${duration}:s=48000[asilent]`;
+    curAPad = '[asilent]';
   }
 
   const args = [

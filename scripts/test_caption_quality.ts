@@ -51,7 +51,7 @@ async function runCaptionTests() {
 
   const refMix = PRODUCTION_REFERENCE_PRESETS.find((p) => p.id === 'reference_mix')?.config;
   assert(
-    refMix && refMix.uppercase === true && refMix.fontWeight >= 700 && refMix.primaryColor === '#FFFFFF',
+    refMix && refMix.uppercase === true && Number(refMix.fontWeight) >= 700 && refMix.primaryColor === '#FFFFFF',
     'Reference Mix Typography',
     `Uppercase bold white text with highlightColor=${refMix?.highlightColor}`
   );
@@ -66,7 +66,7 @@ async function runCaptionTests() {
     { word: 'video', start: 2.62, end: 3.10, confidence: 0.99 },
   ];
 
-  const grouped = groupWordsIntoCaptionSegments(sampleWords, 4);
+  const grouped = groupWordsIntoCaptionSegments(sampleWords, { maxWordsPerSegment: 4 });
   assert(grouped.length > 0, 'Grouping Generated Segments', `Created ${grouped.length} caption blocks`);
 
   for (let i = 0; i < grouped.length; i++) {

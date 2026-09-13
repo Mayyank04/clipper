@@ -102,6 +102,8 @@ import { PinterestProvider as CreatorPinterestProvider } from './src/utils/creat
 import { CREATOR_STYLES_REGISTRY, recommendCreatorStyle } from './src/utils/creatorStudio/creatorStyleEngine';
 import { AIDirector } from './src/utils/creatorStudio/aiDirector';
 import { formatAssSubtitle } from './src/utils/subtitleFormatter';
+import { renderWorker } from './src/utils/videoQuality/renderWorker';
+import { RenderJob } from './src/utils/videoQuality/renderJobTypes';
 
 const pexelsProvider = new OfficialPexelsProvider();
 const pinterestProvider = new AuthorizedPinterestProvider();
@@ -2307,296 +2309,201 @@ Return JSON format:
 });
 
 
-// POST: Trigger export rendering job with authoritative source-aware FFmpeg pipeline
+// Helper to construct a canonical render plan from request body, short, and project
+function buildExportRenderPlan(body: any, project?: any, short?: any) {
+  const targetShort = short || body.short || project?.shorts?.find((s: any) => s.id === (body.shortId || body.id));
+  const rawVideoUrl =
+    body.sourceUrl ||
+    body.videoUrl ||
+    targetShort?.videoProxyUrl ||
+    project?.videoUrl ||
+    targetShort?.audioUrl ||
+    project?.audioUrl ||
+    '';
+
+  const captions = Array.isArray(body.captions) && body.captions.length > 0
+    ? body.captions
+    : Array.isArray(body.captionEvents) && body.captionEvents.length > 0
+    ? body.captionEvents
+    : Array.isArray(targetShort?.renderPlan?.captions) && targetShort.renderPlan.captions.length > 0
+    ? targetShort.renderPlan.captions
+    : Array.isArray(targetShort?.captions) && targetShort.captions.length > 0
+    ? targetShort.captions
+    : Array.isArray(targetShort?.captionEvents)
+    ? targetShort.captionEvents
+    : [];
+
+  const brollList = Array.isArray(body.brollList) && body.brollList.length > 0
+    ? body.brollList
+    : Array.isArray(body.brollEvents) && body.brollEvents.length > 0
+    ? body.brollEvents
+    : Array.isArray(targetShort?.renderPlan?.brollEvents) && targetShort.renderPlan.brollEvents.length > 0
+    ? targetShort.renderPlan.brollEvents
+    : Array.isArray(targetShort?.brollSuggestions)
+    ? targetShort.brollSuggestions
+    : [];
+
+  const sfxList = Array.isArray(body.sfxList) && body.sfxList.length > 0
+    ? body.sfxList
+    : Array.isArray(body.sfxEvents) && body.sfxEvents.length > 0
+    ? body.sfxEvents
+    : Array.isArray(targetShort?.sfxMarkers)
+    ? targetShort.sfxMarkers
+    : [];
+
+  const colorTreatment =
+    body.colorTreatment ||
+    targetShort?.colorTreatment ||
+    (targetShort?.creatorStyle && CREATOR_STYLES_REGISTRY[targetShort.creatorStyle as keyof typeof CREATOR_STYLES_REGISTRY]?.visuals.colorTreatment) ||
+    'natural_pro';
+
+  const dynamicZooms = Array.isArray(body.dynamicZooms)
+    ? body.dynamicZooms
+    : targetShort?.dynamicZooms || [];
+
+  const vfxItem = body.vfxItem || (targetShort?.vfxMarkers || []).find((v: any) => v.timestamp >= 0);
+
+  const imageOverlays = Array.isArray(body.imageOverlays)
+    ? body.imageOverlays
+    : targetShort?.imageOverlays || [];
+
+  const startTime = Number(body.startTime ?? targetShort?.startTime ?? 0);
+  const duration = Number(body.duration ?? targetShort?.duration ?? (targetShort?.endTime ? targetShort.endTime - targetShort.startTime : 30));
+
+  const rawQualityMode =
+    body.qualityMode ||
+    (body.quality === 'ultra' ? 'MASTER' : body.quality === 'standard' ? 'FAST' : 'HIGH');
+
+  return {
+    sourceUrl: rawVideoUrl,
+    startTime,
+    duration,
+    qualityMode: rawQualityMode,
+    resolution: body.resolution || '1080x1920',
+    frameRate: body.frameRate || body.fps,
+    brandKit: body.brandKit,
+    captionConfig: body.captionConfig || targetShort?.captionConfig,
+    captions,
+    brollList,
+    sfxList,
+    colorTreatment,
+    dynamicZooms,
+    vfxItem,
+    imageOverlays,
+    isAudioOnly: !!(targetShort?.isAudioFile || body.isAudioOnly),
+    speakerPosition: body.speakerPosition || targetShort?.speakerPosition || 'center',
+  };
+}
+
+// POST: Canonical export route returning { jobId, status: "queued" } immediately
+app.post('/api/export', async (req: Request, res: Response) => {
+  try {
+    const { projectId, shortId } = req.body;
+    const project = projectId ? projectsStore.get(projectId) : undefined;
+    const short = req.body.short || project?.shorts?.find((s: any) => s.id === shortId);
+
+    const renderPlan = buildExportRenderPlan(req.body, project, short);
+
+    if (!renderPlan.sourceUrl) {
+      return res.status(400).json({ error: 'Source media URL or path is required for export' });
+    }
+
+    const job = renderWorker.createJob({
+      projectId: projectId || project?.id || 'default_project',
+      shortId: shortId || short?.id,
+      rawRenderPlan: renderPlan,
+      projectDir: process.cwd(),
+    });
+
+    console.log(`[API /api/export] Enqueued RenderJob ${job.id} for project ${job.projectId}`);
+
+    return res.status(202).json({
+      jobId: job.id,
+      exportId: job.id,
+      status: job.status,
+      success: true,
+    });
+  } catch (err: any) {
+    console.error('[API /api/export] Failed to enqueue render:', err);
+    return res.status(500).json({ error: err.message || 'Failed to enqueue export job' });
+  }
+});
+
+// POST: Project-scoped export alias (Requirement 3: returns { jobId, status: 'queued' } immediately)
 app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const {
-      shortId,
-      short: passedShort,
-      resolution = '1080x1920',
-      format = 'mp4',
-      brandKit,
-      qualityMode: rawQualityMode,
-      quality,
-    } = req.body;
-
     const project = projectsStore.get(id);
-    const short = passedShort || project?.shorts?.find((s: any) => s.id === shortId);
-    if (!short) {
-      return res.status(404).json({ error: 'Short candidate not found' });
+    const shortId = req.body.shortId;
+    const short = req.body.short || project?.shorts?.find((s: any) => s.id === shortId);
+
+    const renderPlan = buildExportRenderPlan(req.body, project, short);
+
+    if (!renderPlan.sourceUrl) {
+      return res.status(400).json({ error: 'Source media URL or path is required for export' });
     }
 
-    const resolvedQualityMode: ExportQualityMode =
-      rawQualityMode ||
-      (quality === 'ultra' ? 'MASTER' : quality === 'standard' ? 'FAST' : 'HIGH');
-
-    const exportId = `exp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const exportJob: ExportJob = {
-      id: exportId,
+    const job = renderWorker.createJob({
       projectId: id,
-      shortId: short.id || shortId,
-      status: 'rendering',
-      progress: 10,
-      resolution,
-      format,
-      createdAt: Date.now(),
-      qualityMode: resolvedQualityMode,
-    };
-
-    exportJobs.set(exportId, exportJob);
-
-    // Execute real FFmpeg render asynchronously
-    (async () => {
-      let tempAssFile: string | null = null;
-      try {
-        const rawVideoUrl = short.videoProxyUrl || project?.videoUrl || short.audioUrl || project?.audioUrl || '';
-        let localPath = '';
-
-        if (rawVideoUrl.startsWith('/uploads/')) {
-          localPath = path.join(process.cwd(), 'public', rawVideoUrl);
-        } else if (rawVideoUrl.startsWith('/public/uploads/')) {
-          localPath = path.join(process.cwd(), rawVideoUrl);
-        } else if (rawVideoUrl.startsWith('/demo/')) {
-          localPath = path.join(process.cwd(), 'public', rawVideoUrl);
-        } else if (rawVideoUrl.startsWith('/public/demo/')) {
-          localPath = path.join(process.cwd(), rawVideoUrl);
-        } else if (path.isAbsolute(rawVideoUrl) && fs.existsSync(rawVideoUrl)) {
-          localPath = rawVideoUrl;
-        }
-
-        if (!localPath || !fs.existsSync(localPath)) {
-          exportJob.status = 'failed';
-          exportJob.error = `Source media not found on server for path: ${rawVideoUrl}. Please relink or re-upload media.`;
-          console.error(`[EXPORT FAILED] ${exportJob.error}`);
-          return;
-        }
-
-        exportJob.progress = 20;
-
-        // 1. Authoritative Source Quality Probe via FFprobe
-        let sourceInfo: SourceMediaQualityInfo;
-        try {
-          sourceInfo = await probeSourceMedia(localPath);
-        } catch (probeErr) {
-          console.warn('[Export] FFprobe source probe fallback:', probeErr);
-          sourceInfo = {
-            sourceWidth: 1280,
-            sourceHeight: 720,
-            sourceFPS: 30,
-            sourceCodec: 'h264',
-            sourceBitrate: 2000000,
-            sourceVideoBitrate: 1800000,
-            sourcePixelFormat: 'yuv420p',
-            sourceColorSpace: 'bt709',
-            sourceColorTransfer: 'bt709',
-            sourceColorPrimaries: 'bt709',
-            sourceColorRange: 'tv',
-            sourceDuration: short.duration || 30,
-            sourceAudioCodec: 'aac',
-            sourceAudioBitrate: 128000,
-            sourceAudioSampleRate: 44100,
-            sourceSharpnessScore: 110,
-          };
-        }
-
-        const sourceScore = calculateSourceQualityScore(sourceInfo);
-        exportJob.sourceInfo = sourceInfo;
-        exportJob.sourceQualityScore = sourceScore;
-
-        const startSec = Math.max(0, short.startTime || 0);
-        const durSec = Math.max(1, short.duration || (short.endTime - short.startTime) || 28);
-        const isAudioFile =
-          /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(localPath) ||
-          project?.projectType === 'audio-to-video' ||
-          Boolean(short.audioUrl);
-
-        const outFileName = `viralclip_${short.id}_${Date.now()}.mp4`;
-        const outputPath = path.join(exportDir, outFileName);
-
-        const activeCaptionConfig = req.body.captionConfig || passedShort?.captionConfig || short.captionConfig;
-
-        const effectiveCaptions = (short.renderPlan?.captions && short.renderPlan.captions.length > 0)
-          ? short.renderPlan.captions
-          : (short.captions || []);
-
-        // Generate temporary ASS subtitle file for burning real captions
-        let escapedAssPath: string | undefined;
-        if (Array.isArray(effectiveCaptions) && effectiveCaptions.length > 0) {
-          tempAssFile = path.join(exportDir, `sub_${exportId}.ass`);
-          fs.writeFileSync(tempAssFile, formatAssSubtitle(effectiveCaptions, activeCaptionConfig), 'utf8');
-          escapedAssPath = tempAssFile.replace(/\\/g, '/').replace(/:/g, '\\:');
-        }
-
-        exportJob.progress = 35;
-
-        // Collect all verified B-roll items for multi-track rendering (1:1 with RenderPlan)
-        const validBrollList: { path: string; start: number; duration: number; isPIP?: boolean; assetType?: 'video' | 'image' }[] = [];
-        const rawBrolls = (short.renderPlan?.brollEvents && short.renderPlan.brollEvents.length > 0)
-          ? short.renderPlan.brollEvents
-          : (short.brollSuggestions || []);
-        const candidateBrolls = rawBrolls.filter(
-          (b: any) => b.enabled !== false && (b.assetUrl || b.imageUrl || b.videoUrl)
-        );
-
-        for (const broll of candidateBrolls) {
-          const rawUrl = broll.assetUrl || broll.imageUrl || broll.videoUrl;
-          let bPath = '';
-          if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
-            const cleanUrl = rawUrl.replace(/^\/public\//, '/');
-            const p = path.join(process.cwd(), 'public', cleanUrl);
-            if (fs.existsSync(p)) bPath = p;
-          }
-          if (bPath && fs.existsSync(bPath)) {
-            const bStart = Math.max(0, broll.timestamp ?? broll.start ?? 0);
-            const bDur = Math.max(0.8, broll.duration ?? ((broll.end ?? bStart + 3) - bStart));
-            if (bStart < durSec) {
-              const assetType = broll.assetType || (bPath.endsWith('.mp4') ? 'video' : 'image');
-              validBrollList.push({
-                path: bPath,
-                start: bStart,
-                duration: bDur,
-                isPIP: !!broll.isPIP,
-                assetType,
-              });
-            }
-          }
-        }
-
-        // Collect all SFX markers with speech ducking
-        const validSfxList: { path: string; delayMs: number; volume: number; fadeIn?: number; fadeOut?: number }[] = [];
-        const candidateSfx = (short.sfxMarkers || []).filter((s: any) => s.timestamp >= 0 && s.timestamp < durSec);
-
-        for (const sfx of candidateSfx) {
-          let sfxPath = '';
-          if (sfx.audioUrl) {
-            const clean = sfx.audioUrl.replace(/^\/public\//, '/');
-            const p = path.join(process.cwd(), 'public', clean);
-            if (fs.existsSync(p)) sfxPath = p;
-          }
-          if (!sfxPath && sfx.category) {
-            const catP = path.join(process.cwd(), 'public', 'assets', 'sfx', `${sfx.category}.wav`);
-            if (fs.existsSync(catP)) sfxPath = catP;
-          }
-          if (sfxPath && fs.existsSync(sfxPath)) {
-            const sfxTime = Math.max(0, sfx.timestamp || 0);
-            const isSpeechActive = (short.captions || []).some(
-              (c: any) => sfxTime >= (c.start - 0.2) && sfxTime <= (c.end + 0.2)
-            );
-            const duckFactor = isSpeechActive ? 0.35 : 0.75;
-            const baseVol = typeof sfx.volume === 'number' ? sfx.volume : 0.8;
-            const finalVol = Math.max(0.08, Math.min(1.0, baseVol * duckFactor));
-
-            validSfxList.push({
-              path: sfxPath,
-              delayMs: Math.round(sfxTime * 1000),
-              volume: Number(finalVol.toFixed(2)),
-              fadeIn: sfx.fadeIn || 0,
-              fadeOut: sfx.fadeOut || 0,
-            });
-          }
-        }
-
-        // Collect voiceover events
-        const validVoiceoverList: { path: string; delayMs: number; volume: number }[] = [];
-        for (const vo of (short.voiceoverEvents || [])) {
-          if (vo.audioUrl) {
-            const voDiskPath = resolveLocalMediaPath(vo.audioUrl);
-            if (voDiskPath && fs.existsSync(voDiskPath)) {
-              validVoiceoverList.push({
-                path: voDiskPath,
-                delayMs: Math.max(0, Math.round((vo.start || 0) * 1000)),
-                volume: typeof vo.volume === 'number' ? vo.volume : 1.0,
-              });
-            }
-          }
-        }
-
-        const vfxItem = (short.vfxMarkers || []).find((v: any) => v.timestamp >= 0 && v.timestamp < durSec);
-        const resolvedColorTreatment = short.colorTreatment ||
-          (short.creatorStyle && CREATOR_STYLES_REGISTRY[short.creatorStyle as keyof typeof CREATOR_STYLES_REGISTRY]?.visuals.colorTreatment) ||
-          'cinematic_red';
-
-        // 2. Build Single-Stage Lanczos Pipeline with CRF encoding and BT.709 Color Tags
-        const { args: ffmpegArgs, profile } = buildFFmpegRenderArgs({
-          sourcePath: localPath,
-          outputPath,
-          sourceInfo,
-          startTime: startSec,
-          duration: durSec,
-          qualityMode: resolvedQualityMode,
-          speakerPosition: short.speakerPosition || 'center',
-          subtitlePath: escapedAssPath,
-          watermarkText: brandKit?.enabled ? brandKit.brandName : undefined,
-          watermarkOpacity: brandKit?.watermarkOpacity,
-          colorTreatment: resolvedColorTreatment,
-          brollList: validBrollList,
-          sfxList: validSfxList,
-          voiceoverList: validVoiceoverList,
-          vfxItem,
-          isAudioOnly: isAudioFile,
-        });
-
-        exportJob.renderProfile = profile;
-        exportJob.progress = 55;
-
-        console.log(`[FFmpeg Render] Running Lanczos 9:16 export: Mode=${resolvedQualityMode}, CRF=${profile.crf}, Preset=${profile.encoderPreset}, Color=${profile.colorSpace}`);
-
-        await new Promise<void>((resolve, reject) => {
-          execFile(ffmpegPath, ffmpegArgs, (error, _stdout, stderr) => {
-            if (error) {
-              console.error('FFmpeg render error:', error, stderr);
-              reject(new Error(stderr || error.message));
-            } else {
-              resolve();
-            }
-          });
-        });
-
-        // Verify output file existence and size
-        if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
-          throw new Error('Exported video file was not created or has 0 bytes');
-        }
-
-        const stats = fs.statSync(outputPath);
-        const sizeMb = Number((stats.size / (1024 * 1024)).toFixed(2));
-
-        exportJob.status = 'completed';
-        exportJob.progress = 100;
-        exportJob.downloadUrl = `/exports/${outFileName}`;
-        exportJob.fileName = outFileName;
-        exportJob.fileSizeMb = sizeMb;
-        (exportJob as any).forensics = {
-          width: 1080,
-          height: 1920,
-          codec: 'h264',
-          audioCodec: 'aac',
-          sampleRate: 48000,
-          brollRendered: validBrollList.length,
-          captionsBurned: Array.isArray(effectiveCaptions) ? effectiveCaptions.length : 0,
-        };
-
-        console.log(`[EXPORT SUCCESS] Generated rendered MP4: /exports/${outFileName} (${sizeMb} MB)`);
-      } catch (renderErr) {
-        console.error('Export render pipeline failed:', renderErr);
-        exportJob.status = 'failed';
-        exportJob.error = renderErr instanceof Error ? renderErr.message : String(renderErr);
-      } finally {
-        if (tempAssFile && fs.existsSync(tempAssFile)) {
-          try { fs.unlinkSync(tempAssFile); } catch {}
-        }
-      }
-    })();
-
-    res.status(202).json({
-      success: true,
-      exportId,
-      status: exportJob.status,
+      shortId: short?.id || shortId,
+      rawRenderPlan: renderPlan,
+      projectDir: process.cwd(),
     });
-  } catch (err: unknown) {
-    res.status(500).json({ error: 'Failed to initiate export' });
+
+    console.log(`[API /api/projects/:id/export] Enqueued RenderJob ${job.id} for project ${id}`);
+
+    return res.status(202).json({
+      jobId: job.id,
+      exportId: job.id,
+      status: job.status,
+      success: true,
+    });
+  } catch (err: any) {
+    console.error('[API /api/projects/:id/export] Failed to enqueue render:', err);
+    return res.status(500).json({ error: err.message || 'Failed to initiate export' });
   }
 });
+
+// GET: Canonical job status polling endpoint (Requirement 4)
+app.get('/api/export/:jobId', (req: Request, res: Response) => {
+  const job = renderWorker.getJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Render job not found' });
+  }
+  return res.json({
+    jobId: job.id,
+    exportId: job.id,
+    status: job.status,
+    progress: job.progress,
+    stage: job.stage,
+    outputUrl: job.downloadUrl,
+    downloadUrl: job.downloadUrl,
+    error: job.error,
+    currentTimeSec: job.currentTimeSec,
+    totalDurationSec: job.totalDurationSec,
+    checklist: job.checklist,
+    fileName: job.fileName,
+    fileSizeMb: job.fileSizeMb,
+    sourceQuality: job.sourceQuality,
+    renderProfile: job.renderProfile,
+    forensics: job.forensics,
+    renderPlanHash: job.renderPlanHash,
+  });
+});
+
+// POST: Cancel active or queued render job (Requirement 24)
+app.post('/api/export/:jobId/cancel', (req: Request, res: Response) => {
+  const success = renderWorker.cancelJob(req.params.jobId);
+  if (!success) {
+    return res.status(404).json({ error: 'Render job not found or already completed' });
+  }
+  return res.json({
+    success: true,
+    jobId: req.params.jobId,
+    status: 'cancelled',
+  });
+});
+
 
 // POST: Generate More Shorts from Uncovered Video Moments
 app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
@@ -3471,13 +3378,37 @@ app.post('/api/projects/:id/regenerate-elements', async (req: Request, res: Resp
   }
 });
 
-// GET: Check export job status
+// GET: Check export job status (supports both renderWorker and legacy jobs)
 app.get('/api/exports/:id', (req: Request, res: Response) => {
+  const workerJob = renderWorker.getJob(req.params.id);
+  if (workerJob) {
+    return res.json({
+      success: true,
+      jobId: workerJob.id,
+      exportId: workerJob.id,
+      job: workerJob,
+      status: workerJob.status,
+      progress: workerJob.progress,
+      stage: workerJob.stage,
+      downloadUrl: workerJob.downloadUrl,
+      outputUrl: workerJob.downloadUrl,
+      error: workerJob.error,
+      currentTimeSec: workerJob.currentTimeSec,
+      totalDurationSec: workerJob.totalDurationSec,
+      checklist: workerJob.checklist,
+      sourceInfo: workerJob.sourceQuality,
+      renderProfile: workerJob.renderProfile,
+      fileSizeMb: workerJob.fileSizeMb,
+      forensics: workerJob.forensics,
+      renderPlanHash: workerJob.renderPlanHash,
+    });
+  }
+
   const job = exportJobs.get(req.params.id);
   if (!job) {
     return res.status(404).json({ error: 'Export job not found' });
   }
-  res.json({
+  return res.json({
     success: true,
     job,
     status: job.status,
@@ -3536,11 +3467,15 @@ app.get('/api/projects/:id/quality-comparison', async (req: Request, res: Respon
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Find the latest completed export job for this project
-    const jobs = Array.from(exportJobs.values()).filter(
+    // Find the latest completed export job for this project across renderWorker and legacy jobs
+    const workerCompleted = renderWorker.getAllJobs().filter(
       (j) => j.projectId === id && j.status === 'completed' && j.downloadUrl
     );
-    const latestExport = jobs[jobs.length - 1];
+    const legacyCompleted = Array.from(exportJobs.values()).filter(
+      (j) => j.projectId === id && j.status === 'completed' && j.downloadUrl
+    );
+
+    const latestExport: any = workerCompleted[workerCompleted.length - 1] || legacyCompleted[legacyCompleted.length - 1];
 
     if (!latestExport || !latestExport.downloadUrl) {
       return res.status(404).json({ error: 'No completed export found for quality comparison' });
