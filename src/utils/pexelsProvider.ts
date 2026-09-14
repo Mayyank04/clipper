@@ -207,8 +207,8 @@ export const VERIFIED_OFFLINE_STOCK_CATALOG: StockVideo[] = [
     width: 1080,
     height: 1920,
     duration: 10.0,
-    url: '/demo/test_60s.mp4',
-    thumbnailUrl: '/assets/broll/coding.jpg',
+    url: '/assets/broll/creator_studio_broll.mp4',
+    thumbnailUrl: '/assets/broll/camera.jpg',
     videoFiles: [
       {
         id: 108,
@@ -217,7 +217,7 @@ export const VERIFIED_OFFLINE_STOCK_CATALOG: StockVideo[] = [
         width: 1080,
         height: 1920,
         fps: 30,
-        link: '/demo/test_60s.mp4',
+        link: '/assets/broll/creator_studio_broll.mp4',
       },
     ],
     tags: ['video', 'cutaway', 'footage', 'production', 'motion', 'screen', 'tech'],

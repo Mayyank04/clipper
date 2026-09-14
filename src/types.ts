@@ -125,7 +125,11 @@ export type CaptionStyleId =
   | 'clean_subtitle'
   | 'dynamic_ai'
   | 'highlight'
-  | 'professional';
+  | 'professional'
+  | 'educational'
+  | 'EDUCATIONAL'
+  | 'comedy'
+  | 'COMEDY';
 
 export type CaptionStylePreset = CaptionStyleId;
 
@@ -327,8 +331,8 @@ export interface CaptionSegment {
 // Canonical Transcript Format (Section 2 & 5)
 export type TranscriptWord = {
   id: string;
-  word: string;
-  text: string; // compatibility alias
+  text: string;
+  word?: string; // compatibility alias
   start: number;
   end: number;
   confidence?: number;
@@ -753,32 +757,36 @@ export interface ExportSettings {
   burnCaptions: boolean;
 }
 
-// Canonical Source Media object (Section 3)
+// Canonical Source Media object (Section 2 & 3)
 export interface SourceMedia {
   id: string;
-  kind: 'video' | 'audio';
+  type: 'video' | 'audio';
+  kind?: 'video' | 'audio';
+  sourceType: 'youtube' | 'upload' | 'demo';
+  originalUrl?: string;
   localPath: string;
   publicUrl: string;
+  filename?: string;
+  mimeType?: string;
   duration: number;
   width: number;
   height: number;
   fps: number;
-  videoCodec: string;
-  audioCodec: string;
-  audioSampleRate: number;
-  channels: number;
-  fileSize: number;
-  hasAudio: boolean;
+  videoCodec?: string;
+  audioCodec?: string;
+  sampleRate?: number;
+  audioSampleRate?: number;
+  channels?: number;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
+  fileSize?: number;
+  sha256?: string;
   status: 'ready' | 'processing' | 'error';
   error?: string;
   // Compatibility aliases
-  type?: 'video' | 'audio';
   path?: string;
   url?: string;
-  hasVideo?: boolean;
-  sourceType?: 'youtube' | 'upload' | 'demo';
   name?: string;
-  mimeType?: string;
   audioAvailable?: boolean;
   videoElement?: HTMLVideoElement;
   audioElement?: HTMLAudioElement;

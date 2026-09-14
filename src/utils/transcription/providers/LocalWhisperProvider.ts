@@ -334,6 +334,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         words: (s.words || []).map((w, wIdx) => ({
           id: `w_${idx}_${wIdx}`,
           text: w.word || w.text || '',
+          word: w.word || w.text || '',
           start: w.start,
           end: w.end,
           confidence: w.confidence || 0.95,

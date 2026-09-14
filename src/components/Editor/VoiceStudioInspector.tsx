@@ -44,7 +44,7 @@ export const VoiceStudioInspector: React.FC<VoiceStudioInspectorProps> = ({
 
   // Clone Voice State
   const [cloneVoiceName, setCloneVoiceName] = useState<string>('My Custom Voice');
-  const [cloneRefAsset, setCloneRefAsset] = useState<string>('/demo/creator_clip.mp4');
+  const [cloneRefAsset, setCloneRefAsset] = useState<string>(short?.videoProxyUrl || '');
   const [cloneConsent, setCloneConsent] = useState<boolean>(false);
   const [isCloning, setIsCloning] = useState<boolean>(false);
 

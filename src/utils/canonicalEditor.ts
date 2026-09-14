@@ -30,8 +30,12 @@ export function createEditorProject(
   const sourceMedia: SourceMedia = project.sourceMedia || short.sourceMedia || {
     id: `src_${project.id}`,
     type: isAudioProject ? 'audio' : 'video',
-    path: project.sourceMedia?.path || short.sourceMedia?.path,
+    kind: isAudioProject ? 'audio' : 'video',
+    path: project.sourceMedia?.path || short.sourceMedia?.path || mediaUrl,
+    localPath: project.sourceMedia?.localPath || project.sourceMedia?.path || mediaUrl,
+    publicUrl: project.sourceMedia?.publicUrl || project.sourceMedia?.url || mediaUrl,
     name: project.originalTitle || 'Source Media',
+    filename: project.originalTitle || 'Source Media',
     url: mediaUrl,
     mimeType: isAudioProject ? 'audio/mp3' : 'video/mp4',
     duration: project.originalDuration || seqDur,
@@ -41,6 +45,7 @@ export function createEditorProject(
     hasVideo: !isAudioProject,
     hasAudio: true,
     sourceType: project.demoMode ? 'demo' : 'upload',
+    status: 'ready',
     audioAvailable: true,
   };
 

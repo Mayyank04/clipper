@@ -60,7 +60,7 @@ async function runNoWatermarkTests() {
     sourceColorSpace: 'bt709',
     sourceColorTransfer: 'bt709',
     sourceColorPrimaries: 'bt709',
-    sourceColorRange: 'tv',
+    sourceColorRange: 'tv' as const,
     sourceDuration: 10,
     sourceAudioCodec: 'aac',
     sourceAudioBitrate: 128000,

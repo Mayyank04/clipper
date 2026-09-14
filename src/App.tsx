@@ -334,7 +334,12 @@ export default function App() {
       const canonicalSourceMedia: SourceMedia = {
         id: `media_${shortId}`,
         type: 'audio',
+        kind: 'audio',
+        localPath: serverUrl,
+        publicUrl: serverUrl,
         url: serverUrl,
+        filename: title || 'audio.mp3',
+        mimeType: 'audio/mp3',
         duration: probedDuration,
         width: 1080,
         height: 1920,
@@ -342,6 +347,7 @@ export default function App() {
         hasVideo: false,
         hasAudio: true,
         sourceType: 'upload',
+        status: 'ready',
       };
 
       const audioShort: ShortCandidate = {

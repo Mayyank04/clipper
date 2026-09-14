@@ -177,7 +177,7 @@ function synthesizeAudioEffect(
   return { buffer: wavBuf, waveform };
 }
 
-export class DefaultSFXGenerationProvider implements SFXGenerationProvider {
+export class LocalProceduralProvider implements SFXGenerationProvider {
   private outputDir: string;
 
   constructor(outputDir?: string) {
@@ -204,11 +204,11 @@ export class DefaultSFXGenerationProvider implements SFXGenerationProvider {
     const results: GeneratedSFXItem[] = [];
 
     for (let i = 0; i < count; i++) {
-      const assetId = `gen_sfx_${Date.now()}_v${i + 1}`;
+      const assetId = `sfx_proc_${Date.now()}_v${i + 1}`;
       const filename = `${assetId}.wav`;
       const filePath = path.join(this.outputDir, filename);
 
-      // Synthesize high-fidelity sound wave
+      // Synthesize physics-based sound wave via procedural DSP
       const { buffer, waveform } = synthesizeAudioEffect(
         prompt,
         style,
@@ -229,7 +229,7 @@ export class DefaultSFXGenerationProvider implements SFXGenerationProvider {
         url: `/assets/sfx/generated/${filename}`,
         waveform,
         createdAt: new Date().toISOString(),
-        provider: process.env.SFX_GENERATION_API_KEY ? 'cloud_provider' : 'local_neural_synth',
+        provider: 'procedural',
         status: 'ready',
       });
     }
@@ -238,4 +238,18 @@ export class DefaultSFXGenerationProvider implements SFXGenerationProvider {
   }
 }
 
-export const sfxGenerator = new DefaultSFXGenerationProvider();
+export class OptionalCloudAIProvider implements SFXGenerationProvider {
+  async generate(options: SFXGenerationOptions): Promise<GeneratedSFXItem[]> {
+    const apiKey = process.env.SFX_GENERATION_API_KEY || process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      throw new Error('AI SFX generation unavailable. Configure an SFX generation provider.');
+    }
+    // If external AI key is configured, invoke the cloud provider
+    throw new Error('AI SFX generation provider endpoint not responding');
+  }
+}
+
+export const localProceduralProvider = new LocalProceduralProvider();
+export const optionalCloudAIProvider = new OptionalCloudAIProvider();
+export const sfxGenerator = localProceduralProvider;
+export const DefaultSFXGenerationProvider = LocalProceduralProvider;

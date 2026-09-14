@@ -208,7 +208,7 @@ async function runBlackBoxCertification() {
 
   // 3. Change style
   const viralBoldPreset = getCaptionStylePreset('viral_bold');
-  assert(viralBoldPreset.style === 'viral_bold', 'Change Style to viral_bold', viralBoldPreset.name);
+  assert(viralBoldPreset.style === 'viral_bold', 'Change Style to viral_bold', (viralBoldPreset as any).name || viralBoldPreset.style);
 
   // 4. Drag start & end
   history.push([...editList]);
@@ -389,9 +389,11 @@ async function runBlackBoxCertification() {
 
   const canonicalPlan = buildCanonicalRenderPlan(
     'proj_cert_180s',
-    canonicalShort,
-    sourcePath,
-    captions
+    canonicalShort.id,
+    canonicalShort.duration,
+    videoBrollEvents as any,
+    captions,
+    canonicalShort.sfxMarkers
   );
 
   const planHash = crypto.createHash('sha256').update(JSON.stringify(canonicalPlan)).digest('hex');

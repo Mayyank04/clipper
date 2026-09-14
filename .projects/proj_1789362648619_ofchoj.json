@@ -1,0 +1,71 @@
+{
+  "id": "proj_1789362648619_ofchoj",
+  "videoId": "uploaded_file",
+  "youtubeUrl": "/demo/test_60s.mp4",
+  "originalTitle": "SFX System Forensic Test Project",
+  "channelName": "ViralClip Demo Studio",
+  "originalDuration": 60,
+  "originalWidth": 1280,
+  "originalHeight": 720,
+  "originalFps": 25,
+  "originalThumbnail": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop&q=80",
+  "status": "queued",
+  "videoUrl": "/demo/test_60s.mp4",
+  "createdAt": "2026-09-14T05:10:48.672Z",
+  "editingPersonality": "viral",
+  "demoMode": true,
+  "shorts": [
+    {
+      "id": "short_sfx_test_1",
+      "projectId": "proj_1789362648619_ofchoj",
+      "title": "SFX Multi-Track Test Short",
+      "duration": 15,
+      "startTime": 0,
+      "endTime": 15,
+      "aspectRatio": "9:16",
+      "speakerPosition": "center",
+      "captions": [
+        {
+          "id": "c1",
+          "start": 0.5,
+          "end": 4,
+          "text": "Everything changed when AI started writing code.",
+          "words": []
+        },
+        {
+          "id": "c2",
+          "start": 6,
+          "end": 10,
+          "text": "Number one stop posting random content.",
+          "words": []
+        }
+      ],
+      "sfxMarkers": [
+        {
+          "id": "sfx_test_1789362648673",
+          "timestamp": 3.2,
+          "duration": 1.5,
+          "category": "impact",
+          "soundName": "AI Gen: impact",
+          "volume": 0.8,
+          "triggerText": "everything changed",
+          "audioUrl": "/assets/sfx/generated/sfx_proc_1789362648675_v1.wav",
+          "source": "ai_generated",
+          "prompt": "Short cinematic impact sound, deep sub bass boom with a punchy transient attack, dramatic reveal, intense high energy, clean release, 1.5 seconds, tailored for a vertical YouTube Short."
+        },
+        {
+          "id": "sfx_other_marker",
+          "timestamp": 8.5,
+          "duration": 1,
+          "category": "pop",
+          "soundName": "Secondary Pop",
+          "volume": 0.7
+        }
+      ],
+      "vfxMarkers": [],
+      "brollSuggestions": []
+    }
+  ],
+  "transcript": [],
+  "updatedAt": "2026-09-14T05:10:48.674Z"
+}

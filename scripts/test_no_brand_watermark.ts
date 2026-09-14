@@ -65,7 +65,7 @@ async function runNoWatermarkTest() {
   const renderCommand = buildFFmpegRenderArgs({
     sourcePath: '/tmp/test_source.mp4',
     outputPath: '/tmp/test_output.mp4',
-    sourceInfo: sampleSourceInfo,
+    sourceInfo: sampleSourceInfo as any,
     startTime: 0,
     duration: 5,
     qualityMode: 'HIGH',

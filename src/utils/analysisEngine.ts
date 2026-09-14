@@ -469,8 +469,8 @@ export function generateSemanticSFXSuggestions(
       continue;
     }
 
-    // 1. High-impact statement or explosive word
-    if (/\b(boom|everything changed|huge|insane|massive|unbelievable|shocking|impact|blew my mind|secret|important)\b/i.test(text)) {
+    // 1. High-impact statement or explosive word (Multilingual: EN, HI/Hinglish, ES, FR)
+    if (/\b(boom|everything changed|huge|insane|massive|unbelievable|shocking|impact|blew my mind|secret|important|dhamaka|kamaal|zabardast|raaz|asli sach|incre[ií]ble|asombroso|brutal|incroyable)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.impact;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,
@@ -493,7 +493,7 @@ export function generateSemanticSFXSuggestions(
     }
 
     // 2. Excitement, announcement, or breakthrough
-    if (/\b(finally|announcing|breakthrough|incredible|game changer|launch|new era|framework)\b/i.test(text)) {
+    if (/\b(finally|announcing|breakthrough|incredible|game changer|launch|new era|framework|aakhirkaar|shuruat|naya daur|por fin|lanzamiento|revoluci[oó]n)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.hit;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,
@@ -516,7 +516,7 @@ export function generateSemanticSFXSuggestions(
     }
 
     // 3. Curiosity / tension buildup
-    if (/\b(wait|listen|watch this|pay attention|here is why|the question is|retention)\b/i.test(text)) {
+    if (/\b(wait|listen|watch this|pay attention|here is why|the question is|retention|ruko|ruk|dekho|suno|dhyan se|dhyaan|espera|mira|escucha|attends|regarde)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.riser;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,
@@ -539,7 +539,7 @@ export function generateSemanticSFXSuggestions(
     }
 
     // 4. Pattern interrupt or contrast
-    if (/\b(stop|wrong|never|mistake|don't|actually|myth|problem|instead)\b/i.test(text)) {
+    if (/\b(stop|wrong|never|mistake|don't|actually|myth|problem|instead|galat|mat karo|aisa nahi|kabhi nahi|galti|ruk jao|para|nunca|equivocado|arr[eê]te|jamais)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.glitch;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,
@@ -562,7 +562,7 @@ export function generateSemanticSFXSuggestions(
     }
 
     // 5. Actionable keypoint or numbered tip
-    if (/\b(step|tip|first|second|third|number one|remember|key takeaway|spike)\b/i.test(text)) {
+    if (/\b(step|tip|first|second|third|number one|remember|key takeaway|spike|pehla|pehli baat|dusra|teesra|paso|primero|segundo|consejo)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.pop;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,
@@ -585,7 +585,7 @@ export function generateSemanticSFXSuggestions(
     }
 
     // 6. Natural scene transition at narrative shifts
-    if (i > 0 && start >= 4.0 && /\b(now|however|so what happened|meanwhile|let's talk about|notice how)\b/i.test(text)) {
+    if (i > 0 && start >= 4.0 && /\b(now|however|so what happened|meanwhile|let's talk about|notice how|lekin|ab|phir kya hua|ahora|sin embargo)\b/i.test(text)) {
       const asset = VERIFIED_SFX_ASSETS.whoosh;
       suggestions.push({
         id: `sfx_sug_${suggestions.length + 1}`,

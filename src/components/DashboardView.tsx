@@ -38,11 +38,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // Aggregate stats
-  const totalShorts = projects.reduce((acc, p) => acc + (p.shorts?.length || 0), 0);
-  const totalExports = 48;
-  const avgViralScore = 94.4;
-  const avgDuration = '27s';
+  // Aggregate stats dynamically computed from actual projects
+  const allShorts = projects.flatMap((p) => p.shorts || []);
+  const totalShorts = allShorts.length;
+  const totalExports = projects.filter((p) => p.status === 'ready').length;
+  const avgViralScore = totalShorts > 0
+    ? Number((allShorts.reduce((sum, s) => sum + (s.viralScore?.overall || 0), 0) / totalShorts).toFixed(1))
+    : 0;
+  const avgDuration = totalShorts > 0
+    ? `${Math.round(allShorts.reduce((sum, s) => sum + (s.duration || 0), 0) / totalShorts)}s`
+    : '0s';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8 animate-fade-in">
@@ -93,10 +98,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>Shorts Generated</span>
             <Film className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-3xl font-black text-white">{totalShorts || 12}</div>
+          <div className="text-3xl font-black text-white">{totalShorts}</div>
           <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
             <TrendingUp className="w-3 h-3" />
-            <span>+14 this week</span>
+            <span>{totalShorts > 0 ? `${totalShorts} active clips` : 'No clips created yet'}</span>
           </div>
         </div>
 
@@ -116,9 +121,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>Avg Viral Score</span>
             <Flame className="w-4 h-4 text-orange-500" />
           </div>
-          <div className="text-3xl font-black text-amber-400">{avgViralScore} <span className="text-sm text-neutral-500 font-normal">/ 100</span></div>
+          <div className="text-3xl font-black text-amber-400">{avgViralScore > 0 ? avgViralScore : '--'} <span className="text-sm text-neutral-500 font-normal">/ 100</span></div>
           <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-            <span>Top 5% virality cohort</span>
+            <span>{totalShorts > 0 ? 'Calculated from analyzed clips' : 'Awaiting clip analysis'}</span>
           </div>
         </div>
 

@@ -42,10 +42,11 @@ import {
   buildSmartSFXPrompt,
   searchSFXCatalog,
 } from './src/utils/sfxCatalog';
-import { sfxGenerator } from './src/utils/sfxGenerationProvider';
+import { sfxGenerator, localProceduralProvider, optionalCloudAIProvider } from './src/utils/sfxGenerationProvider';
 import {
   SFXAsset,
   SFXMarker,
+  SourceMedia,
   Transcript,
   TranscriptSegment,
   TranscriptWord,
@@ -286,7 +287,78 @@ interface ExportJob {
   renderProfile?: RenderQualityProfile;
 }
 
-const projectsStore: Map<string, any> = new Map();
+const PROJECTS_DIR = path.join(process.cwd(), '.projects');
+if (!fs.existsSync(PROJECTS_DIR)) {
+  fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+}
+
+function persistProject(project: any) {
+  if (!project || !project.id) return;
+  try {
+    const filePath = path.join(PROJECTS_DIR, `${project.id}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf8');
+  } catch (err) {
+    console.error(`[Persistence] Failed to persist project ${project.id}:`, err);
+  }
+}
+
+function deletePersistedProject(id: string) {
+  try {
+    const filePath = path.join(PROJECTS_DIR, `${id}.json`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.error(`[Persistence] Failed to delete persisted project ${id}:`, err);
+  }
+}
+
+const rawProjectsMap = new Map<string, any>();
+const projectsStore = {
+  get: (k: string) => rawProjectsMap.get(k),
+  set: (k: string, v: any) => {
+    rawProjectsMap.set(k, v);
+    persistProject(v);
+    return projectsStore;
+  },
+  delete: (k: string) => {
+    deletePersistedProject(k);
+    return rawProjectsMap.delete(k);
+  },
+  has: (k: string) => rawProjectsMap.has(k),
+  get size() { return rawProjectsMap.size; },
+  values: () => rawProjectsMap.values(),
+  keys: () => rawProjectsMap.keys(),
+  entries: () => rawProjectsMap.entries(),
+  forEach: (cb: any) => rawProjectsMap.forEach(cb),
+  clear: () => rawProjectsMap.clear(),
+};
+
+function loadPersistedProjects() {
+  try {
+    if (!fs.existsSync(PROJECTS_DIR)) return;
+    const files = fs.readdirSync(PROJECTS_DIR);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        try {
+          const content = fs.readFileSync(path.join(PROJECTS_DIR, file), 'utf8');
+          const proj = JSON.parse(content);
+          if (proj && proj.id) {
+            rawProjectsMap.set(proj.id, proj);
+          }
+        } catch {}
+      }
+    }
+    if (rawProjectsMap.size > 0) {
+      console.log(`[Persistence] Loaded ${rawProjectsMap.size} projects from disk.`);
+    }
+  } catch (err) {
+    console.error('[Persistence] Error loading projects from disk:', err);
+  }
+}
+
+loadPersistedProjects();
+
 const processingJobs: Map<string, ProcessingJob> = new Map();
 const exportJobs: Map<string, ExportJob> = new Map();
 
@@ -890,18 +962,31 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
   }
 
   const totalDuration = probe.duration;
-  const canonicalSourceMedia = {
+  const canonicalSourceMedia: SourceMedia = {
     id: `media_${project.id}`,
     type: (probe.hasVideo ? 'video' : 'audio') as 'video' | 'audio',
-    path: localDiskPath,
-    url: project.videoUrl,
+    kind: (probe.hasVideo ? 'video' : 'audio') as 'video' | 'audio',
+    sourceType: (isYouTube ? 'youtube' : (isFile ? 'upload' : 'demo')) as 'youtube' | 'upload' | 'demo',
+    originalUrl: project.videoUrl,
+    localPath: localDiskPath,
+    publicUrl: project.videoUrl,
+    filename: path.basename(localDiskPath),
+    mimeType: probe.hasVideo ? 'video/mp4' : 'audio/mp3',
     duration: probe.duration,
     width: probe.width || 1080,
     height: probe.height || 1920,
     fps: probe.fps || 30,
+    videoCodec: (probe as any).videoCodec || (probe.hasVideo ? 'h264' : ''),
+    audioCodec: (probe as any).audioCodec || (probe.hasAudio ? 'aac' : ''),
+    sampleRate: (probe as any).audioSampleRate || 48000,
+    audioSampleRate: (probe as any).audioSampleRate || 48000,
+    channels: (probe as any).channels || 2,
     hasVideo: probe.hasVideo,
     hasAudio: probe.hasAudio,
-    sourceType: (isYouTube ? 'youtube' : (isFile ? 'upload' : 'demo')) as 'youtube' | 'upload' | 'demo',
+    fileSize: (probe as any).fileSize || 0,
+    path: localDiskPath,
+    url: project.videoUrl,
+    status: 'ready',
   };
   project.sourceMedia = canonicalSourceMedia;
   project.originalDuration = canonicalSourceMedia.duration;
@@ -1222,30 +1307,77 @@ Requirements:
   // If AI was offline or unconfigured, partition the source media into truthful non-overlapping segments
   // NO fabricated speech or fake quotes
   if (!aiClips || aiClips.length === 0) {
-    const segDur = Math.max(15, Math.min(45, Math.floor(totalDuration / dynamicTargetCount)));
     aiClips = [];
-    for (let i = 0; i < dynamicTargetCount; i++) {
-      const segStart = i * segDur;
-      const segEnd = Math.min(totalDuration, i === dynamicTargetCount - 1 ? totalDuration : segStart + segDur);
-      const actualDur = Number((segEnd - segStart).toFixed(2));
-      if (actualDur >= 10) {
-        aiClips.push({
-          title: `${project.originalTitle} — Highlight ${i + 1} (${Math.floor(segStart)}s-${Math.floor(segEnd)}s)`,
-          description: `Key moment indexed between ${Math.floor(segStart)}s and ${Math.floor(segEnd)}s. #shorts #viral #highlights`,
-          topic: `Highlight Part ${i + 1}`,
-          hookText: `Key highlight from ${project.originalTitle}`,
-          hookCategory: ['bold', 'educational', 'curiosity', 'shock', 'question'][i % 5],
-          startTime: segStart,
-          endTime: segEnd,
-          duration: actualDur,
-          viralScoreOverall: 92 - i * 2,
-          whySelected: [
-            `Temporal segment ${Math.floor(segStart)}s - ${Math.floor(segEnd)}s with high pacing density`,
-            'Optimized for 9:16 vertical short format',
-            'Non-overlapping timeline coverage',
-          ],
-          sentences: [], // Honest empty captions - speech not fabricated
-        });
+    const transcriptSegs = Array.isArray(project.transcript) ? project.transcript : [];
+    
+    if (transcriptSegs.length > 0) {
+      // Detect natural dialogue boundaries from actual transcript
+      let curStart = transcriptSegs[0].start;
+      let curSegs: any[] = [];
+      for (const seg of transcriptSegs) {
+        curSegs.push(seg);
+        const curDur = seg.end - curStart;
+        if (curDur >= 20 || seg === transcriptSegs[transcriptSegs.length - 1]) {
+          if (curDur >= 10) {
+            const hookCandidate = curSegs[0]?.text || '';
+            const hookText = hookCandidate.length > 60 ? hookCandidate.slice(0, 57) + '...' : hookCandidate;
+            const wordsCount = curSegs.reduce((sum, s) => sum + (s.words?.length || s.text.split(' ').length), 0);
+            const wordsPerSec = curDur > 0 ? wordsCount / curDur : 0;
+            const pacing = Math.min(95, Math.max(70, Math.round(75 + wordsPerSec * 8)));
+            const score = Math.round(pacing * 0.5 + (hookText ? 45 : 35));
+
+            aiClips.push({
+              title: `${project.originalTitle} — Segment ${aiClips.length + 1} (${Math.floor(curStart)}s-${Math.floor(seg.end)}s)`,
+              description: curSegs.map((s: any) => s.text).join(' ').slice(0, 120),
+              topic: curSegs[0]?.topic || `Speech Segment ${aiClips.length + 1}`,
+              hookText: hookText || `Key dialogue from ${project.originalTitle}`,
+              hookCategory: ['bold', 'educational', 'curiosity', 'shock', 'question'][aiClips.length % 5],
+              startTime: curStart,
+              endTime: seg.end,
+              duration: Number((seg.end - curStart).toFixed(2)),
+              viralScoreOverall: score,
+              whySelected: [
+                `Natural speech boundary from ${Math.floor(curStart)}s to ${Math.floor(seg.end)}s`,
+                'High word cadence and clear dialogue delivery',
+                'Optimized for 9:16 vertical short format',
+              ],
+              sentences: curSegs,
+            });
+            if (aiClips.length >= dynamicTargetCount) break;
+            curStart = seg.end;
+            curSegs = [];
+          }
+        }
+      }
+    }
+
+    // If still no clips (e.g. video without speech), partition into truthful segments
+    if (aiClips.length === 0) {
+      const segDur = Math.max(15, Math.min(45, Math.floor(totalDuration / dynamicTargetCount)));
+      for (let i = 0; i < dynamicTargetCount; i++) {
+        const segStart = i * segDur;
+        const segEnd = Math.min(totalDuration, i === dynamicTargetCount - 1 ? totalDuration : segStart + segDur);
+        const actualDur = Number((segEnd - segStart).toFixed(2));
+        if (actualDur >= 10) {
+          const pacingScore = Math.round(75 + (i % 3) * 5);
+          aiClips.push({
+            title: `${project.originalTitle} — Clip ${i + 1} (${Math.floor(segStart)}s-${Math.floor(segEnd)}s)`,
+            description: `${project.originalTitle} highlight segment from ${Math.floor(segStart)}s to ${Math.floor(segEnd)}s`,
+            topic: `Segment ${i + 1}`,
+            hookText: `Moment from ${project.originalTitle}`,
+            hookCategory: ['bold', 'educational', 'curiosity', 'shock', 'question'][i % 5],
+            startTime: segStart,
+            endTime: segEnd,
+            duration: actualDur,
+            viralScoreOverall: pacingScore,
+            whySelected: [
+              `Temporal segment ${Math.floor(segStart)}s - ${Math.floor(segEnd)}s`,
+              'Optimized for 9:16 vertical short format',
+              'Non-overlapping timeline coverage',
+            ],
+            sentences: [], // Honest empty captions - speech not fabricated
+          });
+        }
       }
     }
   }
@@ -2554,7 +2686,10 @@ app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const totalDur = project.originalDuration || 60;
+    const totalDur = project.sourceMedia?.duration || project.originalDuration;
+    if (!totalDur || totalDur <= 0) {
+      return res.status(400).json({ error: 'Source media duration is unavailable or unprobed' });
+    }
     const existingShorts = project.shorts || [];
     const usedRanges = existingShorts.map((s: any) => ({ start: s.startTime, end: s.endTime })).sort((a: any, b: any) => a.start - b.start);
 
@@ -2597,7 +2732,8 @@ app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
         start: Number(Math.max(0, s.start - timing.start).toFixed(2)),
         end: Number(Math.min(timing.duration, s.end - timing.start).toFixed(2)),
         words: (s.words || []).map((w: any) => ({
-          word: w.word,
+          word: w.word || w.text,
+          text: w.word || w.text,
           start: Number(Math.max(0, w.start - timing.start).toFixed(2)),
           end: Number(Math.min(timing.duration, w.end - timing.start).toFixed(2)),
           isHighlight: Boolean(w.isHighlight),
@@ -2609,13 +2745,55 @@ app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
         ? (firstSentenceText.length > 60 ? firstSentenceText.slice(0, 57) + '...' : firstSentenceText)
         : `Key moment indexed at ${Math.floor(timing.start)}s`;
 
+      const segmentText = realSentences.map((s: any) => s.text).join(' ');
+      const candidateWords = segmentText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w: string) => w.length >= 4);
+      const uniqueWords = Array.from(new Set(candidateWords));
+      const dynamicKeywords = uniqueWords.slice(0, 5);
+      if (dynamicKeywords.length === 0) {
+        dynamicKeywords.push('shorts', 'highlights', 'insight');
+      }
+      const dynamicHashtags = ['#shorts', '#viral', ...dynamicKeywords.slice(0, 3).map((k: string) => `#${k}`)];
+
+      // Dynamic viral score computation from actual pacing and hook
+      const wordCount = realSentences.reduce((acc: number, s: any) => acc + (s.words?.length || s.text.split(' ').length), 0);
+      const wordsPerSec = timing.duration > 0 ? wordCount / timing.duration : 0;
+      const pacingScore = Math.min(95, Math.max(70, Math.round(75 + wordsPerSec * 8)));
+      const hookScore = hookText && hookText.length > 10 ? 92 : 82;
+      const clarityScore = realSentences.length > 0 ? 90 : 80;
+      const valueScore = Math.min(94, Math.max(75, 85 + (realSentences.length > 2 ? 6 : 0)));
+      const retentionScore = Math.round((pacingScore + hookScore) / 2);
+      const shareabilityScore = Math.round((hookScore + valueScore) / 2);
+      const contextScore = realSentences.length > 1 ? 88 : 80;
+      const overallScore = Math.round((hookScore + retentionScore + pacingScore + clarityScore + valueScore + shareabilityScore + contextScore) / 7);
+
+      // Semantic SFX placement based on actual spoken phrases
+      const semanticSfx = generateSemanticSFXSuggestions(captions, timing.duration);
+      const sfxMarkers = semanticSfx.map((s, sIdx) => ({
+        id: `sfx_m_${idx}_${sIdx + 1}`,
+        timestamp: s.start,
+        category: s.type,
+        soundName: VERIFIED_SFX_ASSETS[s.type]?.soundName || 'Impact Sound',
+        volume: 0.75,
+        reason: s.reason,
+        triggerText: s.triggerText,
+        confidence: s.confidence,
+        audioUrl: s.audioUrl,
+      }));
+
+      const vfxMarkers = [
+        { id: `vfx_m_${idx}_1`, timestamp: 0.0, duration: 1.2, type: 'zoom_punch', label: 'Punch Zoom', intensity: 7 },
+      ];
+      if (timing.duration > 8) {
+        vfxMarkers.push({ id: `vfx_m_${idx}_2`, timestamp: Number((timing.duration * 0.6).toFixed(1)), duration: 1.0, type: 'glow', label: 'Emphasis Glow', intensity: 5 });
+      }
+
       return {
         id: `short_${project.id}_${idx}`,
         projectId: project.id,
         title: `${project.originalTitle} — Clip ${idx} (${Math.floor(timing.start)}s-${Math.floor(timing.end)}s)`,
-        description: `Uncovered segment discovered from ${Math.floor(timing.start)}s to ${Math.floor(timing.end)}s. #shorts #viral #growth`,
-        hashtags: ['#shorts', '#viral', '#growth', '#mindset'],
-        keywords: ['strategy', 'insight', 'execution'],
+        description: `Uncovered segment discovered from ${Math.floor(timing.start)}s to ${Math.floor(timing.end)}s. ${dynamicHashtags.join(' ')}`,
+        hashtags: dynamicHashtags,
+        keywords: dynamicKeywords,
         topic: 'Uncovered Moment',
         duration: timing.duration,
         startTime: timing.start,
@@ -2636,32 +2814,26 @@ app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
           pacingStrategy: 'Rapid cadence with visual zoom punch',
           captionStyle: 'Viral Bold',
           brollCount: 1,
-          sfxCount: 2,
-          vfxCount: 2,
+          sfxCount: sfxMarkers.length,
+          vfxCount: vfxMarkers.length,
         },
         viralScore: {
-          overall: Math.max(88, 94 - i),
+          overall: overallScore,
           breakdown: {
-            hook: 92,
-            retention: 91,
-            emotion: 90,
-            value: 93,
-            pacing: 92,
-            shareability: 91,
-            clarity: 93,
-            contextCompleteness: 89,
+            hook: hookScore,
+            retention: retentionScore,
+            emotion: 88,
+            value: valueScore,
+            pacing: pacingScore,
+            shareability: shareabilityScore,
+            clarity: clarityScore,
+            contextCompleteness: contextScore,
           },
           summary: 'Newly indexed high-retention moment with zero overlap.',
         },
         captions, // Real transcript only, never fabricated!
-        sfxMarkers: [
-          { id: `sfx_m_${idx}_1`, timestamp: 0.5, category: 'whoosh', soundName: 'Fast Whoosh', volume: 0.75 },
-          { id: `sfx_m_${idx}_2`, timestamp: Math.min(timing.duration - 1, 4.2), category: 'impact', soundName: 'Sub Impact', volume: 0.8 },
-        ],
-        vfxMarkers: [
-          { id: `vfx_m_${idx}_1`, timestamp: 0.0, duration: 1.5, type: 'zoom_punch', label: 'Punch Zoom', intensity: 7 },
-          { id: `vfx_m_${idx}_2`, timestamp: Math.min(timing.duration - 2, 4.2), duration: 1.2, type: 'glow', label: 'Emphasis Glow', intensity: 5 },
-        ],
+        sfxMarkers,
+        vfxMarkers,
         brollSuggestions: [],
       };
     });
@@ -2837,55 +3009,75 @@ app.post('/api/sfx/upload', sfxAudioUpload.single('audio'), (req: Request, res: 
   }
 });
 
-// POST: Google Drive / Folder Import (Section 33)
+// POST: Google Drive / Folder Import (Section 31)
 app.post('/api/sfx/import-drive', (req: Request, res: Response) => {
   try {
     const { folderName = 'User Drive SFX', files = [] } = req.body;
+    const isDriveConnected = Boolean(process.env.GOOGLE_DRIVE_CLIENT_ID || process.env.GOOGLE_DRIVE_API_KEY || req.headers['x-drive-token']);
+
+    if (!isDriveConnected && (!Array.isArray(files) || files.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google Drive is not connected. Configure Google Drive credentials to import assets.',
+        connected: false,
+      });
+    }
+
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        importedAssets: [],
+        message: 'No authorized files provided from Google Drive.',
+      });
+    }
+
     const importedAssets: SFXAsset[] = [];
-
-    const sampleImports = files.length > 0 ? files : [
-      { name: 'Drive_Cinematic_Impact_01.wav', category: 'impact', duration: 1.6 },
-      { name: 'Drive_Whoosh_Transition_Fast.wav', category: 'whoosh', duration: 0.7 },
-      { name: 'Drive_Pop_Subtle_Accent.wav', category: 'pop', duration: 0.4 },
-    ];
-
-    sampleImports.forEach((item: any, idx: number) => {
+    files.forEach((item: any, idx: number) => {
       const assetId = `sfx_drv_${Date.now()}_${idx}`;
       const asset: SFXAsset = {
         id: assetId,
-        name: item.name.replace(/\.[^/.]+$/, ''),
-        file: item.file || `/assets/sfx/${item.category || 'impact'}.wav`,
-        duration: item.duration || 1.5,
+        name: item.name ? item.name.replace(/\.[^/.]+$/, '') : `Drive_Audio_${idx + 1}`,
+        file: item.file || item.url || '',
+        duration: Number(item.duration) || 1.5,
         category: (item.category || 'impact') as any,
         tags: [item.category || 'impact', 'drive', folderName.toLowerCase(), 'imported'],
         description: `Imported from Google Drive: ${folderName}`,
         source: 'google_drive',
         license: 'User-provided',
-        hash: `drv_hash_${idx}_${Date.now()}`,
-        waveform: [0.1, 0.4, 0.8, 0.9, 0.7, 0.5, 0.3, 0.1],
-        loudness: -14.5,
+        hash: item.sha256 || `drv_hash_${idx}_${Date.now()}`,
+        waveform: item.waveform || [0.1, 0.4, 0.8, 0.9, 0.7, 0.5, 0.3, 0.1],
+        loudness: item.loudness || -14.5,
       };
       userSfxStore.set(assetId, asset);
       importedAssets.push(asset);
     });
 
     res.json({ success: true, count: importedAssets.length, importedAssets });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error importing from Drive:', err);
-    res.status(500).json({ error: 'Failed to import from Drive' });
+    res.status(500).json({ error: err.message || 'Failed to import from Drive' });
   }
 });
 
-// POST: AI Sound Effect Generation (Sections 11, 12, 13)
+// POST: Sound Effect Generation (Section 30: Procedural vs AI Generated)
 app.post('/api/sfx/generate', async (req: Request, res: Response) => {
   try {
-    const { prompt, style = 'Cinematic', intensity = 'high', duration = 2.0, variations = 2 } = req.body;
+    const {
+      prompt,
+      style = 'Cinematic',
+      intensity = 'high',
+      duration = 2.0,
+      variations = 2,
+      engine = 'procedural',
+    } = req.body;
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      return res.status(400).json({ error: 'Valid prompt is required for AI SFX generation' });
+      return res.status(400).json({ error: 'Valid prompt is required for SFX generation' });
     }
 
-    const items = await sfxGenerator.generate({
+    const provider = engine === 'ai' ? optionalCloudAIProvider : localProceduralProvider;
+    const items = await provider.generate({
       prompt: prompt.trim(),
       style,
       intensity,
@@ -2897,24 +3089,25 @@ app.post('/api/sfx/generate', async (req: Request, res: Response) => {
       const assetId = item.id;
       userSfxStore.set(assetId, {
         id: assetId,
-        name: `AI: ${prompt.slice(0, 32)}...`,
+        name: `${item.provider === 'procedural' ? 'Procedural' : 'AI'}: ${prompt.slice(0, 32)}...`,
         file: item.url,
         duration: item.duration,
         category: 'impact',
-        tags: ['ai_generated', style.toLowerCase(), intensity.toLowerCase(), ...prompt.toLowerCase().split(/\s+/).slice(0, 5)],
-        description: `AI Generated: "${prompt}"`,
-        source: 'ai_generated',
-        license: 'Generated',
+        tags: [item.provider, style.toLowerCase(), intensity.toLowerCase(), ...prompt.toLowerCase().split(/\s+/).slice(0, 5)],
+        description: `${item.provider === 'procedural' ? 'Procedurally Synthesized' : 'AI Generated'}: "${prompt}"`,
+        source: item.provider === 'procedural' ? 'bundled' : 'ai_generated',
+        license: item.provider === 'procedural' ? 'Royalty-free' : 'Generated',
         hash: `gen_${assetId}`,
         waveform: item.waveform,
         loudness: -14.0,
       });
     });
 
-    res.json({ success: true, count: items.length, items });
+    res.json({ success: true, count: items.length, engine: items[0]?.provider || engine, items });
   } catch (err: any) {
-    console.error('Error in AI SFX generation:', err);
-    res.status(500).json({ error: err.message || 'AI SFX generation failed. Please retry.' });
+    console.error('Error in SFX generation:', err);
+    const isConfigErr = err.message?.includes('Configure an SFX generation provider') || err.message?.includes('unavailable');
+    res.status(isConfigErr ? 400 : 500).json({ error: err.message || 'SFX generation failed. Please retry.' });
   }
 });
 
@@ -3808,6 +4001,7 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
           words: (s.words || []).map((w, idx) => ({
             id: `w_${idx}`,
             text: w.word || w.text || '',
+            word: w.word || w.text || '',
             start: w.start,
             end: w.end,
             confidence: w.confidence,
@@ -3816,6 +4010,7 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
         words: captionWords.map((w, idx) => ({
           id: `w_${idx}`,
           text: w.word || w.text || '',
+          word: w.word || w.text || '',
           start: w.start,
           end: w.end,
           confidence: w.confidence,
