@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { execFile, execSync } from 'child_process';
+import { execFile, execSync, spawn } from 'child_process';
 
 export type YouTubeErrorCode =
   | 'YOUTUBE_INVALID_URL'
@@ -577,7 +577,7 @@ export class YouTubeDownloader {
 
     log(`Starting YouTube ingestion for ${canonicalUrl}`);
 
-    // Helper: Execute yt-dlp process
+    // Helper: Execute yt-dlp process with streaming download progress
     const runDownloadProcess = (useAuth: boolean): Promise<{ success: boolean; stderr: string; stdout: string; exitCode: number }> => {
       const { cmd, args } = this.adapter.buildArgs(canonicalUrl, outputPath, {
         ffmpegPath: this.ffmpegPath,
@@ -586,13 +586,55 @@ export class YouTubeDownloader {
       });
 
       return new Promise((resolve) => {
-        execFile(cmd, args, { maxBuffer: 25 * 1024 * 1024, timeout: 240000 }, (err, stdout, stderr) => {
-          const exitCode = err ? (err as any).code || 1 : 0;
+        let stdoutData = '';
+        let stderrData = '';
+        let lastProgressTime = 0;
+
+        const child = spawn(cmd, args);
+
+        const hardTimeout = setTimeout(() => {
+          try { child.kill('SIGTERM'); } catch {}
           resolve({
-            success: !err && fs.existsSync(outputPath),
-            stderr: stderr || '',
-            stdout: stdout || '',
-            exitCode: typeof exitCode === 'number' ? exitCode : 1,
+            success: false,
+            stderr: stderrData + '\nDownload process timed out after 240 seconds',
+            stdout: stdoutData,
+            exitCode: 124,
+          });
+        }, 240000);
+
+        child.stdout.on('data', (chunk: Buffer) => {
+          const str = chunk.toString();
+          stdoutData += str;
+          // Parse download progress lines: [download]  45.2% of ~ 15.00MiB at  2.50MiB/s ETA 00:04
+          const match = str.match(/\[download\]\s+(\d+(?:\.\d+)?%[^\r\n]*)/);
+          if (match && Date.now() - lastProgressTime > 1500) {
+            lastProgressTime = Date.now();
+            log(match[0].trim(), 'info');
+          }
+        });
+
+        child.stderr.on('data', (chunk: Buffer) => {
+          stderrData += chunk.toString();
+        });
+
+        child.on('error', (err) => {
+          clearTimeout(hardTimeout);
+          stderrData += `\nSpawn error: ${err.message}`;
+          resolve({
+            success: false,
+            stderr: stderrData,
+            stdout: stdoutData,
+            exitCode: 1,
+          });
+        });
+
+        child.on('close', (code) => {
+          clearTimeout(hardTimeout);
+          resolve({
+            success: (code === 0 || code === null) && fs.existsSync(outputPath),
+            stderr: stderrData,
+            stdout: stdoutData,
+            exitCode: code ?? 0,
           });
         });
       });

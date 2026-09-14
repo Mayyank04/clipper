@@ -9,6 +9,14 @@ import { GoogleGenAI, Type } from '@google/genai';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { TranscriptionManager } from './src/utils/transcription/TranscriptionManager';
+import {
+  mediaStorage,
+  resolveMediaFilesystemPath,
+  validateSourceMedia,
+  MEDIA_ROOT,
+} from './src/utils/mediaStorage';
+import { TranscriptionJobManager } from './src/utils/transcription/transcriptionJob';
+import { detectHardware } from './src/utils/transcription/hardwareDetector';
 
 console.log(`[Startup] Environment initialized. GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'configured' : 'missing'}`);
 import {
@@ -190,6 +198,7 @@ app.use('/public', express.static(path.join(process.cwd(), 'public')));
 app.use('/demo', express.static(path.join(process.cwd(), 'public/demo')));
 app.use('/uploads', express.static(uploadDir));
 app.use('/exports', express.static(exportDir));
+app.use('/media', express.static(MEDIA_ROOT));
 
 // Initialize server-side YouTube Downloader Service
 const youtubeDownloader = new YouTubeDownloader(ffmpegPath);
@@ -382,6 +391,66 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
+// GET: Overall system health including media storage, yt-dlp, and hardware
+app.get('/api/system/health', (req: Request, res: Response) => {
+  const hw = detectHardware();
+  const ytStatus = youtubeDownloader.getStatus();
+  res.json({
+    status: 'ok',
+    mediaStorage: {
+      mediaRoot: MEDIA_ROOT,
+      exists: fs.existsSync(MEDIA_ROOT),
+      writable: true,
+      totalRegistered: mediaStorage.getAll().length,
+    },
+    youtubeDownloader: ytStatus,
+    transcription: {
+      activeJobs: TranscriptionJobManager.getInstance().getAllJobs().length,
+    },
+    hardware: hw,
+    memory: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// GET: YouTube downloader health
+app.get('/api/youtube/health', (req: Request, res: Response) => {
+  const status = youtubeDownloader.getStatus();
+  res.json({
+    available: status.available,
+    status: status.available ? 'healthy' : 'dependency_missing',
+    details: status,
+  });
+});
+
+// GET: Transcription providers health
+app.get('/api/transcription/health', async (req: Request, res: Response) => {
+  try {
+    const health = await TranscriptionManager.getInstance().getProvidersHealth();
+    res.json({
+      status: 'ok',
+      ...health,
+      activeJobs: TranscriptionJobManager.getInstance().getAllJobs(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', error: err?.message || String(err) });
+  }
+});
+
+// GET: Single media item health and integrity
+app.get('/api/media/:id/health', async (req: Request, res: Response) => {
+  try {
+    const validation = await validateSourceMedia(req.params.id);
+    const media = mediaStorage.getMedia(req.params.id);
+    res.json({
+      ...validation,
+      mediaRecord: media || null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, code: 'INTERNAL_ERROR', message: err?.message || String(err) });
+  }
+});
+
 // GET: List all projects
 app.get('/api/projects', (req: Request, res: Response) => {
   const projects = Array.from(projectsStore.values());
@@ -455,9 +524,7 @@ app.post('/api/projects', async (req: Request, res: Response) => {
     let probedFps = 30;
 
     const cleanPath = (rawUrl || '').replace(/^\/public\//, '/');
-    const localDiskPath = cleanPath.startsWith('/uploads/')
-      ? path.join(process.cwd(), cleanPath)
-      : path.join(process.cwd(), 'public', cleanPath);
+    const localDiskPath = resolveMediaFilesystemPath(req.body.sourceMediaId || rawUrl);
 
     if (fs.existsSync(localDiskPath)) {
       const probe = await probeMedia(localDiskPath);
@@ -581,9 +648,7 @@ app.post('/api/process', async (req: Request, res: Response) => {
       let probedFps = 30;
 
       const cleanPath = (rawUrl || '').replace(/^\/public\//, '/');
-      const localDiskPath = cleanPath.startsWith('/uploads/')
-        ? path.join(process.cwd(), cleanPath)
-        : path.join(process.cwd(), 'public', cleanPath);
+      const localDiskPath = resolveMediaFilesystemPath(req.body.sourceMediaId || rawUrl);
 
       if (fs.existsSync(localDiskPath)) {
         const probe = await probeMedia(localDiskPath);
@@ -597,6 +662,7 @@ app.post('/api/process', async (req: Request, res: Response) => {
 
       project = {
         id: newProjId,
+        sourceMediaId: req.body.sourceMediaId,
         videoId: videoId || (isFile ? 'uploaded_file' : 'demo_video'),
         youtubeUrl: rawUrl,
         originalTitle: effectiveTitle,
@@ -609,7 +675,7 @@ app.post('/api/process', async (req: Request, res: Response) => {
           ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
           : 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop&q=80',
         status: 'queued',
-        videoUrl: isFile ? rawUrl : (isSample ? (rawUrl.startsWith('/') ? rawUrl : '/demo/sample.mp4') : rawUrl),
+        videoUrl: isFile ? (req.body.sourceMediaId ? mediaStorage.getPublicUrl(req.body.sourceMediaId) : rawUrl) : (isSample ? (rawUrl.startsWith('/') ? rawUrl : '/demo/sample.mp4') : rawUrl),
         createdAt: new Date().toISOString(),
         editingPersonality,
         demoMode: isSample,
@@ -617,6 +683,8 @@ app.post('/api/process', async (req: Request, res: Response) => {
         transcript: [],
       };
       projectsStore.set(newProjId, project);
+    } else if (req.body.sourceMediaId && !project.sourceMediaId) {
+      project.sourceMediaId = req.body.sourceMediaId;
     }
 
     // Create unique processing job
@@ -918,6 +986,13 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
 
     localDiskPath = dlRes.filePath;
     project.videoUrl = dlRes.fileUrl;
+    try {
+      const stored = await mediaStorage.registerMedia(localDiskPath, path.basename(localDiskPath));
+      project.sourceMediaId = stored.id;
+    } catch (e) {
+      console.warn('[Process] Notice registering YouTube download in MediaStorage:', e);
+    }
+
     if (dlRes.sourceMedia) {
       project.sourceMedia = dlRes.sourceMedia;
       project.originalDuration = dlRes.sourceMedia.duration;
@@ -927,10 +1002,7 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
     }
     addJobLog(job, 'Successfully downloaded YouTube source video with full integrity verification', 'success');
   } else {
-    const cleanPath = (project.videoUrl || '').replace(/^\/public\//, '/');
-    localDiskPath = cleanPath.startsWith('/uploads/')
-      ? path.join(process.cwd(), cleanPath)
-      : path.join(process.cwd(), 'public', cleanPath);
+    localDiskPath = resolveMediaFilesystemPath(project.sourceMediaId || project.videoUrl || '');
   }
 
   if (job.cancelled) return;
@@ -942,24 +1014,26 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
   job.currentStage = 'Probing media characteristics with FFprobe...';
   console.log('[PROCESS] current stage: probing (20%)');
 
-  if (!fs.existsSync(localDiskPath)) {
+  const mediaVal = await validateSourceMedia(localDiskPath);
+  if (!mediaVal.ok) {
     job.status = 'failed';
     job.stage = 'failed';
-    job.error = 'Source media file not found on disk. Upload the video file instead.';
+    job.error = mediaVal.message;
+    job.errorCode = mediaVal.code;
     job.currentStage = job.error;
     addJobLog(job, job.error, 'error');
     return;
   }
 
-  const probe = await probeMedia(localDiskPath);
-  if (probe.duration <= 0) {
-    job.status = 'failed';
-    job.stage = 'failed';
-    job.error = 'Failed to probe source media duration with FFprobe.';
-    job.currentStage = job.error;
-    addJobLog(job, job.error, 'error');
-    return;
-  }
+  const probe = {
+    duration: mediaVal.duration || 0,
+    width: mediaVal.width || 1080,
+    height: mediaVal.height || 1920,
+    fps: mediaVal.fps || 30,
+    hasAudio: mediaVal.hasAudio !== false,
+    hasVideo: mediaVal.hasVideo !== false,
+    codec: 'h264',
+  };
 
   const totalDuration = probe.duration;
   const canonicalSourceMedia: SourceMedia = {
@@ -1106,16 +1180,22 @@ Output JSON format:
     }
   }
 
-  // 5C: Local Whisper transcription fallback if not yet transcribed and media exists on disk
+  // 5C: Local Whisper transcription fallback with active heartbeat and timeout guard
   if (!normalizedTranscript && fs.existsSync(localDiskPath) && probe.hasAudio) {
     try {
       addJobLog(job, 'Running Local Whisper transcription engine on source media...', 'info');
-      const transResult = await TranscriptionManager.getInstance().transcribe({
+      const transResult = await TranscriptionJobManager.getInstance().executeJob({
+        jobId: `trans_${job.id}`,
         sourceMediaPath: localDiskPath,
-        startTime: 0,
-        duration: totalDuration,
-        onProgress: (stage, message) => {
-          addJobLog(job, `[Whisper] ${message}`, 'info');
+        sourceMediaId: project.sourceMediaId,
+        totalDuration,
+        language: 'auto',
+        onUpdate: (activeJob) => {
+          // Dynamic progress between 45% and 59%
+          const stageRatio = (activeJob.progressPercent || 0) / 100;
+          job.progress = Math.min(59, Math.round(45 + stageRatio * 14));
+          job.currentStage = `[Whisper ASR] ${activeJob.stageMessage} (${activeJob.processedSeconds}s/${Math.round(totalDuration)}s)`;
+          addJobLog(job, `[Whisper] ${activeJob.stageMessage}`, 'info');
         },
       });
 
@@ -1134,7 +1214,7 @@ Output JSON format:
           'success'
         );
       }
-    } catch (whisperErr) {
+    } catch (whisperErr: any) {
       console.warn('Local Whisper transcription notice:', whisperErr);
       addJobLog(
         job,
@@ -1758,31 +1838,10 @@ async function getMediaDuration(filePath: string): Promise<number> {
 }
 
 /**
- * Resolves a web/relative URL to an existing local file on disk
+ * Resolves a web/relative URL or sourceMediaId to an existing local file on disk
  */
 function resolveLocalMediaPath(rawUrl: string): string | null {
-  if (!rawUrl || typeof rawUrl !== 'string') return null;
-  const trimmed = rawUrl.trim();
-  if (!trimmed) return null;
-
-  if (path.isAbsolute(trimmed) && fs.existsSync(trimmed)) {
-    return trimmed;
-  }
-
-  const clean = trimmed.replace(/^\/public\//, '/').replace(/^\//, '');
-  const candidates = [
-    path.join(process.cwd(), 'public', clean),
-    path.join(process.cwd(), clean),
-    path.join(process.cwd(), 'public', trimmed.replace(/^\//, '')),
-  ];
-
-  for (const cand of candidates) {
-    if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
-      return cand;
-    }
-  }
-
-  return null;
+  return resolveMediaFilesystemPath(rawUrl);
 }
 
 /**
@@ -2342,32 +2401,39 @@ app.post('/api/upload', upload.any(), async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No media file uploaded' });
     }
 
-    const fileUrl = `/uploads/${uploadedFile.filename}`;
-    const localPath = path.join(uploadDir, uploadedFile.filename);
-    const probe = await probeMedia(localPath);
+    // Save directly to MediaStorage with SHA-256 and FFprobe validation
+    const stored = await mediaStorage.saveUpload(
+      uploadedFile.path,
+      uploadedFile.originalname,
+      uploadedFile.mimetype
+    );
+
     const isAudio =
       uploadedFile.mimetype.startsWith('audio/') ||
-      probe.width === 0 ||
+      stored.width === 0 ||
       /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(uploadedFile.originalname);
 
     res.json({
       success: true,
-      url: fileUrl,
-      fileUrl,
+      sourceMediaId: stored.id,
+      id: stored.id,
+      url: stored.publicUrl,
+      fileUrl: stored.publicUrl,
+      legacyUrl: `/uploads/${uploadedFile.filename}`,
       filename: uploadedFile.originalname,
-      size: uploadedFile.size,
+      size: stored.size,
       mimetype: uploadedFile.mimetype,
-      duration: probe.duration,
-      width: probe.width,
-      height: probe.height,
-      fps: probe.fps,
-      codec: probe.codec,
-      hasAudio: probe.hasAudio,
+      duration: stored.duration,
+      width: stored.width,
+      height: stored.height,
+      fps: stored.fps,
+      codec: stored.videoCodec || stored.audioCodec || 'h264',
+      hasAudio: stored.hasAudio,
       isAudio,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Upload handler error:', err);
-    res.status(500).json({ error: 'Failed to process file upload' });
+    res.status(500).json({ error: err?.message || 'Failed to process file upload' });
   }
 });
 

@@ -153,6 +153,7 @@ export default function App() {
       setIsProcessing(true);
 
       let serverUrl = objectUrl;
+      let sourceMediaId: string | undefined = undefined;
       try {
         const formData = new FormData();
         formData.append('video', file);
@@ -161,6 +162,9 @@ export default function App() {
           const upData = await upRes.json();
           if (upData.url || upData.fileUrl) {
             serverUrl = upData.url || upData.fileUrl;
+          }
+          if (upData.sourceMediaId) {
+            sourceMediaId = upData.sourceMediaId;
           }
           if (upData.duration && upData.duration > 0) {
             dur = upData.duration;
@@ -183,6 +187,7 @@ export default function App() {
             url: serverUrl,
             youtubeUrl: serverUrl,
             videoUrl: serverUrl,
+            sourceMediaId,
             title: fileName,
             duration: dur,
             editingPersonality,
@@ -228,12 +233,16 @@ export default function App() {
       formData.append('audio', file);
       formData.append('video', file);
 
+      let sourceMediaId: string | undefined = undefined;
       try {
         const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
         if (upRes.ok) {
           const upData = await upRes.json();
           if (upData.url || upData.fileUrl) {
             serverUrl = upData.url || upData.fileUrl;
+          }
+          if (upData.sourceMediaId) {
+            sourceMediaId = upData.sourceMediaId;
           }
           if (upData.duration && upData.duration > 0) {
             probedDuration = upData.duration;
@@ -274,7 +283,8 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            audioUrl: serverUrl,
+            audioUrl: sourceMediaId ? `/media/${sourceMediaId}/source.mp3` : serverUrl,
+            sourceMediaId,
             filename: file.name,
             duration: probedDuration,
             mimeType: file.type || 'audio/mp3',

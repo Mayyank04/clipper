@@ -17,4 +17,8 @@ public/assets/sfx/generated/*
 public/audio/*
 !public/audio/.gitkeep
 .cache/
+data/media/*
+!data/media/.gitkeep
+.projects/*
+!.projects/.gitkeep
 
