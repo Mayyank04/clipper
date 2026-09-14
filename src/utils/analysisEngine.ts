@@ -708,6 +708,7 @@ export function generateContentAwareBRollSuggestions(
       const bEnd = Math.min(totalDuration, Math.min(bStart + 4.5, segEnd));
       const duration = Number((bEnd - bStart).toFixed(2));
 
+      const isVideo = (item as any).assetType === 'video' || item.assetUrl.endsWith('.mp4');
       suggestions.push({
         id: `broll_sug_${suggestions.length + 1}`,
         start: bStart,
@@ -719,10 +720,11 @@ export function generateContentAwareBRollSuggestions(
         triggerText: seg.text || (seg as any).word || matchedKeyword,
         reason: `Visual reinforcement of spoken topic: "${matchedKeyword}"`,
         confidence,
-        assetType: 'image',
+        assetType: isVideo ? 'video' : 'image',
         assetId: item.concept.toLowerCase().replace(/\s+/g, '_'),
         assetUrl: item.assetUrl,
-        imageUrl: item.assetUrl,
+        videoUrl: isVideo ? item.assetUrl : undefined,
+        imageUrl: isVideo ? item.assetUrl.replace('_broll.mp4', '.jpg') : item.assetUrl,
         enabled: confidence >= threshold,
       });
 

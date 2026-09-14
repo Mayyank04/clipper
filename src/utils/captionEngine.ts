@@ -27,7 +27,7 @@ export interface CaptionStyleDefinition {
   config: CaptionCustomization;
 }
 
-export const DEFAULT_CAPTION_STYLE: CaptionStyleId = 'reference_typing';
+export const DEFAULT_CAPTION_STYLE: CaptionStyleId = 'reference_mix';
 
 export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
   {
@@ -324,6 +324,115 @@ export const PRODUCTION_REFERENCE_PRESETS: CaptionStyleDefinition[] = [
       alignment: 'center',
       animationType: 'pop',
       uppercase: true,
+    },
+  },
+  {
+    id: 'educational',
+    name: 'Educational Clarity',
+    desc: 'High-contrast typography with emerald highlight for key terms and concepts',
+    category: 'education' as any,
+    config: {
+      style: 'educational',
+      preset: 'educational',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 26,
+      fontWeight: 700,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#10B981', // Emerald Green
+      strokeColor: '#000000',
+      strokeWidth: 2.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.85)',
+      positionY: 76,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'gaming',
+    name: 'Gaming Turbo',
+    desc: 'Aggressive stylized neon typography with high-energy pop and magenta highlights',
+    category: 'gaming',
+    config: {
+      style: 'gaming',
+      preset: 'gaming',
+      fontFamily: 'Komika Axis, Impact, sans-serif',
+      fontSize: 32,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#F43F5E', // Rose/Magenta
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.95)',
+      positionY: 70,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'comedy',
+    name: 'Comedy Punchline',
+    desc: 'Playful bouncy comic typography for funny sketches and punchlines',
+    category: 'creative',
+    config: {
+      style: 'comedy',
+      preset: 'comedy',
+      fontFamily: 'Komika Axis, Arial Black, sans-serif',
+      fontSize: 33,
+      fontWeight: 800,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FBBF24', // Amber/Yellow
+      strokeColor: '#1E1B4B',
+      strokeWidth: 4.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.9)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'bounce',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'luxury',
+    name: 'Luxury Editorial',
+    desc: 'Refined serif aesthetics with metallic champagne gold accents',
+    category: 'cinematic',
+    config: {
+      style: 'luxury',
+      preset: 'luxury',
+      fontFamily: 'Playfair Display, Georgia, serif',
+      fontSize: 27,
+      fontWeight: 700,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#FCD34D', // Champagne Gold
+      strokeColor: '#0F172A',
+      strokeWidth: 1.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.75)',
+      letterSpacing: 2,
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
     },
   },
 ];
@@ -1321,7 +1430,7 @@ export function getActiveCaptionWord(
   const word = words[index];
   const dur = Math.max(0.05, word.end - word.start);
   const progress = Math.max(0, Math.min(1, (currentTime - word.start) / dur));
-  const scale = 1.0 + Math.sin(progress * Math.PI) * 0.15;
+  const scale = 1.0 + Math.sin(progress * Math.PI) * 0.06;
 
   return {
     word,
@@ -1353,9 +1462,27 @@ export function getCaptionStateAtTime(
   }
 
   // Strict interval check: caption starts at exact first word start, ends at exact last word end (Part 2 & 8)
-  const activeCaptionIndex = captions.findIndex(
+  let activeCaptionIndex = captions.findIndex(
     (c) => currentTime >= c.start && currentTime <= c.end
   );
+
+  let isSpeechHoldActive = false;
+  if (activeCaptionIndex === -1 && config?.enableSpeechHold) {
+    const holdWindow = config.holdThresholdSeconds ?? 0.28;
+    const finalHold = config.finalHoldSeconds ?? 0.8;
+    const candidateIdx = captions.findIndex((c, idx) => {
+      const isLast = idx === captions.length - 1;
+      const effectiveHold = isLast ? finalHold : holdWindow;
+      const isPast = currentTime > c.end && (currentTime - c.end) <= effectiveHold;
+      if (!isPast) return false;
+      const nextCap = captions[idx + 1];
+      return !nextCap || currentTime < nextCap.start;
+    });
+    if (candidateIdx !== -1) {
+      activeCaptionIndex = candidateIdx;
+      isSpeechHoldActive = true;
+    }
+  }
 
   if (activeCaptionIndex === -1) {
     return {
@@ -1376,7 +1503,9 @@ export function getCaptionStateAtTime(
   const activeCaption = captions[activeCaptionIndex];
   const words = activeCaption.words || [];
 
-  const wordState = getActiveCaptionWord(words, currentTime);
+  const wordState = isSpeechHoldActive
+    ? { index: -1, word: undefined, scale: 1.0, progress: 1.0 }
+    : getActiveCaptionWord(words, currentTime);
   const activeWordIndex = wordState.index;
   const activeWord = wordState.word;
 
@@ -1384,7 +1513,7 @@ export function getCaptionStateAtTime(
   const upcomingWordIndices: number[] = [];
 
   words.forEach((w, idx) => {
-    if (currentTime > w.end) {
+    if (isSpeechHoldActive || currentTime > w.end) {
       pastWordIndices.push(idx);
     } else if (currentTime < w.start) {
       upcomingWordIndices.push(idx);
@@ -1584,11 +1713,11 @@ export function computeWordAnimationState(
       if (isSpoken) {
         highlighted = true;
         color = wordObj?.highlightColor || captionConfig.highlightColor;
-        // 120ms ease-out lift
+        // 120ms ease-out lift (Part S: scale 1.00 -> 1.06, 80-140ms)
         const liftProgress = Math.min(1, (currentTime - wordStart) / Math.min(0.14, dur));
         const ease = 1 - Math.pow(1 - liftProgress, 3);
         translateY = 4 * (1 - ease);
-        scale = 0.98 + 0.14 * ease;
+        scale = Number((1.00 + 0.06 * ease).toFixed(3));
         opacity = 0.5 + 0.5 * ease;
       } else if (isPast) {
         highlighted = false;
@@ -2014,7 +2143,8 @@ export function autoFixCaptions(
  */
 export function calculateCaptionCoverage(
   captions: CaptionSegment[],
-  totalDuration: number
+  totalDuration: number,
+  actualSpeechDuration?: number
 ): {
   coveragePercent: number;
   totalWords: number;
@@ -2033,7 +2163,7 @@ export function calculateCaptionCoverage(
   }
 
   let totalWords = 0;
-  let speechDuration = 0;
+  let captionCoveredDuration = 0;
   const q1 = totalDuration * 0.25;
   const q2 = totalDuration * 0.5;
   const q3 = totalDuration * 0.75;
@@ -2045,7 +2175,7 @@ export function calculateCaptionCoverage(
 
   for (const c of captions) {
     totalWords += (c.words || []).length || c.text.split(/\s+/).filter(Boolean).length;
-    speechDuration += Math.max(0, c.end - c.start);
+    captionCoveredDuration += Math.max(0, c.end - c.start);
 
     if (c.start <= q1) hasQ1 = true;
     if (c.end >= q1 && c.start <= q2) hasQ2 = true;
@@ -2053,12 +2183,19 @@ export function calculateCaptionCoverage(
     if (c.end >= q3) hasQ4 = true;
   }
 
-  const coveragePercent = Math.min(100, Math.round((speechDuration / totalDuration) * 100));
+  // Part F: Speech Coverage = captionCoveredSpeechDuration / speechDuration
+  const firstStart = captions.length > 0 ? captions[0].start : 0;
+  const lastEnd = captions.length > 0 ? captions[captions.length - 1].end : totalDuration;
+  const effectiveSpeechSpan = actualSpeechDuration && actualSpeechDuration > 0
+    ? actualSpeechDuration
+    : Math.max(0.1, lastEnd - firstStart);
+
+  const coveragePercent = Math.min(100, Math.round((captionCoveredDuration / effectiveSpeechSpan) * 100));
 
   return {
-    coveragePercent,
+    coveragePercent: Math.max(0, Math.min(100, coveragePercent)),
     totalWords,
-    speechDuration: Number(speechDuration.toFixed(2)),
+    speechDuration: Number(captionCoveredDuration.toFixed(2)),
     coveredQuartiles: [hasQ1, hasQ2, hasQ3, hasQ4],
     quartileCoverage: { q1: hasQ1, q2: hasQ2, q3: hasQ3, q4: hasQ4 },
   };

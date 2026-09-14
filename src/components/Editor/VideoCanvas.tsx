@@ -274,8 +274,13 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     };
   }, []);
 
-  // Deterministic seek-safe caption state calculation
-  const captionState = getCaptionStateAtTime(short.captions || [], currentTime, captionConfig);
+  // Deterministic seek-safe caption state calculation with Netflix/BBC speech-hold gap-bridging
+  const captionState = getCaptionStateAtTime(short.captions || [], currentTime, {
+    ...captionConfig,
+    enableSpeechHold: true,
+    holdThresholdSeconds: 0.28,
+    finalHoldSeconds: 0.8,
+  });
   const activeCaption = captionState.activeCaption;
 
   // Find active VFX marker

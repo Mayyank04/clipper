@@ -228,7 +228,7 @@ export const CREATOR_FONTS: CreatorFont[] = [
       700
     ],
     "style": "sans",
-    "category": "BOLD",
+    "category": "CLEAN",
     "supportsUppercase": true,
     "supportsLatin": true,
     "licenseSource": "User Google Drive Font Pack",
@@ -507,14 +507,54 @@ export const FONT_CATEGORIES = [
 export type FontCategory = typeof FONT_CATEGORIES[number];
 
 export function getFontById(id: string): CreatorFont | undefined {
-  return CREATOR_FONTS.find((f) => f.id === id || f.family.toLowerCase() === id.toLowerCase());
+  const norm = (id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (norm === 'godofthunder') {
+    return CREATOR_FONTS.find((f) => f.id === 'godofthunder_0wo1p') || CREATOR_FONTS.find((f) => f.id.includes('god'));
+  }
+  if (norm === 'bebasneue') {
+    return CREATOR_FONTS.find((f) => f.id === 'american_captain');
+  }
+  return CREATOR_FONTS.find(
+    (f) =>
+      f.id === id ||
+      f.family.toLowerCase() === id.toLowerCase() ||
+      f.id.toLowerCase().replace(/[^a-z0-9]/g, '') === norm ||
+      f.family.toLowerCase().replace(/[^a-z0-9]/g, '').includes(norm)
+  );
 }
 
 export function getFontsByCategory(category: FontCategory): CreatorFont[] {
   return CREATOR_FONTS.filter((f) => f.category === category);
 }
 
+export const CREATOR_FONTS_REGISTRY = CREATOR_FONTS;
+
 export function getFontForStyle(style: string): CreatorFont {
   const match = CREATOR_FONTS.find((f) => f.style === style);
   return match || CREATOR_FONTS[0];
+}
+
+/**
+ * Multilingual font fallback resolver (Part O)
+ * Resolves compatible fallback for scripts like Devanagari, Arabic, etc.
+ */
+export function resolveFontForScript(script: string, requestedFontId: string): string {
+  const font = getFontById(requestedFontId);
+  const scriptNorm = (script || '').toLowerCase();
+
+  if (scriptNorm.includes('devanagari') || scriptNorm.includes('hindi') || scriptNorm.includes('marathi')) {
+    if (font?.supportsDevanagari) return font.id;
+    return 'poppins'; // Registered font with robust Devanagari/Hindi glyph coverage
+  }
+
+  if (scriptNorm.includes('arabic') || scriptNorm.includes('urdu')) {
+    if (font?.supportsArabic) return font.id;
+    return 'noto_sans_arabic'; // Standard fallback
+  }
+
+  if (scriptNorm.includes('tamil') || scriptNorm.includes('telugu') || scriptNorm.includes('kannada') || scriptNorm.includes('malayalam') || scriptNorm.includes('bengali')) {
+    return 'noto_sans_indic';
+  }
+
+  return font ? font.id : 'lemon_milk';
 }

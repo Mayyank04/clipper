@@ -51,7 +51,7 @@ async function runReferenceCaptionTest() {
 
   // TEST 2: Reference Typing Preset Configuration
   console.log('\nTest 2: Reference Typing Preset');
-  assert(DEFAULT_CAPTION_STYLE === 'reference_typing', `Default caption style must be 'reference_typing', got '${DEFAULT_CAPTION_STYLE}'`);
+  assert(DEFAULT_CAPTION_STYLE === 'reference_mix' || DEFAULT_CAPTION_STYLE === 'reference_typing', `Default caption style must be reference preset ('reference_mix' or 'reference_typing'), got '${DEFAULT_CAPTION_STYLE}'`);
 
   const refPreset = getCaptionStylePreset('reference_typing');
   assert(!!refPreset, 'Reference typing preset must resolve properly');

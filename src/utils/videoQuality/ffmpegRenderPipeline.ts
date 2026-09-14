@@ -132,13 +132,19 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
 
   const profile = buildQualityProfile(qualityMode, sourceInfo);
 
-  if (isAudioOnly) {
+  const effectiveAudioOnly = isAudioOnly ||
+    !sourceInfo.sourceHeight ||
+    sourceInfo.sourceHeight === 0 ||
+    /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(sourcePath);
+
+  if (effectiveAudioOnly) {
     // Audio-to-Video mode
     let filterChain = `[1:a]showwaves=s=960x240:mode=line:colors=0x38bdf8:rate=${profile.targetFPS}[vwave];[0:v][vwave]overlay=(W-w)/2:H*0.75-h/2[v1]`;
     let curVPad = '[v1]';
 
     if (subtitlePath) {
-      filterChain += `;${curVPad}subtitles='${subtitlePath.replace(/'/g, "'\\''")}'[vsub]`;
+      const fontsDir = path.join(process.cwd(), 'public', 'assets', 'fonts').replace(/\\/g, '/').replace(/:/g, '\\:');
+      filterChain += `;${curVPad}subtitles='${subtitlePath.replace(/'/g, "'\\''")}':fontsdir='${fontsDir}'[vsub]`;
       curVPad = '[vsub]';
     }
 

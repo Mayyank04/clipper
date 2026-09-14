@@ -597,6 +597,9 @@ export interface CaptionCustomization {
   entryAnimation?: string;
   exitAnimation?: string;
   uppercase: boolean;
+  enableSpeechHold?: boolean;
+  holdThresholdSeconds?: number;
+  finalHoldSeconds?: number;
 }
 
 export type CaptionAnimationMode =
