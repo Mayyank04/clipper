@@ -73,7 +73,8 @@ export type TranscriptionJobStage =
   | 'DETECTING_LANGUAGE'
   | 'BUILDING_CAPTIONS'
   | 'COMPLETED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'CANCELLED';
 
 export interface TranscriptionJob {
   id: string;

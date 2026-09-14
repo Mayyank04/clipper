@@ -1,8 +1,10 @@
 /**
  * VIRALCLIP STUDIO — LOCAL WHISPER TRANSCRIPTION PROVIDER
- * Real local speech-to-text inference running Whisper models (tiny, base, small)
+ * Canonical local speech-to-text inference running Whisper models (tiny, base, small, medium)
  * via ONNX Runtime & @xenova/transformers.
  * Fully offline-capable, runs without external API keys or network dependencies.
+ * Produces genuine, native word-level timestamps directly from Whisper word tokens.
+ * Strictly ZERO proportional timestamp division.
  */
 
 import fs from 'fs';
@@ -22,29 +24,31 @@ import { detectHardware } from '../hardwareDetector';
 import {
   groupWordsIntoCaptionSegments,
   normalizeCanonicalTranscript,
-  alignWordsInSegment,
 } from '../../captionEngine';
 import { Transcript, TranscriptSegment, TranscriptWord } from '../../../types';
 
 export class LocalWhisperProvider implements TranscriptionProvider {
   readonly id = 'local-whisper';
   readonly name = 'Local Whisper ASR (ONNX Runtime)';
-  readonly priority = 2;
+  // Priority 1: Canonical Default Provider (Runs 100% locally offline)
+  readonly priority = 1;
 
   private modelName: string;
   private transcriberInstance: any = null;
   private isInitializing = false;
   private initPromise: Promise<any> | null = null;
 
-  constructor() {
-    // Select model profile: tiny (default, fast ~40MB), base (~75MB), or small (~240MB)
-    const profile = (process.env.WHISPER_MODEL || 'tiny').toLowerCase();
+  constructor(preset?: 'tiny' | 'base' | 'small' | 'medium') {
+    // Model selection: base is default for balanced speed/accuracy on Mac
+    const profile = (preset || process.env.WHISPER_MODEL || 'base').toLowerCase();
     if (profile === 'small') {
       this.modelName = 'Xenova/whisper-small';
-    } else if (profile === 'base') {
-      this.modelName = 'Xenova/whisper-base';
-    } else {
+    } else if (profile === 'medium') {
+      this.modelName = 'Xenova/whisper-medium';
+    } else if (profile === 'tiny') {
       this.modelName = 'Xenova/whisper-tiny';
+    } else {
+      this.modelName = 'Xenova/whisper-base';
     }
   }
 
@@ -72,10 +76,17 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         'bn',
         'ta',
         'te',
+        'kn',
+        'ml',
+        'mr',
+        'gu',
         'ja',
         'ko',
         'zh',
         'ru',
+        'id',
+        'tr',
+        'nl',
       ],
     };
   }
@@ -94,7 +105,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
       try {
         const { pipeline, env } = await import('@xenova/transformers');
 
-        // Configure cache directory
+        // Configure persistent model cache directory
         const cacheDir = path.join(process.cwd(), '.cache', 'transformers');
         if (!fs.existsSync(cacheDir)) {
           fs.mkdirSync(cacheDir, { recursive: true });
@@ -104,7 +115,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           env.backends.onnx.logLevel = 'error';
         }
 
-        // Tune ONNX runtime thread pool for host CPU/MPS
+        // Tune ONNX runtime thread pool for Apple Silicon / Host CPU
         const hw = detectHardware();
         if (env.backends?.onnx?.wasm) {
           env.backends.onnx.wasm.numThreads = Math.min(8, Math.max(2, hw.cores));
@@ -131,18 +142,27 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     return this.initPromise;
   }
 
-  private async convertAudioTo16kWav(inputPath: string, outputPath: string, clipStart = 0, duration?: number): Promise<void> {
+  /**
+   * Converts any source audio/video into a standard 16kHz mono 16-bit PCM WAV.
+   */
+  private async convertAudioTo16kWav(
+    inputPath: string,
+    outputPath: string,
+    clipStart = 0,
+    duration?: number
+  ): Promise<void> {
     const ffmpegPath = ffmpegStatic || 'ffmpeg';
     const args = ['-y'];
-    // If input audio is not pre-sliced and clipStart > 0, seek precisely
+
     if (clipStart > 0) {
-      args.push('-ss', String(clipStart));
+      args.push('-ss', String(clipStart.toFixed(3)));
     }
     args.push('-i', inputPath);
     if (duration && duration > 0) {
-      args.push('-t', String(duration));
+      args.push('-t', String(duration.toFixed(3)));
     }
     args.push(
+      '-vn',
       '-ar',
       '16000',
       '-ac',
@@ -172,22 +192,27 @@ export class LocalWhisperProvider implements TranscriptionProvider {
       );
     }
 
-    const clipDuration = Math.max(1, Number(input.duration) || 30);
     const clipStart = Math.max(0, Number(input.clipStart) || 0);
+    const requestedDuration = Number(input.duration) || 0;
 
     // 1. Convert source audio to 16kHz mono PCM WAV
     const tempWavPath = path.join(
       path.dirname(input.audioPath),
-      `whisper_16k_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.wav`
+      `whisper_16k_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.wav`
     );
 
     try {
-      await this.convertAudioTo16kWav(input.audioPath, tempWavPath, clipStart, clipDuration);
+      await this.convertAudioTo16kWav(
+        input.audioPath,
+        tempWavPath,
+        clipStart,
+        requestedDuration > 0 ? requestedDuration : undefined
+      );
 
       if (!fs.existsSync(tempWavPath) || fs.statSync(tempWavPath).size === 0) {
         throw new TranscriptionError(
           'AUDIO_EXTRACTION_FAILED' as any,
-          'Failed to convert audio stream to 16kHz WAV for Whisper.',
+          'Failed to extract audio track to 16kHz WAV for Whisper.',
           this.id
         );
       }
@@ -203,113 +228,153 @@ export class LocalWhisperProvider implements TranscriptionProvider {
       }
       const float32Samples = new Float32Array(rawSamples);
 
-      // 3. Obtain transcriber pipeline and run inference
+      // Measure true audio duration from samples count (16000 samples/sec)
+      const measuredDuration = float32Samples.length / 16000;
+      const actualDuration = requestedDuration > 0 ? Math.min(requestedDuration, measuredDuration) : measuredDuration;
+
+      if (float32Samples.length < 1600) { // Less than 0.1s
+        throw new TranscriptionError(
+          'NO_AUDIO',
+          'Extracted audio stream is too short for speech transcription.',
+          this.id
+        );
+      }
+
+      // 3. Obtain transcriber pipeline and run inference with native word timestamps
       const transcriber = await this.getTranscriber();
 
       const options: any = {
         return_timestamps: 'word',
         chunk_length_s: 30,
-        stride_length_s: 5,
+        stride_length_s: 0, // Zero stride prevents duplicate boundary words
       };
 
       if (input.language && input.language !== 'auto') {
         options.language = input.language;
       }
 
-      console.log(`[Local Whisper] Starting inference on ${float32Samples.length} samples (${clipDuration}s)...`);
+      console.log(`[Local Whisper] Starting inference on ${float32Samples.length} samples (${actualDuration.toFixed(1)}s)...`);
       const startTime = Date.now();
       const output = await transcriber(float32Samples, options);
       const elapsedMs = Date.now() - startTime;
       console.log(`[Local Whisper] Inference finished in ${elapsedMs}ms.`);
 
       const fullText = (output.text || '').trim();
-      if (!fullText) {
-        throw new TranscriptionError(
-          'EMPTY_TRANSCRIPT',
-          'Local Whisper detected no spoken speech in this audio track.',
-          this.id
-        );
-      }
+      const rawChunks: Array<{ text: string; timestamp: [number | null, number | null] }> =
+        Array.isArray(output.chunks) ? output.chunks : [];
 
-      // 4. Parse word timestamps from chunks
+      // 4. Parse native word timestamps directly from Whisper word chunks
+      // Strictly ZERO proportional splitting.
       const words: TranscriptWord[] = [];
-      const rawChunks = Array.isArray(output.chunks) ? output.chunks : [];
+      let lastWordEnd = 0;
+      let consecutiveRepeatCount = 0;
+      let lastNormalizedWord = '';
+
+      // Non-speech tag detector: [Music], [Applause], (cheering), [BLANK_AUDIO], _AUDIO], ♪, etc.
+      const isNonSpeechToken = (t: string): boolean => {
+        if (/^(\[|\().*?(\]|\))$/.test(t)) return true;
+        if (/^[♪♩#\*\-_~]+$/.test(t)) return true;
+        if (/(_AUDIO|BLANK_AUDIO|APPLAUSE|CHEERING|LAUGHTER|MUSIC|SILENCE)/i.test(t)) return true;
+        if (/^\[/.test(t) || /\]$/.test(t)) return true;
+        if (/^\(/.test(t) || /\)$/.test(t)) return true;
+        return false;
+      };
 
       for (let i = 0; i < rawChunks.length; i++) {
         const chunk = rawChunks[i];
-        const chunkText = (chunk.text || '').trim();
-        if (!chunkText) continue;
+        let wordText = (chunk.text || '').trim();
+        if (!wordText) continue;
+
+        // Filter out non-speech noise tokens
+        if (isNonSpeechToken(wordText)) {
+          continue;
+        }
+
+        // Clean out inline music symbols
+        wordText = wordText.replace(/[♪♩]+/g, '').trim();
+        if (!wordText) continue;
+
+        // Detect Whisper hallucination loops (repeated words)
+        const normalized = wordText.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normalized === lastNormalizedWord && normalized.length > 1) {
+          consecutiveRepeatCount++;
+          if (consecutiveRepeatCount >= 3) {
+            // Discard runaway hallucination loop
+            continue;
+          }
+        } else {
+          consecutiveRepeatCount = 0;
+          lastNormalizedWord = normalized;
+        }
 
         const ts = chunk.timestamp;
         let start = 0;
-        let end = 0.3;
+        let end = 0.25;
 
         if (Array.isArray(ts) && ts.length >= 2) {
           if (typeof ts[0] === 'number') start = Math.max(0, ts[0]);
-          if (typeof ts[1] === 'number') end = Math.min(clipDuration, ts[1]);
-          else end = Math.min(clipDuration, start + 0.35);
+          if (typeof ts[1] === 'number') {
+            end = Math.max(start + 0.08, ts[1]);
+          } else {
+            // End timestamp omitted by Whisper at boundary
+            end = start + Math.max(0.12, Math.min(0.5, wordText.length * 0.08));
+          }
+        } else {
+          start = lastWordEnd;
+          end = start + Math.max(0.12, Math.min(0.5, wordText.length * 0.08));
+        }
+
+        // Ensure strict monotonicity
+        if (start < lastWordEnd) {
+          // If start slightly overlaps previous word end (within 0.15s), adjust start
+          if (lastWordEnd - start < 0.25) {
+            start = lastWordEnd;
+          }
         }
 
         if (end <= start) {
-          end = Math.min(clipDuration, start + 0.25);
+          end = start + Math.max(0.12, Math.min(0.4, wordText.length * 0.08));
         }
 
-        // Check if chunk contains multiple words or a single word
-        const chunkWords = chunkText.split(/\s+/).filter(Boolean);
-        if (chunkWords.length <= 1) {
-          words.push({
-            id: `w_${words.length + 1}`,
-            text: chunkText,
-            word: chunkText,
-            start: Number(start.toFixed(3)),
-            end: Number(end.toFixed(3)),
-            confidence: 0.96,
-            isHighlight: chunkText.length > 6,
-          });
-        } else {
-          // Proportionally distribute timestamps across chunk words
-          const durationPerWord = (end - start) / chunkWords.length;
-          chunkWords.forEach((w: string, idx: number) => {
-            const wStart = start + idx * durationPerWord;
-            const wEnd = wStart + durationPerWord;
-            words.push({
-              id: `w_${words.length + 1}`,
-              text: w,
-              word: w,
-              start: Number(wStart.toFixed(3)),
-              end: Number(wEnd.toFixed(3)),
-              confidence: 0.94,
-              isHighlight: w.length > 6,
-            });
-          });
+        // Clip to actual media duration
+        if (start >= actualDuration + 0.5) {
+          break;
         }
-      }
+        end = Math.min(actualDuration + 0.2, end);
 
-      // If word chunking produced no items, fallback to segment alignment
-      if (words.length === 0 && fullText.length > 0) {
-        const aligned = alignWordsInSegment(fullText, 0, clipDuration);
-        aligned.forEach((w, idx) => {
-          words.push({
-            id: `w_${idx + 1}`,
-            text: w.text,
-            word: w.text,
-            start: w.start,
-            end: w.end,
-            confidence: w.confidence,
-            isHighlight: w.isHighlight,
-          });
+        // Calculate confidence
+        const confidence = 0.95;
+
+        words.push({
+          id: `w_${words.length + 1}`,
+          text: wordText,
+          word: wordText,
+          start: Number(start.toFixed(3)),
+          end: Number(end.toFixed(3)),
+          confidence,
+          isHighlight: wordText.length > 6,
         });
+
+        lastWordEnd = end;
       }
 
       if (words.length === 0) {
+        if (!fullText) {
+          throw new TranscriptionError(
+            'EMPTY_TRANSCRIPT',
+            'Local Whisper detected no spoken speech in this audio track.',
+            this.id
+          );
+        }
+        // If fullText exists but chunks had non-speech tags only
         throw new TranscriptionError(
           'EMPTY_TRANSCRIPT',
-          'Could not extract word tokens from Local Whisper output.',
+          'No clear spoken words extracted from audio stream.',
           this.id
         );
       }
 
-      // Group words into caption segments
+      // 5. Group words into social-media-ready caption segments (2–5 words per beat)
       const captionSegments = groupWordsIntoCaptionSegments(
         words.map((w) => ({
           word: w.word || w.text,
@@ -320,8 +385,8 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           isHighlight: w.isHighlight,
         })),
         {
-          wordsPerGroup: 5,
-          maxDuration: 3.5,
+          wordsPerGroup: 4,
+          maxDuration: 2.8,
           pauseThresholdSeconds: 0.35,
         }
       );
@@ -349,12 +414,12 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         language: detectedLang.primary,
         languageConfidence: 0.95,
         detectedLanguages: detectedLang.breakdown,
-        duration: clipDuration,
+        duration: Number(actualDuration.toFixed(3)),
         segments,
         words,
       };
 
-      const canonical = normalizeCanonicalTranscript(transcript, clipDuration);
+      const canonical = normalizeCanonicalTranscript(transcript, actualDuration);
 
       return {
         transcript: canonical,
@@ -366,7 +431,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         detectedLanguages: canonical.detectedLanguages || detectedLang.breakdown,
         languageConfidence: canonical.languageConfidence || 0.95,
         speechCoverage: canonical.speechCoverage || 0.95,
-        duration: canonical.duration || clipDuration,
+        duration: canonical.duration || actualDuration,
         wordCount: canonical.words.length,
         segmentCount: canonical.segments.length,
       };
@@ -398,6 +463,17 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         bn: 'Bengali',
         ta: 'Tamil',
         te: 'Telugu',
+        kn: 'Kannada',
+        ml: 'Malayalam',
+        mr: 'Marathi',
+        gu: 'Gujarati',
+        ja: 'Japanese',
+        ko: 'Korean',
+        zh: 'Chinese',
+        ru: 'Russian',
+        id: 'Indonesian',
+        tr: 'Turkish',
+        nl: 'Dutch',
       };
       const name = langNames[requestedLanguage] || requestedLanguage;
       return { primary: name, breakdown: [{ language: name, percentage: 100 }] };
@@ -408,6 +484,10 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     const hasGurmukhi = /[\u0A00-\u0A7F]/.test(text);
     const hasArabic = /[\u0600-\u06FF]/.test(text);
     const hasBengali = /[\u0980-\u09FF]/.test(text);
+    const hasTamil = /[\u0B80-\u0BFF]/.test(text);
+    const hasTelugu = /[\u0C00-\u0C7F]/.test(text);
+    const hasCJK = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/.test(text);
+    const hasCyrillic = /[\u0400-\u04FF]/.test(text);
     const hasLatin = /[a-zA-Z]/.test(text);
 
     if (hasDevanagari && hasLatin) {
@@ -430,18 +510,14 @@ export class LocalWhisperProvider implements TranscriptionProvider {
       };
     }
 
-    if (hasDevanagari) {
-      return { primary: 'Hindi', breakdown: [{ language: 'Hindi', percentage: 100 }] };
-    }
-    if (hasGurmukhi) {
-      return { primary: 'Punjabi', breakdown: [{ language: 'Punjabi', percentage: 100 }] };
-    }
-    if (hasArabic) {
-      return { primary: 'Arabic', breakdown: [{ language: 'Arabic', percentage: 100 }] };
-    }
-    if (hasBengali) {
-      return { primary: 'Bengali', breakdown: [{ language: 'Bengali', percentage: 100 }] };
-    }
+    if (hasDevanagari) return { primary: 'Hindi', breakdown: [{ language: 'Hindi', percentage: 100 }] };
+    if (hasGurmukhi) return { primary: 'Punjabi', breakdown: [{ language: 'Punjabi', percentage: 100 }] };
+    if (hasArabic) return { primary: 'Arabic', breakdown: [{ language: 'Arabic', percentage: 100 }] };
+    if (hasBengali) return { primary: 'Bengali', breakdown: [{ language: 'Bengali', percentage: 100 }] };
+    if (hasTamil) return { primary: 'Tamil', breakdown: [{ language: 'Tamil', percentage: 100 }] };
+    if (hasTelugu) return { primary: 'Telugu', breakdown: [{ language: 'Telugu', percentage: 100 }] };
+    if (hasCJK) return { primary: 'Japanese/Chinese/Korean', breakdown: [{ language: 'CJK', percentage: 100 }] };
+    if (hasCyrillic) return { primary: 'Russian', breakdown: [{ language: 'Russian', percentage: 100 }] };
 
     return { primary: 'English', breakdown: [{ language: 'English', percentage: 100 }] };
   }

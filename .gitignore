@@ -21,4 +21,7 @@ data/media/*
 !data/media/.gitkeep
 .projects/*
 !.projects/.gitkeep
+public/renders/*
+!public/renders/.gitkeep
+certification_evidence.json
 

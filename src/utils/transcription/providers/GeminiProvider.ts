@@ -18,7 +18,7 @@ import { normalizeCanonicalTranscript } from '../../captionEngine';
 export class GeminiProvider implements TranscriptionProvider {
   readonly id = 'gemini';
   readonly name = 'Google Gemini Cloud ASR';
-  readonly priority = 1;
+  readonly priority = 2;
 
   private aiClient: GoogleGenAI | null = null;
 

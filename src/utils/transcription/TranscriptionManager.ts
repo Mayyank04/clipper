@@ -2,6 +2,7 @@
  * VIRALCLIP STUDIO — TRANSCRIPTION MANAGER
  * Central orchestrator managing provider discovery, health monitoring,
  * priority fallback chains, audio extraction caching, and transcript caching.
+ * Local Whisper is the primary default provider (Priority 1).
  */
 
 import fs from 'fs';
@@ -9,6 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import ffmpegStatic from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import {
   TranscriptionProvider,
   ProviderHealth,
@@ -18,8 +20,8 @@ import {
   TranscriptionJobStage,
   TranscriptionError,
 } from './types';
-import { GeminiProvider } from './providers/GeminiProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
+import { GeminiProvider } from './providers/GeminiProvider';
 import { detectHardware } from './hardwareDetector';
 import {
   canonicalTranscriptToSegments,
@@ -63,11 +65,10 @@ export class TranscriptionManager {
   private activeJobs = new Map<string, TranscriptionJob>();
 
   private constructor() {
-    // Register default providers in priority order
-    // Priority 1: Gemini Cloud ASR
-    // Priority 2: Local Whisper (ONNX Runtime)
-    this.registerProvider(new GeminiProvider());
+    // Priority 1: Canonical Local Whisper (runs offline, zero external dependencies)
     this.registerProvider(new LocalWhisperProvider());
+    // Priority 2: Google Gemini Cloud ASR (optional, requires GEMINI_API_KEY)
+    this.registerProvider(new GeminiProvider());
   }
 
   public static getInstance(): TranscriptionManager {
@@ -118,7 +119,7 @@ export class TranscriptionManager {
       }
     }
 
-    // Determine the active/selected provider
+    // Determine the active/selected provider (highest priority READY provider)
     const readyProvider = healthResults.find((p) => p.status === 'READY');
     const selectedId = readyProvider ? readyProvider.id : 'none';
 
@@ -131,17 +132,42 @@ export class TranscriptionManager {
   }
 
   /**
-   * Extracts and caches a normalized audio segment from source media.
-   * Requirement 13: Pipeline source.mp4 -> audio hash -> extracted audio cache -> ASR.
-   * Reuses the exact same extracted audio if primary provider fails.
+   * Probes true media duration using ffprobe.
+   */
+  private async probeDuration(filePath: string): Promise<number> {
+    const ffprobePath = (ffprobeStatic as any)?.path || 'ffprobe';
+    return new Promise((resolve) => {
+      execFile(
+        ffprobePath,
+        ['-v', 'quiet', '-print_format', 'json', '-show_format', filePath],
+        (err, stdout) => {
+          if (!err && stdout) {
+            try {
+              const data = JSON.parse(stdout);
+              const dur = parseFloat(data?.format?.duration);
+              if (!isNaN(dur) && dur > 0) {
+                return resolve(dur);
+              }
+            } catch (_) {}
+          }
+          resolve(30);
+        }
+      );
+    });
+  }
+
+  /**
+   * Extracts and caches a normalized 16kHz mono PCM WAV audio segment from source media.
+   * Deterministic, standard WAV format ideal for Whisper and audio analysis.
    */
   public async extractOrGetCachedAudio(
     sourceMediaPath: string,
     startTime: number,
-    duration: number
+    duration?: number
   ): Promise<string> {
     const fileStats = fs.statSync(sourceMediaPath);
-    const hashPayload = `${sourceMediaPath}_${fileStats.size}_${fileStats.mtimeMs}_${startTime.toFixed(2)}_${duration.toFixed(2)}`;
+    const durStr = duration && duration > 0 ? duration.toFixed(2) : 'full';
+    const hashPayload = `${sourceMediaPath}_${fileStats.size}_${fileStats.mtimeMs}_${startTime.toFixed(2)}_${durStr}`;
     const cacheKey = crypto.createHash('sha256').update(hashPayload).digest('hex');
 
     const cacheDir = path.join(process.cwd(), 'public', 'audio', 'extracted_cache');
@@ -149,40 +175,42 @@ export class TranscriptionManager {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
-    const cachedFilePath = path.join(cacheDir, `audio_${cacheKey}.mp3`);
+    const cachedFilePath = path.join(cacheDir, `audio_${cacheKey}.wav`);
 
     if (fs.existsSync(cachedFilePath) && fs.statSync(cachedFilePath).size > 0) {
       return cachedFilePath;
     }
 
-    // Extract audio using FFmpeg
+    // Extract audio using FFmpeg as 16kHz mono PCM 16-bit WAV
     const ffmpegPath = ffmpegStatic || 'ffmpeg';
+    const args = ['-y'];
+
+    if (startTime > 0) {
+      args.push('-ss', startTime.toFixed(3));
+    }
+    args.push('-i', sourceMediaPath);
+    if (duration && duration > 0) {
+      args.push('-t', duration.toFixed(3));
+    }
+    args.push(
+      '-vn',
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      cachedFilePath
+    );
+
     await new Promise<void>((resolve, reject) => {
-      execFile(
-        ffmpegPath,
-        [
-          '-y',
-          '-ss',
-          startTime.toFixed(3),
-          '-t',
-          duration.toFixed(3),
-          '-i',
-          sourceMediaPath,
-          '-vn',
-          '-acodec',
-          'libmp3lame',
-          '-q:a',
-          '2',
-          cachedFilePath,
-        ],
-        (err) => {
-          if (err) {
-            reject(new Error(`FFmpeg audio extraction failed: ${err.message}`));
-          } else {
-            resolve();
-          }
+      execFile(ffmpegPath, args, (err) => {
+        if (err) {
+          reject(new Error(`FFmpeg audio extraction to 16kHz WAV failed: ${err.message}`));
+        } else {
+          resolve();
         }
-      );
+      });
     });
 
     if (!fs.existsSync(cachedFilePath) || fs.statSync(cachedFilePath).size === 0) {
@@ -193,11 +221,11 @@ export class TranscriptionManager {
   }
 
   /**
-   * Main entry point for transcription with fallback, caching, and progress updates.
+   * Main entry point for transcription with fallback, caching, disk persistence, and progress updates.
    */
   public async transcribe(options: ManagerTranscribeOptions): Promise<ManagerTranscribeResult> {
     const startTime = Math.max(0, Number(options.startTime) || 0);
-    const duration = Math.max(1, Number(options.duration) || 30);
+    let duration = Number(options.duration) || 0;
     const language = options.language || 'auto';
 
     if (!fs.existsSync(options.sourceMediaPath)) {
@@ -207,7 +235,13 @@ export class TranscriptionManager {
       );
     }
 
-    // 1. Check Transcript Cache (Requirement 14)
+    // If duration not specified or <= 0, probe the actual media file
+    if (duration <= 0) {
+      const mediaDur = await this.probeDuration(options.sourceMediaPath);
+      duration = Math.max(1, mediaDur - startTime);
+    }
+
+    // 1. Check Memory & Disk Transcript Cache (Phases 23 & 24)
     const fileStats = fs.statSync(options.sourceMediaPath);
     const sourceHash = crypto
       .createHash('sha256')
@@ -215,26 +249,45 @@ export class TranscriptionManager {
       .digest('hex');
 
     const transcriptCacheKey = `${sourceHash}_${startTime.toFixed(2)}_${duration.toFixed(2)}_${language}`;
+    const cacheDir = path.join(process.cwd(), 'public', 'audio', 'extracted_cache');
+    const diskTranscriptPath = path.join(cacheDir, `transcript_${transcriptCacheKey}.json`);
 
-    if (!options.forceRefresh && this.transcriptCache.has(transcriptCacheKey)) {
-      const cached = this.transcriptCache.get(transcriptCacheKey)!;
-      options.onProgress?.('COMPLETED', 'Loaded from cache', 100);
-      return {
-        ...cached,
-        fromCache: true,
-      };
+    if (!options.forceRefresh) {
+      if (this.transcriptCache.has(transcriptCacheKey)) {
+        const cached = this.transcriptCache.get(transcriptCacheKey)!;
+        options.onProgress?.('COMPLETED', 'Loaded from cache', 100);
+        return {
+          ...cached,
+          fromCache: true,
+        };
+      }
+
+      if (fs.existsSync(diskTranscriptPath)) {
+        try {
+          const rawDisk = fs.readFileSync(diskTranscriptPath, 'utf8');
+          const parsed = JSON.parse(rawDisk);
+          if (parsed && parsed.success && parsed.canonicalTranscript) {
+            this.transcriptCache.set(transcriptCacheKey, parsed);
+            options.onProgress?.('COMPLETED', 'Loaded from disk cache', 100);
+            return {
+              ...parsed,
+              fromCache: true,
+            };
+          }
+        } catch (_) {}
+      }
     }
 
-    // 2. Extract Audio (Requirement 13)
-    options.onProgress?.('EXTRACTING_AUDIO', 'Preparing audio stream...', 15);
+    // 2. Extract Audio (16kHz mono PCM 16-bit WAV)
+    options.onProgress?.('EXTRACTING_AUDIO', 'Extracting audio stream...', 10);
     const audioPath = await this.extractOrGetCachedAudio(
       options.sourceMediaPath,
       startTime,
       duration
     );
 
-    // 3. Provider Discovery & Priority Fallback (Requirements 1, 2, 5)
-    options.onProgress?.('CHECKING_PROVIDER', 'Checking transcription providers...', 30);
+    // 3. Provider Discovery & Priority Fallback (Local Whisper is Priority 1)
+    options.onProgress?.('CHECKING_PROVIDER', 'Loading transcription engine...', 20);
     const providerHealths: ProviderHealth[] = [];
 
     for (const provider of this.providers) {
@@ -262,7 +315,7 @@ export class TranscriptionManager {
         options.onProgress?.(
           'TRANSCRIBING',
           `Transcribing with ${provider.name}...`,
-          55
+          45
         );
 
         const transcriptionResult: CanonicalTranscriptResult = await provider.transcribe({
@@ -296,10 +349,17 @@ export class TranscriptionManager {
           fromCache: false,
         };
 
-        // Cache successful result
+        // Cache successful result in memory and persist on disk (Phase 24)
         this.transcriptCache.set(transcriptCacheKey, finalResult);
-        options.onProgress?.('COMPLETED', 'Transcription ready', 100);
+        try {
+          fs.writeFileSync(diskTranscriptPath, JSON.stringify(finalResult, null, 2), 'utf8');
+          const diskCaptionsPath = path.join(cacheDir, `captions_${transcriptCacheKey}.json`);
+          fs.writeFileSync(diskCaptionsPath, JSON.stringify(captions, null, 2), 'utf8');
+        } catch (saveErr) {
+          console.warn('[TranscriptionManager] Notice persisting transcript cache:', saveErr);
+        }
 
+        options.onProgress?.('COMPLETED', 'Transcription ready', 100);
         return finalResult;
       } catch (providerError: any) {
         console.warn(`[TranscriptionManager] Provider ${provider.name} failed:`, providerError);
@@ -307,7 +367,7 @@ export class TranscriptionManager {
       }
     }
 
-    // 4. All Providers Down / Unavailable (Requirements 11, 22)
+    // 4. All Providers Down / Unavailable
     options.onProgress?.('FAILED', 'No speech-to-text provider available', 0);
     throw new TranscriptionError(
       'TRANSCRIPTION_PROVIDER_UNAVAILABLE',
@@ -339,12 +399,15 @@ export class TranscriptionManager {
         const result = await this.transcribe({
           ...options,
           onProgress: (stage, message, percent) => {
+            if (job.stage === 'CANCELLED') return;
             job.stage = stage;
             job.stageMessage = message;
             job.progressPercent = percent;
             job.updatedAt = Date.now();
           },
         });
+
+        if (job.stage === 'CANCELLED') return;
 
         job.stage = 'COMPLETED';
         job.progressPercent = 100;
@@ -355,6 +418,7 @@ export class TranscriptionManager {
         job.device = result.device;
         job.updatedAt = Date.now();
       } catch (err: any) {
+        if (job.stage === 'CANCELLED') return;
         job.stage = 'FAILED';
         job.progressPercent = 0;
         job.stageMessage = err?.message || 'Transcription failed';
@@ -372,5 +436,14 @@ export class TranscriptionManager {
 
   public getJob(jobId: string): TranscriptionJob | undefined {
     return this.activeJobs.get(jobId);
+  }
+
+  public cancelJob(jobId: string): boolean {
+    const job = this.activeJobs.get(jobId);
+    if (!job) return false;
+    job.stage = 'CANCELLED';
+    job.stageMessage = 'Job cancelled by user';
+    job.updatedAt = Date.now();
+    return true;
   }
 }

@@ -392,11 +392,22 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // GET: Overall system health including media storage, yt-dlp, and hardware
-app.get('/api/system/health', (req: Request, res: Response) => {
+app.get('/api/system/health', async (req: Request, res: Response) => {
   const hw = detectHardware();
   const ytStatus = youtubeDownloader.getStatus();
+  const ffmpegOk = Boolean(ffmpegStatic && fs.existsSync(ffmpegStatic));
+  const ffprobePath = (ffprobeStatic as any)?.path || 'ffprobe';
+  const ffprobeOk = Boolean(ffprobePath && (fs.existsSync(ffprobePath) || ffprobePath === 'ffprobe'));
+  const transHealth = await TranscriptionManager.getInstance().getProvidersHealth();
+
   res.json({
     status: 'ok',
+    ffmpeg: ffmpegOk ? 'ready' : 'missing',
+    ffprobe: ffprobeOk ? 'ready' : 'missing',
+    whisper: transHealth.selected === 'local-whisper' ? 'ready' : 'available',
+    model: process.env.WHISPER_MODEL || 'base',
+    device: hw.deviceName,
+    storage: fs.existsSync(MEDIA_ROOT) ? 'ready' : 'uninitialized',
     mediaStorage: {
       mediaRoot: MEDIA_ROOT,
       exists: fs.existsSync(MEDIA_ROOT),
@@ -406,6 +417,8 @@ app.get('/api/system/health', (req: Request, res: Response) => {
     youtubeDownloader: ytStatus,
     transcription: {
       activeJobs: TranscriptionJobManager.getInstance().getAllJobs().length,
+      selected: transHealth.selected,
+      providers: transHealth.providers,
     },
     hardware: hw,
     memory: process.memoryUsage(),
@@ -1128,12 +1141,56 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
     }
   }
 
-  // 5B: Real Gemini Audio Speech-to-Text if API key configured and audio exists
+  // 5B: Local Whisper ASR (Primary Canonical Engine - runs 100% offline with native word timestamps)
+  if (!normalizedTranscript && fs.existsSync(localDiskPath) && probe.hasAudio) {
+    try {
+      addJobLog(job, 'Running Local Whisper transcription engine on source media...', 'info');
+      const transResult = await TranscriptionJobManager.getInstance().executeJob({
+        jobId: `trans_${job.id}`,
+        sourceMediaPath: localDiskPath,
+        sourceMediaId: project.sourceMediaId,
+        totalDuration,
+        language: 'auto',
+        onUpdate: (activeJob) => {
+          // Dynamic progress between 45% and 59%
+          const stageRatio = (activeJob.progressPercent || 0) / 100;
+          job.progress = Math.min(59, Math.round(45 + stageRatio * 14));
+          job.currentStage = `[Whisper ASR] ${activeJob.stageMessage} (${activeJob.processedSeconds}s/${Math.round(totalDuration)}s)`;
+          addJobLog(job, `[Whisper] ${activeJob.stageMessage}`, 'info');
+        },
+      });
+
+      if (transResult?.canonicalTranscript?.segments?.length > 0) {
+        normalizedTranscript = normalizeTranscriptResponse(
+          transResult.canonicalTranscript,
+          totalDuration
+        );
+        const totalWords = normalizedTranscript.segments.reduce(
+          (acc, s) => acc + s.words.length,
+          0
+        );
+        addJobLog(
+          job,
+          `Local Whisper transcribed audio: ${normalizedTranscript.segments.length} segments, ${totalWords} words (speech coverage: ${(normalizedTranscript.speechCoverage * 100).toFixed(0)}%)`,
+          'success'
+        );
+      }
+    } catch (whisperErr: any) {
+      console.warn('Local Whisper transcription notice:', whisperErr);
+      addJobLog(
+        job,
+        `Local Whisper notice: ${whisperErr instanceof Error ? whisperErr.message : String(whisperErr)}`,
+        'warn'
+      );
+    }
+  }
+
+  // 5C: Fallback to Gemini Cloud ASR if Local Whisper produced no segments and API key is available
   if (!normalizedTranscript && ai && audioExtracted && fs.existsSync(extractedAudioPath)) {
     try {
       const audioStats = fs.statSync(extractedAudioPath);
       if (audioStats.size < 20 * 1024 * 1024) {
-        addJobLog(job, 'Transcribing extracted audio stream with Gemini 2.5 Flash...', 'info');
+        addJobLog(job, 'Attempting cloud transcription fallback with Gemini 2.5 Flash...', 'info');
         const base64Audio = fs.readFileSync(extractedAudioPath).toString('base64');
         const transPrompt = `You are a professional audio transcription engine.
 Transcribe the spoken audio with EXACT word-level timestamps across the entire duration.
@@ -1177,50 +1234,6 @@ Output JSON format:
       }
     } catch (aiTransErr) {
       console.warn('Gemini audio transcription notice:', aiTransErr);
-    }
-  }
-
-  // 5C: Local Whisper transcription fallback with active heartbeat and timeout guard
-  if (!normalizedTranscript && fs.existsSync(localDiskPath) && probe.hasAudio) {
-    try {
-      addJobLog(job, 'Running Local Whisper transcription engine on source media...', 'info');
-      const transResult = await TranscriptionJobManager.getInstance().executeJob({
-        jobId: `trans_${job.id}`,
-        sourceMediaPath: localDiskPath,
-        sourceMediaId: project.sourceMediaId,
-        totalDuration,
-        language: 'auto',
-        onUpdate: (activeJob) => {
-          // Dynamic progress between 45% and 59%
-          const stageRatio = (activeJob.progressPercent || 0) / 100;
-          job.progress = Math.min(59, Math.round(45 + stageRatio * 14));
-          job.currentStage = `[Whisper ASR] ${activeJob.stageMessage} (${activeJob.processedSeconds}s/${Math.round(totalDuration)}s)`;
-          addJobLog(job, `[Whisper] ${activeJob.stageMessage}`, 'info');
-        },
-      });
-
-      if (transResult?.canonicalTranscript?.segments?.length > 0) {
-        normalizedTranscript = normalizeTranscriptResponse(
-          transResult.canonicalTranscript,
-          totalDuration
-        );
-        const totalWords = normalizedTranscript.segments.reduce(
-          (acc, s) => acc + s.words.length,
-          0
-        );
-        addJobLog(
-          job,
-          `Local Whisper transcribed audio: ${normalizedTranscript.segments.length} segments, ${totalWords} words (speech coverage: ${(normalizedTranscript.speechCoverage * 100).toFixed(0)}%)`,
-          'success'
-        );
-      }
-    } catch (whisperErr: any) {
-      console.warn('Local Whisper transcription notice:', whisperErr);
-      addJobLog(
-        job,
-        `Local Whisper notice: ${whisperErr instanceof Error ? whisperErr.message : String(whisperErr)}`,
-        'warn'
-      );
     }
   }
 
@@ -3957,7 +3970,7 @@ app.get('/api/providers/transcription', async (req: Request, res: Response) => {
 // POST: Create Async Transcription Job (Section 25)
 app.post('/api/transcribe-job', async (req: Request, res: Response) => {
   try {
-    const { videoUrl, audioUrl, mediaUrl, startTime = 0, duration = 30, language = 'auto', title, topic, forceRefresh } = req.body;
+    const { videoUrl, audioUrl, mediaUrl, startTime = 0, duration: rawDuration, language = 'auto', title, topic, forceRefresh } = req.body;
     const sourceMediaUrl = videoUrl || audioUrl || mediaUrl;
     if (!sourceMediaUrl) {
       return res.status(400).json({ success: false, code: 'NO_MEDIA', error: 'No media URL provided' });
@@ -3968,11 +3981,13 @@ app.post('/api/transcribe-job', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, code: 'NO_MEDIA', error: 'Media file not found on disk' });
     }
 
+    const reqDuration = rawDuration !== undefined && rawDuration !== null ? Number(rawDuration) : 0;
+
     const manager = TranscriptionManager.getInstance();
     const job = manager.createJob({
       sourceMediaPath: localDiskPath,
       startTime: Number(startTime) || 0,
-      duration: Number(duration) || 30,
+      duration: reqDuration > 0 ? reqDuration : undefined,
       language: String(language || 'auto'),
       title,
       topic,
@@ -3995,6 +4010,13 @@ app.get('/api/transcribe-job/:jobId', (req: Request, res: Response) => {
   res.json({ success: true, job });
 });
 
+// POST: Cancel Transcription Job
+app.post('/api/transcribe-job/:jobId/cancel', (req: Request, res: Response) => {
+  const manager = TranscriptionManager.getInstance();
+  const cancelled = manager.cancelJob(req.params.jobId);
+  res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not found' });
+});
+
 // POST: Transcribe & Generate Timestamped Captions (with real audio word-level timings)
 app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
   try {
@@ -4004,7 +4026,7 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
       mediaUrl,
       startTime = 0,
       endTime,
-      duration = 30,
+      duration: rawDuration,
       title = 'Clip Speech',
       topic,
       dialogue,
@@ -4037,10 +4059,10 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
         });
       }
 
-      const clipDuration = Math.max(
-        1,
-        Number(duration) || (probe.duration > startTime ? probe.duration - startTime : 30)
-      );
+      const reqDuration = rawDuration !== undefined && rawDuration !== null ? Number(rawDuration) : 0;
+      const clipDuration = reqDuration > 0
+        ? reqDuration
+        : (probe.duration > Number(startTime) ? Math.max(1, probe.duration - Number(startTime)) : 30);
 
       const manager = TranscriptionManager.getInstance();
       try {
@@ -4084,7 +4106,7 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
     // 2. If user explicitly provided manual dialogue text without source media
     if (dialogue && typeof dialogue === 'string' && dialogue.trim().length > 0) {
       const cleanDialogue = dialogue.trim();
-      const effectiveDuration = Math.max(1, Number(duration) || 30);
+      const effectiveDuration = Math.max(1, Number(rawDuration) || 30);
       const alignedWords = alignWordsInSegment(cleanDialogue, 0.5, effectiveDuration - 0.5);
 
       const captionWords = alignedWords.map((w) => ({
