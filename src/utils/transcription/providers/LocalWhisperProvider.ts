@@ -131,31 +131,35 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     return this.initPromise;
   }
 
-  private async convertAudioTo16kWav(inputPath: string, outputPath: string): Promise<void> {
+  private async convertAudioTo16kWav(inputPath: string, outputPath: string, clipStart = 0, duration?: number): Promise<void> {
     const ffmpegPath = ffmpegStatic || 'ffmpeg';
+    const args = ['-y'];
+    // If input audio is not pre-sliced and clipStart > 0, seek precisely
+    if (clipStart > 0) {
+      args.push('-ss', String(clipStart));
+    }
+    args.push('-i', inputPath);
+    if (duration && duration > 0) {
+      args.push('-t', String(duration));
+    }
+    args.push(
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      outputPath
+    );
+
     return new Promise((resolve, reject) => {
-      execFile(
-        ffmpegPath,
-        [
-          '-y',
-          '-i',
-          inputPath,
-          '-ar',
-          '16000',
-          '-ac',
-          '1',
-          '-c:a',
-          'pcm_s16le',
-          outputPath,
-        ],
-        (error) => {
-          if (error) {
-            reject(new Error(`FFmpeg audio conversion to 16kHz WAV failed: ${error.message}`));
-          } else {
-            resolve();
-          }
+      execFile(ffmpegPath, args, (error) => {
+        if (error) {
+          reject(new Error(`FFmpeg audio conversion to 16kHz WAV failed: ${error.message}`));
+        } else {
+          resolve();
         }
-      );
+      });
     });
   }
 
@@ -178,7 +182,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     );
 
     try {
-      await this.convertAudioTo16kWav(input.audioPath, tempWavPath);
+      await this.convertAudioTo16kWav(input.audioPath, tempWavPath, clipStart, clipDuration);
 
       if (!fs.existsSync(tempWavPath) || fs.statSync(tempWavPath).size === 0) {
         throw new TranscriptionError(
@@ -237,17 +241,17 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         if (!chunkText) continue;
 
         const ts = chunk.timestamp;
-        let start = clipStart;
-        let end = clipStart + 0.3;
+        let start = 0;
+        let end = 0.3;
 
         if (Array.isArray(ts) && ts.length >= 2) {
-          if (typeof ts[0] === 'number') start = clipStart + ts[0];
-          if (typeof ts[1] === 'number') end = clipStart + ts[1];
-          else end = start + 0.35;
+          if (typeof ts[0] === 'number') start = Math.max(0, ts[0]);
+          if (typeof ts[1] === 'number') end = Math.min(clipDuration, ts[1]);
+          else end = Math.min(clipDuration, start + 0.35);
         }
 
         if (end <= start) {
-          end = start + 0.25;
+          end = Math.min(clipDuration, start + 0.25);
         }
 
         // Check if chunk contains multiple words or a single word
@@ -283,7 +287,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
 
       // If word chunking produced no items, fallback to segment alignment
       if (words.length === 0 && fullText.length > 0) {
-        const aligned = alignWordsInSegment(fullText, clipStart, clipStart + clipDuration);
+        const aligned = alignWordsInSegment(fullText, 0, clipDuration);
         aligned.forEach((w, idx) => {
           words.push({
             id: `w_${idx + 1}`,

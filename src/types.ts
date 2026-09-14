@@ -324,14 +324,16 @@ export interface CaptionSegment {
   animation?: CaptionAnimation;
 }
 
-// Canonical Transcript Format (Section 2)
+// Canonical Transcript Format (Section 2 & 5)
 export type TranscriptWord = {
   id: string;
-  text: string;
-  word?: string; // compatibility alias
+  word: string;
+  text: string; // compatibility alias
   start: number;
   end: number;
   confidence?: number;
+  speaker?: string;
+  language?: string;
   isHighlight?: boolean;
   highlightColor?: string;
   scale?: number;
@@ -339,12 +341,13 @@ export type TranscriptWord = {
 
 export type TranscriptSegment = {
   id: string;
-  text: string;
   start: number;
   end: number;
+  text: string;
   words: TranscriptWord[];
   speaker?: string;
   language?: string;
+  confidence?: number;
 };
 
 export interface DetectedLanguageBreakdown {
@@ -750,19 +753,30 @@ export interface ExportSettings {
   burnCaptions: boolean;
 }
 
-// Canonical Source Media object
+// Canonical Source Media object (Section 3)
 export interface SourceMedia {
   id: string;
-  type: 'video' | 'audio';
-  path?: string;
-  url: string;
+  kind: 'video' | 'audio';
+  localPath: string;
+  publicUrl: string;
   duration: number;
   width: number;
   height: number;
   fps: number;
-  hasVideo: boolean;
+  videoCodec: string;
+  audioCodec: string;
+  audioSampleRate: number;
+  channels: number;
+  fileSize: number;
   hasAudio: boolean;
-  sourceType: 'youtube' | 'upload' | 'demo';
+  status: 'ready' | 'processing' | 'error';
+  error?: string;
+  // Compatibility aliases
+  type?: 'video' | 'audio';
+  path?: string;
+  url?: string;
+  hasVideo?: boolean;
+  sourceType?: 'youtube' | 'upload' | 'demo';
   name?: string;
   mimeType?: string;
   audioAvailable?: boolean;

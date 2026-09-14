@@ -95,7 +95,7 @@ export const SAMPLE_PROJECTS: VideoProject[] = [
           {
             id: 'cap-3',
             start: 10.1,
-            end: 16.5,
+            end: 17.0,
             text: 'Try not to bash into the walls too much. That is a very limited life.',
             words: [
               { word: 'Try', start: 10.1, end: 10.4 },
@@ -110,7 +110,7 @@ export const SAMPLE_PROJECTS: VideoProject[] = [
               { word: 'a', start: 13.8, end: 14.0 },
               { word: 'VERY', start: 14.0, end: 14.8, isHighlight: true, highlightColor: '#f59e0b', scale: 1.2 },
               { word: 'limited', start: 14.8, end: 15.6, isHighlight: true, highlightColor: '#f43f5e' },
-              { word: 'life.', start: 15.6, end: 16.5 }
+              { word: 'life.', start: 15.6, end: 17.0 }
             ]
           },
           {
@@ -242,7 +242,7 @@ export const SAMPLE_PROJECTS: VideoProject[] = [
           {
             id: 'cap-203',
             start: 9.6,
-            end: 14.8,
+            end: 15.2,
             text: 'Therefore, all progress depends on the unreasonable person.',
             words: [
               { word: 'Therefore,', start: 9.6, end: 10.3 },
@@ -252,7 +252,7 @@ export const SAMPLE_PROJECTS: VideoProject[] = [
               { word: 'on', start: 12.6, end: 12.8 },
               { word: 'the', start: 12.8, end: 13.0 },
               { word: 'unreasonable', start: 13.0, end: 14.0, isHighlight: true, highlightColor: '#f59e0b' },
-              { word: 'person.', start: 14.0, end: 14.8 }
+              { word: 'person.', start: 14.0, end: 15.2 }
             ]
           },
           {

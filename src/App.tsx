@@ -434,18 +434,12 @@ export default function App() {
 
     let finalProject: VideoProject;
 
-    if (completedProjectData && completedProjectData.id && completedProjectData.shorts) {
+    if (completedProjectData && completedProjectData.id && Array.isArray(completedProjectData.shorts)) {
       finalProject = completedProjectData;
     } else {
-      // Fallback synthesis if needed
-      const template = SAMPLE_PROJECTS[0];
-      finalProject = {
-        ...template,
-        id: `proj_${Date.now()}`,
-        youtubeUrl: processingUrl,
-        originalTitle: processingUrl.includes('watch') ? 'Imported YouTube Deep Dive' : template.originalTitle,
-        createdAt: 'Just now',
-      };
+      console.error('Invalid completed project data received from pipeline:', completedProjectData);
+      setProcessingError('Video processing did not yield valid Short candidates. Please check source media.');
+      return;
     }
 
     setProjects((prev) => {

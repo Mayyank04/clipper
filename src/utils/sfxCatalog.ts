@@ -448,24 +448,45 @@ export function searchSFXCatalog(
 
     if (!cleanQ) return true;
 
-    // 3. Direct match
+    // 3. Direct full query match
+    const assetName = asset.name.toLowerCase();
+    const assetCat = asset.category.toLowerCase();
+    const assetDesc = (asset.description || '').toLowerCase();
+    const assetTags = asset.tags.map((t) => t.toLowerCase());
+
     if (
-      asset.name.toLowerCase().includes(cleanQ) ||
-      asset.category.toLowerCase().includes(cleanQ) ||
-      asset.description.toLowerCase().includes(cleanQ) ||
-      asset.tags.some((t) => t.toLowerCase().includes(cleanQ))
+      assetName.includes(cleanQ) ||
+      assetCat.includes(cleanQ) ||
+      assetDesc.includes(cleanQ) ||
+      assetTags.some((t) => t.includes(cleanQ))
     ) {
       return true;
     }
 
-    // 4. Synonym expansion match
+    // 4. Tokenized word-level match (for multi-word queries like "whoosh transition")
+    const tokens = cleanQ.split(/\s+/).filter((t) => t.length > 1);
+    if (tokens.length > 1) {
+      const allTokensMatch = tokens.every(
+        (tok) =>
+          assetName.includes(tok) ||
+          assetCat.includes(tok) ||
+          assetDesc.includes(tok) ||
+          assetTags.some((t) => t.includes(tok))
+      );
+      if (allTokensMatch) return true;
+    }
+
+    // 5. Synonym expansion match
     for (const [key, synonyms] of Object.entries(SYNONYM_MAP)) {
-      if (cleanQ.includes(key) || synonyms.some((s) => cleanQ.includes(s))) {
+      const queryMatchesKey = cleanQ.includes(key) || tokens.some((tok) => tok === key);
+      const queryMatchesSynonym = synonyms.some((s) => cleanQ.includes(s) || tokens.some((tok) => tok === s));
+
+      if (queryMatchesKey || queryMatchesSynonym) {
         const matchesAsset =
-          asset.category.toLowerCase().includes(key) ||
-          asset.tags.some((t) => t.toLowerCase() === key || synonyms.includes(t.toLowerCase())) ||
-          asset.name.toLowerCase().includes(key) ||
-          synonyms.some((s) => asset.name.toLowerCase().includes(s));
+          assetCat.includes(key) ||
+          assetTags.some((t) => t === key || synonyms.includes(t)) ||
+          assetName.includes(key) ||
+          synonyms.some((s) => assetName.includes(s) || assetTags.some((t) => t.includes(s)));
         if (matchesAsset) return true;
       }
     }

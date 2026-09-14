@@ -19,20 +19,22 @@ export function projectTimeToSourceTime(projectTime: number, clipSourceStart: nu
   return Math.max(0, clipSourceStart + projectTime);
 }
 
-// Canonical Section 3 aliases
+// Canonical aliases (Section 4)
+export const shortToSourceTime = projectTimeToSourceTime;
 export const sequenceTimeToSourceTime = projectTimeToSourceTime;
 export const sequenceToSourceTime = projectTimeToSourceTime;
 
 /**
- * Maps underlying source media time back to project sequence time
+ * Maps underlying source media time back to short time (0 -> short.duration)
  * @param sourceTime - Absolute time in source media file (seconds)
- * @param clipSourceStart - In-point of the clip in the raw source video (seconds)
+ * @param clipSourceStart - In-point of the short clip in the raw source video (seconds)
  */
 export function sourceTimeToProjectTime(sourceTime: number, clipSourceStart: number): number {
   return Math.max(0, sourceTime - clipSourceStart);
 }
 
-// Canonical Section 3 aliases
+// Canonical aliases (Section 4)
+export const sourceToShortTime = sourceTimeToProjectTime;
 export const sourceTimeToSequenceTime = sourceTimeToProjectTime;
 export const sourceToSequenceTime = sourceTimeToProjectTime;
 
@@ -82,6 +84,8 @@ export function clampProjectTime(time: number, sequenceDuration: number): number
   if (!Number.isFinite(time) || Number.isNaN(time)) return 0;
   return Math.max(0, Math.min(sequenceDuration, time));
 }
+
+export const clampShortTime = clampProjectTime;
 
 /**
  * Runtime timing assertion for any timeline item

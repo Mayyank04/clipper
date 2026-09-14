@@ -26,7 +26,11 @@ import {
 import { formatTime, formatTimeWithTenths } from '../../utils/timeFormat';
 import { AudioVisualizerCanvas } from './AudioVisualizerCanvas';
 import { TypingCaptionOverlay } from './TypingCaptionOverlay';
-import { getCaptionStateAtTime, computeWordAnimationState } from '../../utils/captionEngine';
+import {
+  getCaptionStateAtTime,
+  computeWordAnimationState,
+  CaptionLayoutEngine,
+} from '../../utils/captionEngine';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { getColorGradingProfile } from '../../utils/creatorStudio/videoEffectsEngine';
 
@@ -74,6 +78,8 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const videoRef = externalVideoRef || internalVideoRef;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const monitorRef = useRef<HTMLDivElement | null>(null);
+  const [monitorWidth, setMonitorWidth] = useState<number>(340);
   const relinkInputRef = useRef<HTMLInputElement | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [localVolume, setLocalVolume] = useState<number>(volume);
@@ -82,6 +88,21 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaErrorCode, setMediaErrorCode] = useState<string | null>(null);
   const [isVideoReady, setIsVideoReady] = useState<boolean>(false);
+
+  // Dynamically observe preview monitor width to calculate exact typography scaling
+  useEffect(() => {
+    const el = monitorRef.current;
+    if (!el) return;
+    const updateSize = () => {
+      if (el) {
+        setMonitorWidth(el.clientWidth || 340);
+      }
+    };
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [aspectRatio]);
 
   // Clear errors when source video changes
   useEffect(() => {
@@ -341,6 +362,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     <div ref={containerRef} className="relative flex flex-col items-center justify-center p-2 sm:p-4 h-full">
       {/* Video Framing Monitor */}
       <div
+        ref={monitorRef}
         className={`relative ${getAspectRatioClasses()} bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl flex items-center justify-center select-none transition-all duration-300 ${
           isShake ? 'translate-x-1 translate-y-1' : ''
         }`}
@@ -567,41 +589,44 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
             config={short.audioToVideoConfig}
           />
         ) : (
-          captionState.activeCaption && (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                if (captionState.activeCaption) {
-                  onSelectCaption?.(captionState.activeCaption.id);
-                }
-              }}
-              className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-auto cursor-pointer group px-2 transition-all duration-150"
-              style={{ top: `${captionConfig.positionY}%` }}
-              title="Click to edit caption text, timing, font, or split/merge"
-            >
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-[9px] font-mono font-bold bg-amber-400 text-neutral-950 px-2 py-0.5 rounded shadow pointer-events-none">
-                Click to edit caption
-              </div>
+          captionState.activeCaption && (() => {
+            const previewStyles = CaptionLayoutEngine.getPreviewStyles(captionConfig, monitorWidth);
+            const words = captionState.activeCaption.words || [];
+
+            return (
               <div
-                className={`text-center leading-snug max-w-[95%] transition-all group-hover:ring-1 group-hover:ring-amber-400/50 rounded-xl p-1 ${
-                  captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
-                } ${
-                  captionConfig.backgroundColor ? 'px-3 py-1.5 rounded-xl backdrop-blur-sm' : ''
-                }`}
-                style={{
-                  fontFamily: captionConfig.fontFamily,
-                  fontSize: `${captionConfig.fontSize}px`,
-                  fontWeight: captionConfig.fontWeight || 800,
-                  textTransform: captionConfig.uppercase ? 'uppercase' : 'none',
-                  backgroundColor: captionConfig.backgroundColor
-                    ? `${captionConfig.backgroundColor}${Math.round((captionConfig.backgroundOpacity ?? 0.85) * 255).toString(16).padStart(2, '0')}`
-                    : undefined,
-                  letterSpacing: captionConfig.letterSpacing ? `${captionConfig.letterSpacing}px` : undefined,
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (captionState.activeCaption) {
+                    onSelectCaption?.(captionState.activeCaption.id);
+                  }
                 }}
+                className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-auto cursor-pointer group px-2 transition-all duration-150"
+                style={{ top: `${captionConfig.positionY}%` }}
+                title="Click to edit caption text, timing, font, or split/merge"
               >
-                {(() => {
-                  const words = captionState.activeCaption.words || [];
-                  return words.map((w: any, idx: number) => {
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-[9px] font-mono font-bold bg-amber-400 text-neutral-950 px-2 py-0.5 rounded shadow pointer-events-none">
+                  Click to edit caption
+                </div>
+                <div
+                  className={`text-center leading-snug transition-all group-hover:ring-1 group-hover:ring-amber-400/50 rounded-xl p-1 ${
+                    captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
+                  } ${
+                    captionConfig.backgroundColor ? 'px-3 py-1.5 rounded-xl backdrop-blur-sm' : ''
+                  }`}
+                  style={{
+                    fontFamily: captionConfig.fontFamily,
+                    fontSize: `${previewStyles.fontSize}px`,
+                    fontWeight: captionConfig.fontWeight || 800,
+                    maxWidth: `${previewStyles.maxLineWidthPercent}%`,
+                    textTransform: captionConfig.uppercase ? 'uppercase' : 'none',
+                    backgroundColor: captionConfig.backgroundColor
+                      ? `${captionConfig.backgroundColor}${Math.round((captionConfig.backgroundOpacity ?? 0.85) * 255).toString(16).padStart(2, '0')}`
+                      : undefined,
+                    letterSpacing: previewStyles.letterSpacing ? `${previewStyles.letterSpacing}px` : undefined,
+                  }}
+                >
+                  {words.map((w: any, idx: number) => {
                     const anim = computeWordAnimationState(w, idx, currentTime, captionConfig, words);
                     if (!anim.visible) return null;
 
@@ -615,7 +640,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                           color: anim.color,
                           transform: `translateY(${anim.translateY}px) scale(${anim.scale})`,
                           opacity: anim.opacity,
-                          WebkitTextStroke: anim.strokeWidth > 0 ? `${anim.strokeWidth}px ${anim.strokeColor}` : undefined,
+                          WebkitTextStroke: anim.strokeWidth > 0 ? `${previewStyles.strokeWidth}px ${anim.strokeColor}` : undefined,
                           textShadow: anim.highlighted && captionConfig.hasShadow
                             ? `0 0 16px ${anim.color}80, 0 4px 10px rgba(0,0,0,0.95)`
                             : undefined,
@@ -624,11 +649,11 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                         {anim.word}
                       </span>
                     );
-                  });
-                })()}
+                  })}
+                </div>
               </div>
-            </div>
-          )
+            );
+          })()
         )}
 
         {/* 9:16 Safe-Zone Overlay Guides */}

@@ -372,9 +372,9 @@ app.post('/api/projects', async (req: Request, res: Response) => {
       }
     }
 
-    const isSample = Boolean(isDemo) || rawUrl.includes('sample') || rawUrl.includes('demo') || rawUrl.startsWith('blob:');
+    const isSample = Boolean(isDemo) || (!isFile && (rawUrl.includes('sample') || rawUrl.includes('demo') || rawUrl.startsWith('blob:')));
     const projectId = req.body.id || `proj_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    const effectiveTitle = title?.trim() || (isSample ? 'DEMO PROJECT: Creator Blueprint' : (videoId ? `YouTube Session (${videoId})` : 'AI Creator Stream'));
+    const effectiveTitle = title?.trim() || (isFile ? 'Imported Video Project' : (isSample ? 'DEMO PROJECT: Creator Blueprint' : (videoId ? `YouTube Session (${videoId})` : 'AI Creator Stream')));
 
     // Probe duration for local files
     let probedDuration = req.body.duration ? Number(req.body.duration) : 0;
@@ -499,7 +499,7 @@ app.post('/api/process', async (req: Request, res: Response) => {
         }
       }
 
-      const isSample = Boolean(isDemo) || rawUrl.includes('sample') || rawUrl.includes('demo') || rawUrl.startsWith('blob:') || isFile;
+      const isSample = Boolean(isDemo) || (!isFile && (rawUrl.includes('sample') || rawUrl.includes('demo') || rawUrl.startsWith('blob:')));
       const newProjId = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       const effectiveTitle = title?.trim() || (isFile ? 'Imported Video Project' : (isSample ? 'DEMO PROJECT: Creator Blueprint' : (videoId ? `YouTube Session (${videoId})` : 'AI Creator Stream')));
 
@@ -1018,6 +1018,44 @@ Output JSON format:
       }
     } catch (aiTransErr) {
       console.warn('Gemini audio transcription notice:', aiTransErr);
+    }
+  }
+
+  // 5C: Local Whisper transcription fallback if not yet transcribed and media exists on disk
+  if (!normalizedTranscript && fs.existsSync(localDiskPath) && probe.hasAudio) {
+    try {
+      addJobLog(job, 'Running Local Whisper transcription engine on source media...', 'info');
+      const transResult = await TranscriptionManager.getInstance().transcribe({
+        sourceMediaPath: localDiskPath,
+        startTime: 0,
+        duration: totalDuration,
+        onProgress: (stage, message) => {
+          addJobLog(job, `[Whisper] ${message}`, 'info');
+        },
+      });
+
+      if (transResult?.canonicalTranscript?.segments?.length > 0) {
+        normalizedTranscript = normalizeTranscriptResponse(
+          transResult.canonicalTranscript,
+          totalDuration
+        );
+        const totalWords = normalizedTranscript.segments.reduce(
+          (acc, s) => acc + s.words.length,
+          0
+        );
+        addJobLog(
+          job,
+          `Local Whisper transcribed audio: ${normalizedTranscript.segments.length} segments, ${totalWords} words (speech coverage: ${(normalizedTranscript.speechCoverage * 100).toFixed(0)}%)`,
+          'success'
+        );
+      }
+    } catch (whisperErr) {
+      console.warn('Local Whisper transcription notice:', whisperErr);
+      addJobLog(
+        job,
+        `Local Whisper notice: ${whisperErr instanceof Error ? whisperErr.message : String(whisperErr)}`,
+        'warn'
+      );
     }
   }
 
@@ -1666,7 +1704,7 @@ interface CachedTranscription {
 // In-memory / persistent transcription cache keyed by source media and time window
 const transcriptionCache = new Map<string, CachedTranscription>();
 
-export interface TranscribeMediaOptions {
+interface TranscribeMediaOptions {
   videoUrl?: string;
   audioUrl?: string;
   mediaUrl?: string;
@@ -1679,7 +1717,7 @@ export interface TranscribeMediaOptions {
   forceRefresh?: boolean;
 }
 
-export interface TranscribeMediaResult {
+interface TranscribeMediaResult {
   success: boolean;
   code?: string;
   error?: string;

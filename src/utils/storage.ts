@@ -65,11 +65,14 @@ export function loadStoredProjects(): VideoProject[] {
           };
         });
       }
+      if (Array.isArray(parsed) && parsed.length === 0) {
+        return [];
+      }
     }
   } catch (err) {
-    console.warn('Could not load stored projects, using defaults:', err);
+    console.warn('Could not load stored projects:', err);
   }
-  return SAMPLE_PROJECTS;
+  return [];
 }
 
 export function saveStoredProjects(projects: VideoProject[]): void {

@@ -1395,6 +1395,43 @@ export function getCaptionStylePreset(styleId: CaptionStyleId): CaptionCustomiza
   };
 }
 
+/**
+ * Production Caption Layout Engine
+ * Provides output-relative (1080x1920) typography scaling and monitor preview parity.
+ */
+export class CaptionLayoutEngine {
+  /**
+   * Resolves preview monitor styling with strict parity to 1080x1920 export canvas.
+   * Prevents oversized text in preview and maintains legible spacing across all 25 presets.
+   */
+  static getPreviewStyles(
+    config: CaptionCustomization,
+    monitorWidth: number = 340
+  ): {
+    fontSize: number;
+    strokeWidth: number;
+    letterSpacing: number;
+    maxLineWidthPercent: number;
+  } {
+    const width = Math.max(260, monitorWidth || 340);
+    const scale = width / 1080;
+
+    const baseFontSize = config.fontSize || 28;
+    const exportFontSize = baseFontSize >= 50 ? baseFontSize : Math.round(baseFontSize * 2.1);
+    const previewFontSize = Math.max(14, Math.min(24, Math.round(exportFontSize * scale)));
+
+    const baseStroke = config.strokeWidth !== undefined ? config.strokeWidth : 3;
+    const previewStroke = Math.max(1, Math.min(4, Math.round(baseStroke * (width / 540))));
+
+    return {
+      fontSize: previewFontSize,
+      strokeWidth: previewStroke,
+      letterSpacing: config.letterSpacing ? Math.max(0, config.letterSpacing * (width / 540)) : 0,
+      maxLineWidthPercent: 92,
+    };
+  }
+}
+
 export interface CaptionStateAtTime {
   activeCaption?: CaptionSegment;
   activeCaptionIndex: number;
@@ -1467,9 +1504,10 @@ export function getCaptionStateAtTime(
   );
 
   let isSpeechHoldActive = false;
-  if (activeCaptionIndex === -1 && config?.enableSpeechHold) {
-    const holdWindow = config.holdThresholdSeconds ?? 0.28;
-    const finalHold = config.finalHoldSeconds ?? 0.8;
+  const enableHold = Boolean(config?.enableSpeechHold);
+  if (activeCaptionIndex === -1 && enableHold) {
+    const holdWindow = config?.holdThresholdSeconds ?? 0.28;
+    const finalHold = config?.finalHoldSeconds ?? 0.8;
     const candidateIdx = captions.findIndex((c, idx) => {
       const isLast = idx === captions.length - 1;
       const effectiveHold = isLast ? finalHold : holdWindow;
