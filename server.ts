@@ -2656,7 +2656,19 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
     ? body.dynamicZooms
     : targetShort?.dynamicZooms || [];
 
-  const vfxItem = body.vfxItem || (targetShort?.vfxMarkers || []).find((v: any) => v.timestamp >= 0);
+  const rawVfx = Array.isArray(body.vfxList)
+    ? body.vfxList
+    : Array.isArray(body.vfxMarkers)
+    ? body.vfxMarkers
+    : targetShort?.vfxMarkers || [];
+
+  const vfxList = rawVfx.map((v: any) => ({
+    timestamp: Number(v.timestamp ?? v.time ?? 0),
+    duration: Number(v.duration ?? 1.2),
+    type: String(v.type || 'punch_in'),
+  }));
+
+  const vfxItem = body.vfxItem || vfxList[0];
 
   const imageOverlays = Array.isArray(body.imageOverlays)
     ? body.imageOverlays
@@ -2684,6 +2696,7 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
     colorTreatment,
     dynamicZooms,
     vfxItem,
+    vfxList,
     imageOverlays,
     isAudioOnly: !!(targetShort?.isAudioFile || body.isAudioOnly),
     speakerPosition: body.speakerPosition || targetShort?.speakerPosition || 'center',
@@ -2729,6 +2742,9 @@ app.post('/api/projects/:id/export', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const project = projectsStore.get(id);
+    if (!project) {
+      return res.status(404).json({ success: false, code: 'PROJECT_NOT_FOUND', error: `Project ${id} not found` });
+    }
     const shortId = req.body.shortId;
     const short = req.body.short || project?.shorts?.find((s: any) => s.id === shortId);
 

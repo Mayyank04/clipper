@@ -138,3 +138,66 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   }
   return content;
 }
+
+export function formatSrtTime(seconds: number): string {
+  const totalMs = Math.round(seconds * 1000);
+  const h = Math.floor(totalMs / 3600000);
+  const m = Math.floor((totalMs % 3600000) / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+export function formatVttTime(seconds: number): string {
+  const totalMs = Math.round(seconds * 1000);
+  const h = Math.floor(totalMs / 3600000);
+  const m = Math.floor((totalMs % 3600000) / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+}
+
+export function formatSrtSubtitle(captions: any[] = []): string {
+  let output = '';
+  let index = 1;
+  for (const cap of captions) {
+    const start = Math.max(0, Number(cap.start) || 0);
+    const end = Math.max(start + 0.1, Number(cap.end) || (start + 1));
+    const text = String(cap.text || (cap.words || []).map((w: any) => w.word || w.text || '').join(' ')).trim();
+    if (text) {
+      output += `${index}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${text}\n\n`;
+      index++;
+    }
+  }
+  return output.trim() + '\n';
+}
+
+export function formatVttSubtitle(captions: any[] = []): string {
+  let output = 'WEBVTT\n\n';
+  for (const cap of captions) {
+    const start = Math.max(0, Number(cap.start) || 0);
+    const end = Math.max(start + 0.1, Number(cap.end) || (start + 1));
+    const text = String(cap.text || (cap.words || []).map((w: any) => w.word || w.text || '').join(' ')).trim();
+    if (text) {
+      output += `${formatVttTime(start)} --> ${formatVttTime(end)}\n${text}\n\n`;
+    }
+  }
+  return output.trim() + '\n';
+}
+
+export function formatTxtSubtitle(captions: any[] = []): string {
+  return (captions || [])
+    .map((cap: any) => String(cap.text || (cap.words || []).map((w: any) => w.word || w.text || '').join(' ')).trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function formatJsonSubtitle(captions: any[] = [], metadata?: any): string {
+  return JSON.stringify({
+    generator: 'ViralClip Studio',
+    version: '2.0',
+    exportedAt: new Date().toISOString(),
+    metadata,
+    captions,
+  }, null, 2);
+}

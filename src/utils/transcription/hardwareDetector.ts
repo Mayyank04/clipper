@@ -29,12 +29,38 @@ export function detectHardware(): HardwareInfo {
   const cores = os.cpus().length;
   const totalMemoryGb = Math.round(os.totalmem() / (1024 * 1024 * 1024));
 
-  // 1. Check for Apple Silicon (macOS arm64) with Metal Performance Shaders / Accelerate
+  // 1. Check for Apple Silicon (macOS arm64)
   if (platform === 'darwin' && arch === 'arm64') {
+    // Audit check: Verify if PyTorch MPS is genuinely available in the Python runtime
+    let hasPyTorchMps = false;
+    try {
+      const check = execSync(
+        'python3 -c "import torch; print(torch.backends.mps.is_available() and torch.backends.mps.is_built())"',
+        { timeout: 1000, stdio: 'pipe' }
+      ).toString().trim();
+      hasPyTorchMps = check === 'True';
+    } catch {
+      hasPyTorchMps = false;
+    }
+
+    if (hasPyTorchMps) {
+      cachedHardwareInfo = {
+        deviceCode: 'mps',
+        deviceName: `Whisper + PyTorch + MPS (Metal Accelerated, ${cores} cores, ${totalMemoryGb}GB RAM)`,
+        isAccelerated: true,
+        platform,
+        arch,
+        cores,
+        totalMemoryGb,
+      };
+      return cachedHardwareInfo;
+    }
+
+    // Honest reporting when using @xenova/transformers (Transformers.js + ONNX Runtime)
     cachedHardwareInfo = {
-      deviceCode: 'mps',
-      deviceName: `Apple Silicon / MPS (Metal Accelerated, ${cores} cores, ${totalMemoryGb}GB RAM)`,
-      isAccelerated: true,
+      deviceCode: 'cpu',
+      deviceName: `Transformers.js + ONNX Runtime + WASM/CPU (Apple Silicon arm64, ${cores} cores, ${totalMemoryGb}GB RAM)`,
+      isAccelerated: false,
       platform,
       arch,
       cores,
@@ -72,7 +98,7 @@ export function detectHardware(): HardwareInfo {
   // 3. Fallback to multi-threaded CPU
   cachedHardwareInfo = {
     deviceCode: 'cpu',
-    deviceName: `CPU (${cores} cores, ${totalMemoryGb}GB RAM)`,
+    deviceName: `Transformers.js + ONNX Runtime + WASM/CPU (${cores} cores, ${totalMemoryGb}GB RAM)`,
     isAccelerated: false,
     platform,
     arch,

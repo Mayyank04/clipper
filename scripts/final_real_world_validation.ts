@@ -181,8 +181,8 @@ async function runComprehensiveValidation() {
   // ==========================================
   // SECTION 4: 25 CAPTION STYLES VERIFICATION
   // ==========================================
-  console.log('\n--- 4. Caption Style Test (25 Styles) ---');
-  assert(CAPTION_STYLES_REGISTRY.length === 25, 'All 25 production caption styles registered');
+  console.log(`\n--- 4. Caption Style Test (${CAPTION_STYLES_REGISTRY.length} Styles) ---`);
+  assert(CAPTION_STYLES_REGISTRY.length >= 25, `All ${CAPTION_STYLES_REGISTRY.length} production caption styles registered (>= 25)`);
 
   const requiredStyles = ['clean', 'viral', 'karaoke', 'word_highlight', 'typewriter', 'neon', 'podcast', 'cinematic', 'gaming', 'dynamic'];
   for (const sName of requiredStyles) {

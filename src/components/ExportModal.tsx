@@ -24,6 +24,13 @@ import {
 import { ShortCandidate, VideoResolution, FrameRate, CaptionCustomization, BrandKit } from '../types';
 import { RenderResult } from '../utils/videoRenderer';
 import { recordExport } from '../utils/storage';
+import {
+  formatSrtSubtitle,
+  formatVttSubtitle,
+  formatAssSubtitle,
+  formatTxtSubtitle,
+  formatJsonSubtitle,
+} from '../utils/subtitleFormatter';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -294,6 +301,41 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     document.body.removeChild(anchor);
   };
 
+  const handleDownloadSubtitle = (format: 'srt' | 'vtt' | 'ass' | 'txt' | 'json') => {
+    if (!short) return;
+    const captions = short.captions || [];
+    let content = '';
+    let mime = 'text/plain';
+    const ext = format;
+
+    if (format === 'srt') {
+      content = formatSrtSubtitle(captions);
+      mime = 'application/x-subrip';
+    } else if (format === 'vtt') {
+      content = formatVttSubtitle(captions);
+      mime = 'text/vtt';
+    } else if (format === 'ass') {
+      content = formatAssSubtitle(captions, captionConfig);
+      mime = 'text/x-ssa';
+    } else if (format === 'txt') {
+      content = formatTxtSubtitle(captions);
+      mime = 'text/plain';
+    } else if (format === 'json') {
+      content = formatJsonSubtitle(captions, { title: short.title, duration: short.duration });
+      mime = 'application/json';
+    }
+
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${(short.title || 'short').replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   const handleCopyShareLink = () => {
     navigator.clipboard?.writeText?.(window.location.href);
     setCopiedLink(true);
@@ -527,6 +569,36 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       >
                         <div>{q.label}</div>
                         <div className="text-[9px] font-mono opacity-60">{q.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Subtitle & Script Formats (Section 18: MP4, SRT, VTT, ASS, TXT, JSON) */}
+                <div className="pt-2 border-t border-neutral-800/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+                      Subtitle & Script Formats
+                    </label>
+                    <span className="text-[10px] text-neutral-500 font-mono">1-click download</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { format: 'srt', label: 'SRT', desc: 'SubRip' },
+                      { format: 'vtt', label: 'VTT', desc: 'WebVTT' },
+                      { format: 'ass', label: 'ASS', desc: 'SSA v4+' },
+                      { format: 'txt', label: 'TXT', desc: 'Script' },
+                      { format: 'json', label: 'JSON', desc: 'Tokens' },
+                    ].map((item) => (
+                      <button
+                        key={item.format}
+                        type="button"
+                        onClick={() => handleDownloadSubtitle(item.format as any)}
+                        className="p-2 rounded-xl bg-neutral-950/60 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-400/50 text-center transition-all cursor-pointer group"
+                        title={`Download ${item.desc} format`}
+                      >
+                        <div className="text-xs font-bold text-neutral-300 group-hover:text-amber-300">{item.label}</div>
+                        <div className="text-[9px] text-neutral-500 font-mono">{item.desc}</div>
                       </button>
                     ))}
                   </div>

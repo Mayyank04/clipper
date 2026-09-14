@@ -174,7 +174,7 @@ class RenderWorkerManager {
         job.checklist.captions = !!prepared.subtitleAssPath;
         job.checklist.broll = prepared.validatedBrolls.length > 0;
         job.checklist.sfx = prepared.validatedSfx.length > 0;
-        job.checklist.vfx = !!rawPlan.vfxItem || (Array.isArray(rawPlan.dynamicZooms) && rawPlan.dynamicZooms.length > 0);
+        job.checklist.vfx = (Array.isArray(rawPlan.vfxList) && rawPlan.vfxList.length > 0) || !!rawPlan.vfxItem || (Array.isArray(rawPlan.dynamicZooms) && rawPlan.dynamicZooms.length > 0);
         job.checklist.audio = true;
       }
 
@@ -206,6 +206,7 @@ class RenderWorkerManager {
         sfxList: prepared.validatedSfx,
         voiceoverList: prepared.validatedVoiceovers,
         vfxItem: rawPlan.vfxItem,
+        vfxList: rawPlan.vfxList,
         dynamicZooms: rawPlan.dynamicZooms,
         imageOverlays: rawPlan.imageOverlays,
         isAudioOnly: !!rawPlan.isAudioOnly,

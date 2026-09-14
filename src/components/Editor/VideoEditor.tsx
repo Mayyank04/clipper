@@ -55,6 +55,11 @@ import { Timeline } from './Timeline';
 import { RightInspector, InspectorTabType } from './RightInspector';
 import { AudioToVideoInspector } from './AudioToVideoInspector';
 import { DevDebugPanel } from './DevDebugPanel';
+import { EditorHeader, AutosaveStatus } from './EditorHeader';
+import { LeftToolPanel, LeftPanelTabType } from './LeftToolPanel';
+import { TypographyInspector } from './TypographyInspector';
+import { DiagnosticsModal } from '../DiagnosticsModal';
+import { BrandKitModal } from '../BrandKitModal';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { adjustShortTrimBounds } from '../../utils/timeEngine';
 import {
@@ -173,6 +178,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   const [showManualCaptionModal, setShowManualCaptionModal] = useState<boolean>(false);
   const [manualDialogueText, setManualDialogueText] = useState<string>('');
 
+  // Left Tool Panel Tab & Inspector Mode states
+  const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTabType>('captions');
+  const [inspectorMode, setInspectorMode] = useState<'typography' | 'tracks'>('typography');
+  const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState<boolean>(false);
+  const [isBrandKitModalOpen, setIsBrandKitModalOpen] = useState<boolean>(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('saved');
+
   // History stack for Undo/Redo
   const [history, setHistory] = useState<ShortCandidate[]>([normalizedInitial]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
@@ -216,12 +228,14 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     plan.assetProvenance = newShort.provenanceList;
     newShort.renderPlan = plan;
 
+    setAutosaveStatus('saving');
     const updatedHistory = history.slice(0, historyIndex + 1);
     updatedHistory.push(newShort);
     setHistory(updatedHistory);
     setHistoryIndex(updatedHistory.length - 1);
     setCurrentShort(newShort);
     onUpdateShort?.(newShort);
+    setTimeout(() => setAutosaveStatus('saved'), 600);
   };
 
   const handleUndo = () => {
@@ -1605,193 +1619,25 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] w-full bg-neutral-950 text-neutral-100 overflow-hidden select-none">
-      {/* TOP EDITOR TOOLBAR */}
-      <div className="h-14 border-b border-neutral-800 bg-neutral-900/90 px-4 flex items-center justify-between gap-4 flex-shrink-0">
-        {/* Left: Back button & Title */}
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={onBack}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors flex-shrink-0 cursor-pointer"
-            title="Back to Shorts"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs">
-                {currentShort.title}
-              </h2>
-              <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                Score {currentShort.viralScore?.overall || 94}
-              </span>
-            </div>
-            <p className="text-[11px] text-neutral-400 truncate hidden sm:block">
-              {project.originalTitle}
-            </p>
-          </div>
-        </div>
-
-        {/* Center: Aspect Ratio, Media Replace & Undo/Redo */}
-        <div className="flex items-center gap-2">
-          {/* Replace / Upload Media button */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/mp4,video/quicktime,video/webm"
-            onChange={handleLocalVideoUpload}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-xs font-semibold text-neutral-300 hover:text-white transition-all cursor-pointer"
-            title="Upload or replace source video file"
-          >
-            <Upload className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden md:inline">Upload Video</span>
-          </button>
-
-          {/* Undo / Redo */}
-          <div className="hidden sm:flex items-center gap-1 bg-neutral-950 border border-neutral-800 p-1 rounded-xl">
-            <button
-              onClick={handleUndo}
-              disabled={historyIndex <= 0}
-              className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Undo"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={historyIndex >= history.length - 1}
-              className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Redo"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Aspect Ratio Switcher */}
-          <div className="flex items-center gap-1 bg-neutral-950 border border-neutral-800 p-1 rounded-xl">
-            <button
-              onClick={() => {
-                setAspectRatio('9:16');
-                pushState({ ...currentShort, aspectRatio: '9:16' });
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectRatio === '9:16'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-              title="9:16 Vertical (Shorts, Reels, TikTok)"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">9:16</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setAspectRatio('1:1');
-                pushState({ ...currentShort, aspectRatio: '1:1' });
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectRatio === '1:1'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-              title="1:1 Square (LinkedIn, Feed)"
-            >
-              <Square className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">1:1</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setAspectRatio('16:9');
-                pushState({ ...currentShort, aspectRatio: '16:9' });
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectRatio === '16:9'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-              title="16:9 Landscape"
-            >
-              <Tv className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">16:9</span>
-            </button>
-          </div>
-
-          {/* Safe Area Overlay Toggle Button */}
-          <button
-            onClick={() => setSafeAreaEnabled((p) => !p)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              safeAreaEnabled
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                : 'bg-neutral-950 text-neutral-500 border-neutral-800 hover:text-neutral-300'
-            }`}
-            title="Toggle 9:16 Social Safe Zones overlay"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Safe Zone</span>
-          </button>
-
-          {/* Reset Layout Button */}
-          <button
-            onClick={handleResetLayout}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-xs font-semibold text-neutral-400 hover:text-white transition-all cursor-pointer"
-            title="Reset workspace layout, panels and safe zones"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
-            <span className="hidden xl:inline">Reset Layout</span>
-          </button>
-        </div>
-
-        {/* Right: Diagnostics, One-Click AI Edit & Export */}
-        <div className="flex items-center gap-2">
-          {/* Diagnostics Debug Toggle */}
-          <button
-            onClick={() => setIsDebugOpen((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              isDebugOpen
-                ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
-                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-            }`}
-            title="Toggle Real-Time Media Diagnostics (Ctrl+D)"
-          >
-            <Activity className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden xl:inline">Diagnostics</span>
-          </button>
-
-          {/* Fix Captions Auto-Fix (Part 12) */}
-          <button
-            onClick={handleFixCaptions}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all shadow-sm cursor-pointer"
-            title="Auto-fix caption timing gaps, overlaps, and speech coverage"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Fix Captions</span>
-          </button>
-
-          {/* One-Click AI Edit */}
-          <button
-            onClick={handleOneClickAIEdit}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all shadow-sm cursor-pointer"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">1-Click AI Edit</span>
-          </button>
-
-          {/* Export Short */}
-          <button
-            onClick={() => onExport(currentShort)}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-neutral-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export</span>
-          </button>
-        </div>
-      </div>
+      {/* PROFESSIONAL TOP EDITOR HEADER */}
+      <EditorHeader
+        projectName={currentShort.title}
+        onRenameProject={(newName) => {
+          pushState({ ...currentShort, title: newName });
+        }}
+        onBack={onBack}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        autosaveStatus={autosaveStatus}
+        safeAreaEnabled={safeAreaEnabled}
+        onToggleSafeArea={() => setSafeAreaEnabled((p) => !p)}
+        onOpenBrandKit={() => setIsBrandKitModalOpen(true)}
+        onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
+        onOpenAiTools={handleOneClickAIEdit}
+        onExport={() => onExport(currentShort)}
+      />
 
       {/* AI Edit Toast Notice */}
       {aiEditNotice && (
@@ -1800,9 +1646,33 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         </div>
       )}
 
-      {/* MAIN WORKSTATION BODY: CENTER CANVAS + RIGHT INSPECTOR */}
+      {/* MAIN WORKSTATION BODY: LEFT TOOL PANEL | VIDEO PREVIEW | INSPECTOR */}
       <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
-        {/* CENTER VIDEO CANVAS VIEW */}
+        {/* 1. LEFT TOOL PANEL (Captions, Styles, Animation, B-Roll, SFX, VFX, Audio, AI Tools) */}
+        <LeftToolPanel
+          short={currentShort}
+          activeTab={leftPanelTab}
+          onTabChange={setLeftPanelTab}
+          captionConfig={captionConfig}
+          onCaptionConfigChange={(newCfg) => {
+            setCaptionConfig(newCfg);
+            pushState({ ...currentShort });
+          }}
+          currentTime={currentTime}
+          onSeek={handleTimeSeek}
+          onUpdateShort={pushState}
+          onSplitCaptionAtWord={(captionId, wordIndex) => {
+            const target = (currentShort.captions || []).find((c) => c.id === captionId);
+            if (!target || !target.words || target.words.length <= 1) return;
+            const w = target.words[wordIndex];
+            if (w) handleSplitCaption(captionId, w.end);
+          }}
+          onMergeCaptions={(capId1, capId2) => {
+            handleMergeCaptions(capId1);
+          }}
+        />
+
+        {/* 2. CENTER VIDEO CANVAS VIEW */}
         <div className="flex-1 flex items-center justify-center p-2 sm:p-4 overflow-hidden relative bg-neutral-950/90">
           <VideoCanvas
             videoRef={videoRef}
@@ -1837,34 +1707,41 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           />
         </div>
 
-        {/* RIGHT INSPECTOR PANEL */}
+        {/* 3. RIGHT INSPECTOR PANEL */}
         <div className="w-80 sm:w-96 flex flex-col h-full flex-shrink-0 border-l border-neutral-800 bg-neutral-900 overflow-hidden">
-          {currentShort.audioToVideoConfig && (
-            <div className="flex border-b border-neutral-800 bg-neutral-950/80 p-1 flex-shrink-0">
-              <button
-                onClick={() => setPanelMode('audio_studio')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                  panelMode === 'audio_studio'
-                    ? 'bg-amber-400 text-neutral-950 shadow-sm'
-                    : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                Visual Style & Audio
-              </button>
-              <button
-                onClick={() => setPanelMode('standard')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                  panelMode === 'standard'
-                    ? 'bg-amber-400 text-neutral-950 shadow-sm'
-                    : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                Captions & Tracks
-              </button>
-            </div>
-          )}
+          {/* Toggle between Typography and Advanced Tracks */}
+          <div className="flex border-b border-neutral-800 bg-neutral-950/80 p-1 flex-shrink-0 text-xs font-bold">
+            <button
+              onClick={() => setInspectorMode('typography')}
+              className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                inspectorMode === 'typography'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Typography & Style
+            </button>
+            <button
+              onClick={() => setInspectorMode('tracks')}
+              className={`flex-1 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                inspectorMode === 'tracks'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Tracks & AI Voice
+            </button>
+          </div>
 
-          {currentShort.audioToVideoConfig && panelMode === 'audio_studio' ? (
+          {inspectorMode === 'typography' ? (
+            <TypographyInspector
+              captionConfig={captionConfig}
+              onChange={(newCfg) => {
+                setCaptionConfig(newCfg);
+                pushState({ ...currentShort });
+              }}
+            />
+          ) : currentShort.audioToVideoConfig && panelMode === 'audio_studio' ? (
             <AudioToVideoInspector
               short={currentShort}
               config={currentShort.audioToVideoConfig}
@@ -2211,6 +2088,22 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           </div>
         </div>
       )}
+
+      {/* Diagnostics Modal */}
+      <DiagnosticsModal
+        isOpen={isDiagnosticsModalOpen}
+        onClose={() => setIsDiagnosticsModalOpen(false)}
+      />
+
+      {/* Brand Kit Modal */}
+      <BrandKitModal
+        isOpen={isBrandKitModalOpen}
+        brandKit={brandKit}
+        onSave={(kit) => {
+          setIsBrandKitModalOpen(false);
+        }}
+        onClose={() => setIsBrandKitModalOpen(false)}
+      />
     </div>
   );
 };

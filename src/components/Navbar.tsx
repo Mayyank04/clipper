@@ -3,8 +3,8 @@ import { Sparkles, Video, FolderKanban, ShieldCheck, Palette, Wand2, Compass, Fi
 import { EditingPersonality } from '../types';
 
 interface NavbarProps {
-  currentView: 'landing' | 'dashboard' | 'project' | 'editor';
-  onNavigate: (view: 'landing' | 'dashboard' | 'project' | 'editor') => void;
+  currentView: string;
+  onNavigate: (view: any) => void;
   onOpenNewShortModal: () => void;
   onOpenBrandKit: () => void;
   editingPersonality: EditingPersonality;

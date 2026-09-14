@@ -25,6 +25,7 @@ export interface FFmpegRenderOptions {
   sfxList?: { path: string; delayMs: number; volume: number; fadeIn?: number; fadeOut?: number }[];
   voiceoverList?: { path: string; delayMs: number; volume: number }[];
   vfxItem?: { timestamp: number; duration: number; type: string };
+  vfxList?: { timestamp: number; duration: number; type: string }[];
   dynamicZooms?: { startTime: number; endTime: number; peakScale: number }[];
   imageOverlays?: { path: string; start: number; duration: number; position?: string; scale?: number }[];
   isAudioOnly?: boolean;
@@ -124,6 +125,7 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     sfxList = [],
     voiceoverList = [],
     vfxItem,
+    vfxList = [],
     colorTreatment,
     imageOverlays = [],
     dynamicZooms = [],
@@ -265,14 +267,36 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     nextInputIndex++;
   }
 
-  // 6. Subtle VFX if active
-  if (vfxItem) {
-    const vStart = Math.max(0, vfxItem.timestamp || 0);
-    const vDur = Math.max(0.4, vfxItem.duration || 1.5);
-    const vEnd = vStart + vDur;
-    filterChain += `;${curVPad}eq=brightness=0.08:contrast=1.12:enable='between(t,${vStart},${vEnd})'[vvfx]`;
-    curVPad = '[vvfx]';
+  // 6. Multiple Independent VFX Events (Section 12: glow, shake, zoom_punch, motion_blur, glitch, particles)
+  const allVfxEvents: Array<{ timestamp: number; duration: number; type: string }> = [];
+  if (Array.isArray(vfxList) && vfxList.length > 0) {
+    allVfxEvents.push(...vfxList);
+  } else if (vfxItem) {
+    allVfxEvents.push(vfxItem);
   }
+
+  allVfxEvents.forEach((vfx, vfxIdx) => {
+    const vStart = Math.max(0, vfx.timestamp || 0);
+    const vDur = Math.max(0.3, vfx.duration || 1.2);
+    const vEnd = vStart + vDur;
+    const vType = vfx.type || 'punch_in';
+
+    if (vType === 'glow') {
+      filterChain += `;${curVPad}eq=brightness=0.15:contrast=1.25:saturation=1.2:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'glitch') {
+      filterChain += `;${curVPad}hue=h=90*sin(2*PI*t):enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'shake') {
+      filterChain += `;${curVPad}eq=contrast=1.2:brightness=0.04:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'motion_blur') {
+      filterChain += `;${curVPad}tblend=all_mode=average:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'particles') {
+      filterChain += `;${curVPad}noise=c0s=12:allf=t+u:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else {
+      // Default: punch_in / reaction_punch / contrast punch
+      filterChain += `;${curVPad}eq=brightness=0.08:contrast=1.12:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    }
+    curVPad = `[vvfx_${vfxIdx}]`;
+  });
 
   // 7. Crisp Subtitle Burn-In with Exact User Font Directory Parity (Part 5 & 31)
   if (subtitlePath) {
