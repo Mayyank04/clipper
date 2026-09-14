@@ -269,13 +269,15 @@ export async function prepareRenderAssets(
     ? rawRenderPlan.sfxList
     : Array.isArray(rawRenderPlan.sfxEvents)
     ? rawRenderPlan.sfxEvents
+    : Array.isArray(rawRenderPlan.sfxMarkers)
+    ? rawRenderPlan.sfxMarkers
     : [];
 
   const validatedSfx: PreparedRenderAssets['validatedSfx'] = [];
 
   for (let i = 0; i < rawSfx.length; i++) {
     const sfx = rawSfx[i];
-    const sfxUrl = sfx.path || sfx.asset?.url || sfx.url || '';
+    const sfxUrl = sfx.path || sfx.asset?.url || sfx.url || sfx.audioUrl || (sfx.category ? `/assets/sfx/${sfx.category}.wav` : (sfx.type ? `/assets/sfx/${sfx.type}.wav` : ''));
     if (!sfxUrl) continue;
 
     let localSfxPath = '';

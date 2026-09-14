@@ -319,9 +319,9 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
       const origAudioFilter = voiceoverList.length > 0 ? 'volume=0.30' : 'volume=1.0';
       filterChain += `;[0:a]${origAudioFilter}[a_orig_ducked]`;
       const totalInputs = extraAudioPads.length + 1;
-      filterChain += `;[a_orig_ducked]${extraAudioPads.join('')}amix=inputs=${totalInputs}:duration=first:dropout_transition=2[aout]`;
+      filterChain += `;[a_orig_ducked]${extraAudioPads.join('')}amix=inputs=${totalInputs}:duration=first:dropout_transition=2:normalize=0[aout]`;
     } else {
-      filterChain += `;${extraAudioPads.join('')}amix=inputs=${extraAudioPads.length}:duration=first:dropout_transition=2[aout]`;
+      filterChain += `;${extraAudioPads.join('')}amix=inputs=${extraAudioPads.length}:duration=first:dropout_transition=2:normalize=0[aout]`;
     }
     curAPad = '[aout]';
   } else if (hasSourceAudio) {
