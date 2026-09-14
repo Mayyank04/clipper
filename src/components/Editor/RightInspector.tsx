@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Sparkles,
   Layers,
@@ -37,8 +37,10 @@ import {
   Mic,
   UserCheck,
   Type,
+  X,
 } from 'lucide-react';
 import { FontPickerModal } from './FontPickerModal';
+import { AIChatEditor } from './AIChatEditor';
 import {
   ShortCandidate,
   CaptionCustomization,
@@ -57,8 +59,17 @@ import { sfxEngine } from '../../utils/sfxAudio';
 import { TranscriptEditor } from './TranscriptEditor';
 import { VoiceStudioInspector } from './VoiceStudioInspector';
 import { PresenterStudioInspector } from './PresenterStudioInspector';
-import { AIChatEditor } from './AIChatEditor';
-import { ALL_CAPTION_STYLES, getCaptionStylePreset, calculateCaptionCoverage } from '../../utils/captionEngine';
+import {
+  ALL_CAPTION_STYLES,
+  getCaptionStylePreset,
+  calculateCaptionCoverage,
+  getCustomCaptionPresets,
+  saveCustomCaptionPreset,
+  deleteCustomCaptionPreset,
+  getAllAvailableCaptionStyles,
+  detectSemanticWordEmphasis,
+} from '../../utils/captionEngine';
+import { LiveTemplatePreview } from './VideoCanvas';
 import {
   BUILTIN_SFX_CATALOG,
   SFX_CATEGORIES,
@@ -239,6 +250,22 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [autoDucking, setAutoDucking] = useState<boolean>(true);
   const [selectedMusic, setSelectedMusic] = useState<string>('hype_trap');
   const [presetFilterCategory, setPresetFilterCategory] = useState<string>('all');
+  const [captionSubTab, setCaptionSubTab] = useState<'templates' | 'customize' | 'emphasis' | 'motion'>('templates');
+  const [templateSearchQuery, setTemplateSearchQuery] = useState<string>('');
+  const [favoritePresets, setFavoritePresets] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return ['beast_mode', 'reference_mix', 'hormozi_stack'];
+    try {
+      const saved = localStorage.getItem('viralclip_favorite_presets_v1');
+      return saved ? JSON.parse(saved) : ['beast_mode', 'reference_mix', 'hormozi_stack'];
+    } catch {
+      return ['beast_mode', 'reference_mix', 'hormozi_stack'];
+    }
+  });
+  const [copiedStyle, setCopiedStyle] = useState<CaptionCustomization | null>(null);
+  const [styleActionNotice, setStyleActionNotice] = useState<string | null>(null);
+  const [showSavePresetModal, setShowSavePresetModal] = useState<boolean>(false);
+  const [newPresetName, setNewPresetName] = useState<string>('');
+  const [customPresetsList, setCustomPresetsList] = useState<any[]>(() => getCustomCaptionPresets());
   const [showFontPickerModal, setShowFontPickerModal] = useState<boolean>(false);
 
   // B-Roll Studio State (Professional AI Semantic Engine)
@@ -659,10 +686,30 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
     }
   };
 
-  const filteredPresets = ALL_CAPTION_STYLES.filter((p) => {
-    if (presetFilterCategory === 'all') return true;
-    return p.category === presetFilterCategory;
-  });
+  const allStyles = useMemo(() => {
+    return [...customPresetsList, ...ALL_CAPTION_STYLES];
+  }, [customPresetsList]);
+
+  const filteredPresets = useMemo(() => {
+    return allStyles.filter((p) => {
+      if (templateSearchQuery.trim()) {
+        const q = templateSearchQuery.toLowerCase();
+        const matches =
+          p.name.toLowerCase().includes(q) ||
+          p.desc.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      if (presetFilterCategory === 'favorites') {
+        return favoritePresets.includes(p.id);
+      }
+      if (presetFilterCategory === 'my_presets') {
+        return customPresetsList.some((cp) => cp.id === p.id);
+      }
+      if (presetFilterCategory === 'all') return true;
+      return p.category === presetFilterCategory;
+    });
+  }, [allStyles, templateSearchQuery, presetFilterCategory, favoritePresets, customPresetsList]);
 
   return (
     <div className="w-full lg:w-96 bg-neutral-900 border-l border-neutral-800 flex flex-col h-full overflow-hidden">
@@ -844,6 +891,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               currentTime={currentTime}
               onSeekToTime={onSeekToTime || (() => {})}
               onUpdateCaptionText={onUpdateCaptionText}
+              onUpdateCaptions={(newCaptions) => onUpdateShort?.({ ...short, captions: newCaptions })}
               onDeleteCaption={onDeleteCaption}
               onAddCaptionAtCurrentTime={onAddCaptionAtCurrentTime}
               onTranscribeCaptions={onTranscribeCaptions}
@@ -923,165 +971,702 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               </div>
             )}
 
-            {/* Category Filter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {/* CAPTION SUBTAB NAVIGATION */}
+            <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-neutral-950 border border-neutral-800">
               {[
-                { id: 'all', label: 'All (25)' },
-                { id: 'viral', label: 'Viral' },
-                { id: 'high_energy', label: 'Energy' },
-                { id: 'podcast', label: 'Podcast' },
-                { id: 'cinematic', label: 'Cinematic' },
-                { id: 'creative', label: 'Creative' },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setPresetFilterCategory(c.id)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                    presetFilterCategory === c.id
-                      ? 'bg-amber-400 text-neutral-950 shadow-sm'
-                      : 'bg-neutral-950 text-neutral-400 border border-neutral-800 hover:text-white'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            {/* 25 Presets Grid */}
-            <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
-              {filteredPresets.map((p) => {
-                const isSelected = (captionConfig.preset || 'viral_bold') === p.id;
+                { id: 'templates', label: 'Templates', icon: Layers },
+                { id: 'customize', label: 'Customize', icon: SlidersHorizontal },
+                { id: 'emphasis', label: 'Emphasis', icon: Sparkles },
+                { id: 'motion', label: 'Motion', icon: Flame },
+              ].map((t) => {
+                const Icon = t.icon;
+                const isActive = captionSubTab === t.id;
                 return (
                   <button
-                    key={p.id}
-                    onClick={() => applyPreset(p.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
-                      isSelected
-                        ? 'bg-amber-400/10 border-amber-400 text-white shadow-md ring-1 ring-amber-400/30'
-                        : 'bg-neutral-950/60 border-neutral-800 text-neutral-300 hover:border-neutral-700'
+                    key={t.id}
+                    onClick={() => setCaptionSubTab(t.id as any)}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
                     }`}
                   >
-                    <div className="flex-1 min-w-0 pr-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white truncate">{p.name}</span>
-                        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono">
-                          {p.category}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-neutral-400 mt-0.5 line-clamp-1">{p.desc}</div>
-                    </div>
-                    <span
-                      className="text-xs font-extrabold px-2 py-0.5 rounded border text-center shrink-0"
-                      style={{
-                        backgroundColor: '#0a0a0a',
-                        borderColor: isSelected ? '#fbbf24' : '#262626',
-                        color: p.config.highlightColor || '#facc15',
-                        fontFamily: p.config.fontFamily || 'inherit',
-                      }}
-                    >
-                      Aa
-                    </span>
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{t.label}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Position & Styling Controls */}
-            <div className="pt-4 border-t border-neutral-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Position & Typography</h4>
-                <button
-                  onClick={() => setShowFontPickerModal(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-400 border border-amber-400/30 text-xs font-bold transition cursor-pointer"
-                  title="Browse 24 creator fonts with live previews"
-                >
-                  <Type className="w-3.5 h-3.5" />
-                  <span>Font Studio</span>
-                </button>
-              </div>
-
-              {/* Active Creator Font Card */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-amber-500/40 transition">
-                <div className="min-w-0 pr-2">
-                  <span className="text-[10px] text-neutral-500 font-mono uppercase block">Active Font Family</span>
-                  <span className="text-xs font-black text-white truncate block">
-                    {captionConfig.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'Lemon Milk'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowFontPickerModal(true)}
-                  className="px-2.5 py-1 rounded-lg bg-amber-400 text-neutral-950 text-xs font-bold hover:bg-amber-300 transition cursor-pointer shrink-0"
-                >
-                  Change Font
-                </button>
-              </div>
-
-              {/* Vertical Position */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-neutral-300">
-                  <span>Vertical Position (Y)</span>
-                  <span className="font-mono text-amber-400">{captionConfig.positionY}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="20"
-                  max="85"
-                  value={captionConfig.positionY}
-                  onChange={(e) =>
-                    onCaptionConfigChange({ ...captionConfig, positionY: Number(e.target.value) })
-                  }
-                  className="w-full accent-amber-400 cursor-pointer"
-                />
-              </div>
-
-              {/* Font Size */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-neutral-300">
-                  <span>Font Size</span>
-                  <span className="font-mono text-amber-400">{captionConfig.fontSize}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="20"
-                  max="48"
-                  value={captionConfig.fontSize}
-                  onChange={(e) =>
-                    onCaptionConfigChange({ ...captionConfig, fontSize: Number(e.target.value) })
-                  }
-                  className="w-full accent-amber-400 cursor-pointer"
-                />
-              </div>
-
-              {/* Highlight Color Pickers */}
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-neutral-300">Active Highlight Color</span>
-                <div className="flex items-center gap-1.5">
-                  {['#facc15', '#38bdf8', '#4ade80', '#fb7185', '#c084fc', '#ff007f', '#00f5ff'].map((col) => (
-                    <button
-                      key={col}
-                      onClick={() => onCaptionConfigChange({ ...captionConfig, highlightColor: col })}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${
-                        captionConfig.highlightColor === col ? 'scale-125 border-white' : 'border-transparent'
-                      }`}
-                      style={{ backgroundColor: col }}
+            {/* SUBTAB 1: TEMPLATES BROWSER */}
+            {captionSubTab === 'templates' && (
+              <div className="space-y-4">
+                {/* Search & Save Custom Preset Row */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={templateSearchQuery}
+                      onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                      placeholder="Search 47+ creator templates..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
                     />
+                  </div>
+                  <button
+                    onClick={() => setShowSavePresetModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-amber-400 border border-amber-400/30 text-xs font-bold transition cursor-pointer shrink-0"
+                    title="Save current caption style as a custom preset"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Save Style</span>
+                  </button>
+                </div>
+
+                {/* Save Preset Modal Dialog */}
+                {showSavePresetModal && (
+                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-amber-400/50 shadow-xl space-y-3 animate-scale-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">Save Current Style as Preset</span>
+                      <button
+                        onClick={() => setShowSavePresetModal(false)}
+                        className="text-neutral-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      placeholder="e.g., My Viral Yellow Pill..."
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowSavePresetModal(false)}
+                        className="px-2.5 py-1 text-xs text-neutral-400 hover:text-white cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!newPresetName.trim()) return;
+                          const customDef = {
+                            id: `custom_${Date.now()}` as any,
+                            name: newPresetName.trim(),
+                            desc: 'User created custom caption preset',
+                            category: 'creator' as any,
+                            config: { ...captionConfig },
+                          };
+                          saveCustomCaptionPreset(customDef);
+                          setCustomPresetsList(getCustomCaptionPresets());
+                          setShowSavePresetModal(false);
+                          setNewPresetName('');
+                          setStyleActionNotice(`Saved preset "${customDef.name}"!`);
+                          setTimeout(() => setStyleActionNotice(null), 3000);
+                        }}
+                        className="px-3 py-1 rounded-lg bg-amber-400 text-neutral-950 font-bold text-xs hover:bg-amber-300 cursor-pointer"
+                      >
+                        Save Preset
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Category Filter Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {[
+                    { id: 'all', label: `All (${allStyles.length})` },
+                    { id: 'favorites', label: `★ Favorites (${favoritePresets.length})` },
+                    { id: 'my_presets', label: `My Presets (${customPresetsList.length})` },
+                    { id: 'creator', label: 'Creator' },
+                    { id: 'viral', label: 'Viral' },
+                    { id: 'minimal', label: 'Minimal' },
+                    { id: 'bold', label: 'Bold' },
+                    { id: 'cinematic', label: 'Cinematic' },
+                    { id: 'luxury', label: 'Luxury' },
+                    { id: 'documentary', label: 'Documentary' },
+                    { id: 'comedy', label: 'Comedy' },
+                    { id: 'meme', label: 'Meme' },
+                    { id: 'karaoke', label: 'Karaoke' },
+                    { id: 'storytelling', label: 'Storytelling' },
+                    { id: 'dark', label: 'Dark' },
+                    { id: 'neon', label: 'Neon' },
+                    { id: 'clean', label: 'Clean' },
+                    { id: 'indian_creator', label: 'Desi' },
+                    { id: 'hinglish', label: 'Hinglish' },
+                    { id: 'hindi', label: 'Hindi' },
+                    { id: 'motivational', label: 'Motivational' },
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setPresetFilterCategory(c.id)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                        presetFilterCategory === c.id
+                          ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                          : 'bg-neutral-950 text-neutral-400 border border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
                   ))}
                 </div>
-              </div>
 
-              {/* Toggles */}
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-neutral-300">Uppercase All Words</span>
-                <input
-                  type="checkbox"
-                  checked={captionConfig.uppercase}
-                  onChange={(e) =>
-                    onCaptionConfigChange({ ...captionConfig, uppercase: e.target.checked })
-                  }
-                  className="w-4 h-4 accent-amber-400 cursor-pointer"
-                />
+                {/* Live Animated Template Cards Grid */}
+                <div className="grid grid-cols-1 gap-2.5 max-h-[380px] overflow-y-auto pr-1">
+                  {filteredPresets.map((p) => {
+                    const isSelected = (captionConfig.preset || 'viral_bold') === p.id;
+                    const isFav = favoritePresets.includes(p.id);
+                    const isCustom = customPresetsList.some((cp) => cp.id === p.id);
+
+                    return (
+                      <div key={p.id} className="relative group/card">
+                        <LiveTemplatePreview
+                          styleDef={p}
+                          isSelected={isSelected}
+                          isFavorite={isFav}
+                          onSelect={() => applyPreset(p.id)}
+                          onToggleFavorite={() => {
+                            let updatedFavs: string[];
+                            if (isFav) {
+                              updatedFavs = favoritePresets.filter((id) => id !== p.id);
+                            } else {
+                              updatedFavs = [...favoritePresets, p.id];
+                            }
+                            setFavoritePresets(updatedFavs);
+                            try {
+                              localStorage.setItem('viralclip_favorite_presets_v1', JSON.stringify(updatedFavs));
+                            } catch {}
+                          }}
+                        />
+                        {isCustom && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteCustomCaptionPreset(p.id);
+                              setCustomPresetsList(getCustomCaptionPresets());
+                            }}
+                            className="absolute top-2.5 right-8 p-1 text-neutral-500 hover:text-rose-400 transition cursor-pointer z-20"
+                            title="Delete custom preset"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* SUBTAB 2: CUSTOMIZE STYLING */}
+            {captionSubTab === 'customize' && (
+              <div className="space-y-4 animate-fade-in">
+                {/* Copy / Paste / Apply to All Actions Bar */}
+                <div className="flex items-center justify-between p-2 rounded-xl bg-neutral-950 border border-neutral-800">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setCopiedStyle({ ...captionConfig });
+                        setStyleActionNotice('Copied style to clipboard!');
+                        setTimeout(() => setStyleActionNotice(null), 2500);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Copy</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (copiedStyle) {
+                          onCaptionConfigChange({ ...copiedStyle });
+                          setStyleActionNotice('Pasted style!');
+                          setTimeout(() => setStyleActionNotice(null), 2500);
+                        }
+                      }}
+                      disabled={!copiedStyle}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:opacity-40 text-neutral-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                      <span>Paste</span>
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setStyleActionNotice('Applied style across all captions!');
+                      setTimeout(() => setStyleActionNotice(null), 2500);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 text-xs font-bold transition cursor-pointer border border-amber-400/30"
+                  >
+                    Apply to All
+                  </button>
+                </div>
+
+                {styleActionNotice && (
+                  <div className="text-[11px] font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-2.5 py-1 rounded-lg">
+                    ✓ {styleActionNotice}
+                  </div>
+                )}
+
+                {/* Typography: Font Family & Font Studio */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Font Family</span>
+                    <button
+                      onClick={() => setShowFontPickerModal(true)}
+                      className="flex items-center gap-1 text-xs font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
+                    >
+                      <Type className="w-3.5 h-3.5" />
+                      <span>Font Studio</span>
+                    </button>
+                  </div>
+                  <select
+                    value={captionConfig.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'Montserrat'}
+                    onChange={(e) =>
+                      onCaptionConfigChange({
+                        ...captionConfig,
+                        fontFamily: `${e.target.value}, sans-serif`,
+                      })
+                    }
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    {[
+                      'Montserrat', 'Lemon Milk', 'American Captain', 'Impact', 'Bebas Neue', 'Outfit',
+                      'Plus Jakarta Sans', 'Inter', 'Cinzel', 'Playfair Display', 'Bangers', 'Oswald',
+                      'Syne', 'Coolvetica', 'Komika Axis', 'Poppins', 'Noto Sans Devanagari', 'Georgia',
+                    ].map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Font Size & Weight */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-neutral-300">
+                      <span>Font Size</span>
+                      <span className="font-mono text-amber-400">{captionConfig.fontSize || 28}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="18"
+                      max="48"
+                      value={captionConfig.fontSize || 28}
+                      onChange={(e) =>
+                        onCaptionConfigChange({ ...captionConfig, fontSize: Number(e.target.value) })
+                      }
+                      className="w-full accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-neutral-300 block">Font Weight</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[500, 600, 700, 900].map((w) => (
+                        <button
+                          key={w}
+                          onClick={() => onCaptionConfigChange({ ...captionConfig, fontWeight: w })}
+                          className={`py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                            (captionConfig.fontWeight || 800) === w
+                              ? 'bg-amber-400 text-neutral-950 shadow'
+                              : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+                          }`}
+                        >
+                          {w === 900 ? 'Black' : w === 700 ? 'Bold' : w === 600 ? 'Semibold' : 'Medium'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-neutral-300">Uppercase All Words</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(captionConfig.uppercase)}
+                      onChange={(e) =>
+                        onCaptionConfigChange({ ...captionConfig, uppercase: e.target.checked })
+                      }
+                      className="w-4 h-4 accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Colors: Text & Highlight Swatches */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-300">Primary Text Color</span>
+                    <div className="flex items-center gap-1.5">
+                      {['#FFFFFF', '#F8FAFC', '#E2E8F0', '#000000'].map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => onCaptionConfigChange({ ...captionConfig, primaryColor: c })}
+                          className={`w-5 h-5 rounded-full border-2 transition cursor-pointer ${
+                            captionConfig.primaryColor === c ? 'scale-125 border-amber-400' : 'border-neutral-700'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={captionConfig.primaryColor || '#FFFFFF'}
+                        onChange={(e) => onCaptionConfigChange({ ...captionConfig, primaryColor: e.target.value })}
+                        className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-neutral-800/80">
+                    <span className="text-xs text-neutral-300">Spoken Highlight Color</span>
+                    <div className="flex items-center gap-1.5">
+                      {['#FACC15', '#38BDF8', '#22C55E', '#F43F5E', '#FF007F', '#FF6B00', '#A855F7'].map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => onCaptionConfigChange({ ...captionConfig, highlightColor: c })}
+                          className={`w-5 h-5 rounded-full border-2 transition cursor-pointer ${
+                            captionConfig.highlightColor === c ? 'scale-125 border-white' : 'border-transparent'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={captionConfig.highlightColor || '#FACC15'}
+                        onChange={(e) => onCaptionConfigChange({ ...captionConfig, highlightColor: e.target.value })}
+                        className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Alignment & Position */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-300">Text Alignment</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(['left', 'center', 'right'] as const).map((a) => (
+                        <button
+                          key={a}
+                          onClick={() => onCaptionConfigChange({ ...captionConfig, alignment: a })}
+                          className={`px-2.5 py-1 rounded text-[11px] font-bold capitalize transition cursor-pointer ${
+                            (captionConfig.alignment || 'center') === a
+                              ? 'bg-amber-400 text-neutral-950 shadow'
+                              : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+                          }`}
+                        >
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-neutral-300">
+                      <span>Vertical Position (Y)</span>
+                      <span className="font-mono text-amber-400">{captionConfig.positionY || 72}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="20"
+                      max="85"
+                      value={captionConfig.positionY || 72}
+                      onChange={(e) =>
+                        onCaptionConfigChange({ ...captionConfig, positionY: Number(e.target.value) })
+                      }
+                      className="w-full accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-neutral-300">Face-Avoid Auto Position</span>
+                    <input
+                      type="checkbox"
+                      checked={captionConfig.autoPositionMode === 'face_avoid'}
+                      onChange={(e) =>
+                        onCaptionConfigChange({
+                          ...captionConfig,
+                          autoPositionMode: e.target.checked ? 'face_avoid' : 'none',
+                        })
+                      }
+                      className="w-4 h-4 accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Stroke, Shadow, Glow & Background Shapes */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-neutral-300">
+                      <span>Outline Stroke Width</span>
+                      <span className="font-mono text-amber-400">{captionConfig.strokeWidth ?? 3}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="7"
+                      step="0.5"
+                      value={captionConfig.strokeWidth ?? 3}
+                      onChange={(e) =>
+                        onCaptionConfigChange({ ...captionConfig, strokeWidth: Number(e.target.value) })
+                      }
+                      className="w-full accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-neutral-300">Background Shape</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(['none', 'pill', 'box', 'sharp'] as const).map((shape) => (
+                        <button
+                          key={shape}
+                          onClick={() =>
+                            onCaptionConfigChange({
+                              ...captionConfig,
+                              backgroundShape: shape,
+                              backgroundColor: shape === 'none' ? undefined : (captionConfig.backgroundColor || '#000000'),
+                            })
+                          }
+                          className={`px-2 py-1 rounded text-[10px] font-bold capitalize transition cursor-pointer ${
+                            (captionConfig.backgroundShape || (captionConfig.backgroundColor ? 'box' : 'none')) === shape
+                              ? 'bg-amber-400 text-neutral-950 shadow'
+                              : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+                          }`}
+                        >
+                          {shape}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-neutral-300">Electric Neon Glow</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(captionConfig.glowEnabled)}
+                      onChange={(e) =>
+                        onCaptionConfigChange({ ...captionConfig, glowEnabled: e.target.checked })
+                      }
+                      className="w-4 h-4 accent-amber-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. EMPHASIS SUBTAB */}
+            {captionSubTab === 'emphasis' && (
+              <div className="space-y-4 animate-fade-in">
+                {(() => {
+                  const captions = short.captions || [];
+                  return (
+                    <>
+                      {/* AI Semantic Detection Hero */}
+                      <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-500/10 via-purple-500/10 to-neutral-900 border border-amber-500/30 flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            AI Smart Word Emphasis
+                          </span>
+                          <p className="text-[11px] text-neutral-400 mt-0.5">
+                            Auto-detects high-impact numbers, currency, action hooks & CTAs (15-20% ratio).
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const allWords: any[] = [];
+                            captions.forEach((c) => {
+                              (c.words || []).forEach((w) => allWords.push(w));
+                            });
+                            const analyses = detectSemanticWordEmphasis(allWords, 0.2);
+                            const emphasizedIndices = new Set(analyses.map((a) => a.wordIndex));
+
+                            let globalWordCount = 0;
+                            const newCaps = captions.map((c) => {
+                              const newWords = (c.words || []).map((w) => {
+                                const shouldEmp = emphasizedIndices.has(globalWordCount);
+                                globalWordCount++;
+                                return {
+                                  ...w,
+                                  isHighlight: shouldEmp,
+                                  emphasis: shouldEmp ? 'hero' : 'none',
+                                };
+                              });
+                              return { ...c, words: newWords };
+                            });
+
+                            if (onUpdateShort) {
+                              onUpdateShort({ ...short, captions: newCaps });
+                            }
+                            setStyleActionNotice(`Emphasized ${analyses.length} key words!`);
+                            setTimeout(() => setStyleActionNotice(null), 3000);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold transition cursor-pointer shrink-0 shadow"
+                        >
+                          AI Detect
+                        </button>
+                      </div>
+
+                {/* Emphasis Scale */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-300">
+                    <span>Emphasis Scale</span>
+                    <span className="font-mono text-amber-400">{captionConfig.emphasisScale || 1.2}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.05"
+                    max="1.45"
+                    step="0.05"
+                    value={captionConfig.emphasisScale || 1.2}
+                    onChange={(e) =>
+                      onCaptionConfigChange({ ...captionConfig, emphasisScale: Number(e.target.value) })
+                    }
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                </div>
+
+                {/* Emphasis Mode */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+                  <span className="text-xs text-neutral-300 block">Default Emphasis Style</span>
+                  <div className="grid grid-cols-4 gap-1">
+                    {(['hero', 'strong', 'marker', 'underline'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => onCaptionConfigChange({ ...captionConfig, emphasisMode: mode })}
+                        className={`py-1 rounded text-[11px] font-bold capitalize transition cursor-pointer ${
+                          (captionConfig.emphasisMode || 'hero') === mode
+                            ? 'bg-amber-400 text-neutral-950 shadow'
+                            : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Words on Active Segment */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+                  <span className="text-xs font-bold text-white block">Words on Active Segment</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(() => {
+                      const activeCap = captions.find((c) => currentTime >= c.start && currentTime <= c.end) || captions[0];
+                      if (!activeCap || !activeCap.words) return <span className="text-xs text-neutral-500">No active words</span>;
+
+                      return activeCap.words.map((w, wIdx) => {
+                        const isEmp = (w as any).emphasis === 'hero' || w.isHighlight;
+                        return (
+                          <button
+                            key={wIdx}
+                            onClick={() => {
+                              const newWords = [...activeCap.words!];
+                              newWords[wIdx] = {
+                                ...newWords[wIdx],
+                                isHighlight: !isEmp,
+                                emphasis: !isEmp ? 'hero' : 'none',
+                              };
+                              const newCaps = captions.map((c) =>
+                                c.id === activeCap.id ? { ...c, words: newWords } : c
+                              );
+                              if (onUpdateShort) {
+                                onUpdateShort({ ...short, captions: newCaps });
+                              }
+                            }}
+                            className={`px-2 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                              isEmp
+                                ? 'bg-amber-400 text-neutral-950 scale-105 shadow'
+                                : 'bg-neutral-900 text-neutral-300 border border-neutral-800 hover:text-white'
+                            }`}
+                          >
+                            {w.word || (w as any).text}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* SUBTAB 4: MOTION & ANIMATION */}
+            {captionSubTab === 'motion' && (
+              <div className="space-y-4 animate-fade-in">
+                {/* Motion Intensity Presets */}
+                <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                    Motion Energy Intensity
+                  </span>
+                  <div className="grid grid-cols-4 gap-1">
+                    {(['subtle', 'balanced', 'energetic', 'extreme'] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        onClick={() => onCaptionConfigChange({ ...captionConfig, motionIntensity: lvl })}
+                        className={`py-1 rounded text-[11px] font-bold capitalize transition cursor-pointer ${
+                          (captionConfig.motionIntensity || 'balanced') === lvl
+                            ? 'bg-amber-400 text-neutral-950 shadow'
+                            : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'
+                        }`}
+                      >
+                        {lvl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 18+ Animation Styles Grid */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                    Animation Types ({18})
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {[
+                      { id: 'pop', label: 'Pop Word' },
+                      { id: 'bounce', label: 'Bounce' },
+                      { id: 'punch', label: 'Punch In' },
+                      { id: 'spring', label: 'Spring' },
+                      { id: 'slide_up', label: 'Slide Up' },
+                      { id: 'slide_down', label: 'Slide Down' },
+                      { id: 'slide_left', label: 'Slide Left' },
+                      { id: 'slide_right', label: 'Slide Right' },
+                      { id: 'lift', label: 'Smooth Lift' },
+                      { id: 'scale', label: 'Scale Up' },
+                      { id: 'blur_in', label: 'Blur In' },
+                      { id: 'glow_in', label: 'Glow In' },
+                      { id: 'typewriter', label: 'Typewriter' },
+                      { id: 'karaoke', label: 'Karaoke' },
+                      { id: 'marker', label: 'Marker Draw' },
+                      { id: 'underline', label: 'Underline' },
+                      { id: 'word_pop', label: 'Word Snap' },
+                      { id: 'fade', label: 'Soft Fade' },
+                    ].map((anim) => {
+                      const isSelected = (captionConfig.animationType || captionConfig.animation || 'pop') === anim.id;
+                      return (
+                        <button
+                          key={anim.id}
+                          onClick={() =>
+                            onCaptionConfigChange({
+                              ...captionConfig,
+                              animationType: anim.id as any,
+                              animation: anim.id as any,
+                            })
+                          }
+                          className={`p-2 rounded-xl border text-xs font-bold transition cursor-pointer text-center ${
+                            isSelected
+                              ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow ring-1 ring-amber-400/40'
+                              : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                          }`}
+                        >
+                          {anim.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Captions List on Active Clip */}
             <div className="pt-4 border-t border-neutral-800 space-y-3">

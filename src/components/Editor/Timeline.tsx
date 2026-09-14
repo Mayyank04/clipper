@@ -14,9 +14,13 @@ import {
   Image as ImageIcon,
   Activity,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Type,
+  Magnet,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
-import { ShortCandidate, SFXMarker, VFXMarker, CaptionSegment, BRollSuggestion } from '../../types';
+import { ShortCandidate, SFXMarker, VFXMarker, CaptionSegment, BRollSuggestion, WordTiming } from '../../types';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { captureVideoThumbnails, generateWaveformData } from '../../utils/mediaThumbnails';
 import { formatTime, formatTimeWithTenths } from '../../utils/timeFormat';
@@ -35,8 +39,14 @@ interface TimelineProps {
   onSelectBRoll?: (broll: BRollSuggestion) => void;
   onSelectCaption?: (caption: CaptionSegment) => void;
   onUpdateCaptionTiming?: (captionId: string, newStart: number, newEnd: number) => void;
+  onUpdateWordTiming?: (captionId: string, wordIndex: number, newStart: number, newEnd: number) => void;
+  onSelectWord?: (captionId: string, wordIndex: number, word: WordTiming) => void;
   onSelectClip?: (clipId: string) => void;
   onTrimChange?: (newBounds: { startTime: number; endTime: number }) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   selectedItemId?: string | null;
   videoUrl?: string;
 }
@@ -55,8 +65,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   onSelectBRoll,
   onSelectCaption,
   onUpdateCaptionTiming,
+  onUpdateWordTiming,
+  onSelectWord,
   onSelectClip,
   onTrimChange,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   selectedItemId,
   videoUrl,
 }) => {
@@ -67,6 +83,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [isTrimmingStart, setIsTrimmingStart] = useState<boolean>(false);
   const [isTrimmingEnd, setIsTrimmingEnd] = useState<boolean>(false);
+  const [showWordTrack, setShowWordTrack] = useState<boolean>(true);
+  const [snappingActive, setSnappingActive] = useState<boolean>(true);
+  const [snapIndicator, setSnapIndicator] = useState<{ time: number; label?: string } | null>(null);
   const [captionDrag, setCaptionDrag] = useState<{
     id: string;
     type: 'start' | 'end' | 'move';
@@ -74,6 +93,17 @@ export const Timeline: React.FC<TimelineProps> = ({
     initialEnd: number;
     currentStart: number;
     currentEnd: number;
+  } | null>(null);
+  const [wordDrag, setWordDrag] = useState<{
+    captionId: string;
+    wordIndex: number;
+    type: 'start' | 'end' | 'move';
+    initialStart: number;
+    initialEnd: number;
+    currentStart: number;
+    currentEnd: number;
+    minAllowed: number;
+    maxAllowed: number;
   } | null>(null);
   const safeStartTime = Number.isFinite(short?.startTime) ? short.startTime : 0;
   const safeEndTime = Number.isFinite(short?.endTime) ? short.endTime : (safeStartTime + (short?.duration || 30));
@@ -163,7 +193,16 @@ export const Timeline: React.FC<TimelineProps> = ({
       } else if (captionDrag && timelineTrackRef.current) {
         const rect = timelineTrackRef.current.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        const pointerTime = ratio * duration;
+        let pointerTime = ratio * duration;
+
+        if (snappingActive) {
+          if (Math.abs(pointerTime - currentTime) <= 0.05) {
+            pointerTime = currentTime;
+            setSnapIndicator({ time: currentTime, label: 'Playhead' });
+          } else {
+            setSnapIndicator(null);
+          }
+        }
 
         if (captionDrag.type === 'start') {
           const newStart = Math.max(0, Math.min(captionDrag.initialEnd - 0.15, pointerTime));
@@ -178,6 +217,40 @@ export const Timeline: React.FC<TimelineProps> = ({
           const newStart = Math.max(0, Math.min(duration - capDur, pointerTime));
           const newEnd = Number((newStart + capDur).toFixed(3));
           setCaptionDrag((prev) => prev ? { ...prev, currentStart: Number(newStart.toFixed(3)), currentEnd: newEnd } : null);
+          onTimeSeek(newStart);
+        }
+      } else if (wordDrag && timelineTrackRef.current) {
+        const rect = timelineTrackRef.current.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        let pointerTime = ratio * duration;
+
+        if (snappingActive) {
+          const snapTargets = [currentTime, wordDrag.minAllowed, wordDrag.maxAllowed];
+          let didSnap = false;
+          for (const st of snapTargets) {
+            if (Math.abs(pointerTime - st) <= 0.05) {
+              pointerTime = st;
+              setSnapIndicator({ time: st, label: st === currentTime ? 'Playhead' : 'Word Bound' });
+              didSnap = true;
+              break;
+            }
+          }
+          if (!didSnap) setSnapIndicator(null);
+        }
+
+        if (wordDrag.type === 'start') {
+          const newStart = Math.max(wordDrag.minAllowed, Math.min(wordDrag.currentEnd - 0.04, pointerTime));
+          setWordDrag((prev) => prev ? { ...prev, currentStart: Number(newStart.toFixed(3)) } : null);
+          onTimeSeek(newStart);
+        } else if (wordDrag.type === 'end') {
+          const newEnd = Math.min(wordDrag.maxAllowed, Math.max(wordDrag.currentStart + 0.04, pointerTime));
+          setWordDrag((prev) => prev ? { ...prev, currentEnd: Number(newEnd.toFixed(3)) } : null);
+          onTimeSeek(newEnd);
+        } else if (wordDrag.type === 'move') {
+          const wDur = wordDrag.initialEnd - wordDrag.initialStart;
+          const newStart = Math.max(wordDrag.minAllowed, Math.min(wordDrag.maxAllowed - wDur, pointerTime));
+          const newEnd = Number((newStart + wDur).toFixed(3));
+          setWordDrag((prev) => prev ? { ...prev, currentStart: Number(newStart.toFixed(3)), currentEnd: newEnd } : null);
           onTimeSeek(newStart);
         }
       }
@@ -204,10 +277,18 @@ export const Timeline: React.FC<TimelineProps> = ({
           onUpdateCaptionTiming(captionDrag.id, captionDrag.currentStart, captionDrag.currentEnd);
         }
         setCaptionDrag(null);
+        setSnapIndicator(null);
+      }
+      if (wordDrag) {
+        if (onUpdateWordTiming) {
+          onUpdateWordTiming(wordDrag.captionId, wordDrag.wordIndex, wordDrag.currentStart, wordDrag.currentEnd);
+        }
+        setWordDrag(null);
+        setSnapIndicator(null);
       }
     };
 
-    if (isDraggingPlayhead || isTrimmingStart || isTrimmingEnd || captionDrag) {
+    if (isDraggingPlayhead || isTrimmingStart || isTrimmingEnd || captionDrag || wordDrag) {
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleEnd);
       window.addEventListener('touchmove', handleMove);
@@ -225,10 +306,14 @@ export const Timeline: React.FC<TimelineProps> = ({
     isTrimmingStart,
     isTrimmingEnd,
     captionDrag,
+    wordDrag,
+    snappingActive,
+    currentTime,
     calculateTimeFromClientX,
     onTimeSeek,
     onTrimChange,
     onUpdateCaptionTiming,
+    onUpdateWordTiming,
     duration,
     short.startTime,
     short.endTime,
@@ -238,6 +323,81 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : (short?.duration || 30);
   const playheadPercent = safeDuration > 0 ? Math.max(0, Math.min(100, (currentTime / safeDuration) * 100)) : 0;
+
+  // Fallback word generator if segment has no precomputed word timings
+  const fallbackWords = useCallback((cap: CaptionSegment): WordTiming[] => {
+    if (cap.words && cap.words.length > 0) return cap.words;
+    const rawWords = (cap.text || '').trim().split(/\s+/).filter(Boolean);
+    if (rawWords.length === 0) return [];
+    const dur = Math.max(0.1, cap.end - cap.start);
+    const step = dur / rawWords.length;
+    return rawWords.map((w, i) => ({
+      id: `w_${cap.id}_${i}`,
+      word: w,
+      start: Number((cap.start + i * step).toFixed(3)),
+      end: Number((cap.start + (i + 1) * step).toFixed(3)),
+    }));
+  }, []);
+
+  // Keyboard Shortcuts (Space, Arrow keys, S, Delete, Cmd+Z/Y, +/-)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        onPlayPause();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        const step = e.shiftKey ? (safeDuration > 30 ? 2 : 1) : 0.04;
+        onTimeSeek(Math.max(0, currentTime - step));
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? (safeDuration > 30 ? 2 : 1) : 0.04;
+        onTimeSeek(Math.min(safeDuration, currentTime + step));
+      } else if (e.code === 'KeyS') {
+        e.preventDefault();
+        onSplit?.(currentTime);
+      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (selectedItemId) {
+          e.preventDefault();
+          onDeleteSelected?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          onRedo?.();
+        } else {
+          onUndo?.();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        onRedo?.();
+      } else if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        setZoomLevel((z) => Math.min(3, z + 0.5));
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        setZoomLevel((z) => Math.max(1, z - 0.5));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    currentTime,
+    safeDuration,
+    onPlayPause,
+    onTimeSeek,
+    onSplit,
+    selectedItemId,
+    onDeleteSelected,
+    onUndo,
+    onRedo,
+  ]);
 
   // Time ruler ticks
   const step = safeDuration > 40 ? 5 : safeDuration > 15 ? 2 : 1;
@@ -295,6 +455,60 @@ export const Timeline: React.FC<TimelineProps> = ({
               <span>Delete</span>
             </button>
           )}
+
+          {/* Undo / Redo in Timeline Toolbar */}
+          {(onUndo || onRedo) && (
+            <div className="hidden lg:flex items-center gap-1 bg-neutral-900 border border-neutral-800 p-0.5 rounded-lg">
+              {onUndo && (
+                <button
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                  title="Undo (Cmd+Z)"
+                >
+                  <Undo2 className="w-3 h-3" />
+                </button>
+              )}
+              {onRedo && (
+                <button
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  className="p-1 rounded text-neutral-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                  title="Redo (Cmd+Shift+Z)"
+                >
+                  <Redo2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Word Track Toggle */}
+          <button
+            onClick={() => setShowWordTrack((prev) => !prev)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+              showWordTrack
+                ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+            }`}
+            title="Toggle Word-Level Precision Timeline Track"
+          >
+            <Type className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Words</span>
+          </button>
+
+          {/* Snapping Toggle */}
+          <button
+            onClick={() => setSnappingActive((prev) => !prev)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+              snappingActive
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                : 'bg-neutral-900 text-neutral-500 border-neutral-800 hover:text-neutral-300'
+            }`}
+            title={snappingActive ? 'Magnetic Snapping Active (0.05s snap to playhead/bounds)' : 'Snapping Disabled'}
+          >
+            <Magnet className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Snap</span>
+          </button>
 
           {/* Real Trim Tooltip indicator when active */}
           {(isTrimmingStart || isTrimmingEnd) && (
@@ -363,6 +577,16 @@ export const Timeline: React.FC<TimelineProps> = ({
               </div>
             </div>
 
+            {/* Words Header */}
+            {showWordTrack && (
+              <div className="h-8 flex items-center px-2 bg-neutral-900/80 rounded-l border-y border-l border-neutral-800">
+                <div className="flex items-center gap-1 text-[9px] font-bold text-amber-300">
+                  <Type className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                  <span className="truncate">Words</span>
+                </div>
+              </div>
+            )}
+
             {/* B-Roll Header */}
             <div className="h-8 flex items-center px-2 bg-neutral-900/60 rounded-l border-y border-l border-neutral-800">
               <div className="flex items-center gap-1 text-[9px] font-bold text-blue-300">
@@ -413,6 +637,18 @@ export const Timeline: React.FC<TimelineProps> = ({
               />
               <div className="w-0.5 flex-1 bg-amber-400 shadow-sm" />
             </div>
+
+            {/* Magnetic Snapping Guideline */}
+            {snapIndicator && (
+              <div
+                className="absolute top-0 bottom-0 z-35 w-px bg-cyan-400 pointer-events-none border-r border-dashed border-cyan-300 -translate-x-1/2"
+                style={{ left: `${(snapIndicator.time / safeDuration) * 100}%` }}
+              >
+                <div className="absolute top-1 -translate-x-1/2 bg-cyan-500 text-neutral-950 font-black text-[8px] px-1 py-0.5 rounded shadow">
+                  {snapIndicator.label || `${snapIndicator.time.toFixed(2)}s`}
+                </div>
+              </div>
+            )}
 
             {/* TIME RULER */}
             <div className="relative h-6 bg-neutral-900/90 rounded-r border border-neutral-800 overflow-hidden flex items-center px-1">
@@ -647,6 +883,124 @@ export const Timeline: React.FC<TimelineProps> = ({
                 })}
               </div>
             </div>
+
+            {/* TRACK 3B: WORD TRACK (Precision Draggable Word Blocks with Snapping) */}
+            {showWordTrack && (
+              <div className="relative h-8 bg-neutral-950/70 rounded-r-lg border border-neutral-800/80 overflow-hidden flex items-center px-1">
+                <div className="w-full h-full relative">
+                  {short.captions?.flatMap((cap) => {
+                    const words = fallbackWords(cap);
+                    return words.map((w, wIdx) => {
+                      const wordId = `word_${cap.id}_${wIdx}`;
+                      const isBeingDragged = wordDrag?.captionId === cap.id && wordDrag?.wordIndex === wIdx;
+                      const startSec = isBeingDragged ? wordDrag.currentStart : w.start;
+                      const endSec = isBeingDragged ? wordDrag.currentEnd : w.end;
+                      const leftPct = (startSec / duration) * 100;
+                      const widthPct = Math.max(1.2, ((endSec - startSec) / duration) * 100);
+                      const isCurrent = currentTime >= startSec && currentTime <= endSec;
+                      const isSelected = selectedItemId === wordId;
+
+                      let badgeStyle = 'bg-neutral-800/90 border-neutral-700 text-neutral-300 hover:bg-neutral-700/80';
+                      if (w.emphasis === 'hero' || w.isHighlight) {
+                        badgeStyle = 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-xs';
+                      } else if (w.emphasis === 'marker') {
+                        badgeStyle = 'bg-yellow-400/30 border-yellow-300 text-yellow-200';
+                      } else if (w.emphasis === 'strong') {
+                        badgeStyle = 'bg-cyan-500/30 border-cyan-400 text-cyan-200';
+                      }
+
+                      if (isSelected) {
+                        badgeStyle = 'bg-amber-400 text-neutral-950 font-bold border-white ring-2 ring-amber-400 shadow-md z-30';
+                      } else if (isCurrent) {
+                        badgeStyle += ' ring-1 ring-amber-400/60 z-20';
+                      }
+
+                      return (
+                        <div
+                          key={wordId}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectWord?.(cap.id, wIdx, w);
+                            onTimeSeek(startSec);
+                          }}
+                          onMouseDown={(e) => {
+                            if ((e.target as HTMLElement).dataset.handle) return;
+                            e.stopPropagation();
+                            onSelectWord?.(cap.id, wIdx, w);
+                            const prevEnd = wIdx > 0 ? words[wIdx - 1].end : 0;
+                            const nextStart = wIdx < words.length - 1 ? words[wIdx + 1].start : duration;
+                            setWordDrag({
+                              captionId: cap.id,
+                              wordIndex: wIdx,
+                              type: 'move',
+                              initialStart: w.start,
+                              initialEnd: w.end,
+                              currentStart: w.start,
+                              currentEnd: w.end,
+                              minAllowed: prevEnd,
+                              maxAllowed: nextStart,
+                            });
+                          }}
+                          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                          title={`${w.word} (${startSec.toFixed(2)}s - ${endSec.toFixed(2)}s)`}
+                          className={`absolute h-6 top-1 rounded border px-1 flex items-center justify-between text-[9px] transition-all select-none cursor-grab active:cursor-grabbing group/word overflow-hidden z-15 ${badgeStyle}`}
+                        >
+                          {/* Left Drag Handle */}
+                          <div
+                            data-handle="start"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              onSelectWord?.(cap.id, wIdx, w);
+                              const prevEnd = wIdx > 0 ? words[wIdx - 1].end : 0;
+                              setWordDrag({
+                                captionId: cap.id,
+                                wordIndex: wIdx,
+                                type: 'start',
+                                initialStart: w.start,
+                                initialEnd: w.end,
+                                currentStart: w.start,
+                                currentEnd: w.end,
+                                minAllowed: prevEnd,
+                                maxAllowed: w.end - 0.04,
+                              });
+                            }}
+                            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize bg-amber-400/80 hover:bg-amber-300 rounded-l transition-opacity opacity-60 group-hover/word:opacity-100 z-25"
+                            title="Drag word start"
+                          />
+
+                          <span className="truncate mx-1 pointer-events-none select-none font-medium">
+                            {w.word}
+                          </span>
+
+                          {/* Right Drag Handle */}
+                          <div
+                            data-handle="end"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              onSelectWord?.(cap.id, wIdx, w);
+                              const nextStart = wIdx < words.length - 1 ? words[wIdx + 1].start : duration;
+                              setWordDrag({
+                                captionId: cap.id,
+                                wordIndex: wIdx,
+                                type: 'end',
+                                initialStart: w.start,
+                                initialEnd: w.end,
+                                currentStart: w.start,
+                                currentEnd: w.end,
+                                minAllowed: w.start + 0.04,
+                                maxAllowed: nextStart,
+                              });
+                            }}
+                            className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize bg-amber-400/80 hover:bg-amber-300 rounded-r transition-opacity opacity-60 group-hover/word:opacity-100 z-25"
+                            title="Drag word end"
+                          />
+                        </div>
+                      );
+                    });
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* TRACK 4: B-ROLL OVERLAYS */}
             <div className="relative h-8 bg-neutral-900/90 rounded-r-lg border border-neutral-800 overflow-hidden flex items-center px-1">

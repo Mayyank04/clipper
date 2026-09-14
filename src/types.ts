@@ -129,12 +129,35 @@ export type CaptionStyleId =
   | 'educational'
   | 'EDUCATIONAL'
   | 'comedy'
-  | 'COMEDY';
+  | 'COMEDY'
+  | 'beast_mode'
+  | 'hormozi_stack'
+  | 'ali_abdaal'
+  | 'iman_gadzi'
+  | 'punchline_pop'
+  | 'standup_snappy'
+  | 'quiet_luxury'
+  | 'documentary_sub'
+  | 'true_crime'
+  | 'brainrot_turbo'
+  | 'karaoke_party'
+  | 'neon_karaoke'
+  | 'midnight_cyber'
+  | 'tokyo_neon'
+  | 'minimal_studio'
+  | 'swiss_modern'
+  | 'desi_creator_bold'
+  | 'hinglish_hype'
+  | 'devanagari_clarity'
+  | 'gym_mindset'
+  | 'titan_discipline'
+  | (string & {});
 
 export type CaptionStylePreset = CaptionStyleId;
 
 export type CaptionCategory =
   | 'viral'
+  | 'creator'
   | 'minimal'
   | 'podcast'
   | 'gaming'
@@ -144,7 +167,21 @@ export type CaptionCategory =
   | 'social'
   | 'music'
   | 'creative'
-  | 'high_energy';
+  | 'high_energy'
+  | 'comedy'
+  | 'luxury'
+  | 'documentary'
+  | 'meme'
+  | 'karaoke'
+  | 'storytelling'
+  | 'dark'
+  | 'neon'
+  | 'clean'
+  | 'indian_creator'
+  | 'hinglish'
+  | 'hindi'
+  | 'motivational'
+  | (string & {});
 
 export type ApprovalMode = 'auto_apply' | 'balanced' | 'suggest_only';
 
@@ -283,6 +320,7 @@ export interface WordTiming {
   isHighlight?: boolean;
   highlightColor?: string;
   scale?: number;
+  emphasis?: 'none' | 'strong' | 'hero' | 'marker' | 'underline' | string;
   emphasisCategory?: 'emotion' | 'action' | 'surprise' | 'names' | 'numbers' | 'strong' | 'keyword' | 'none';
 }
 
@@ -587,8 +625,22 @@ export interface CaptionCustomization {
   hasShadow: boolean;
   shadowColor?: string;
   shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  glowEnabled?: boolean;
+  glowColor?: string;
+  glowBlur?: number;
+  glowIntensity?: number;
   backgroundColor?: string;
   backgroundOpacity?: number;
+  backgroundShape?: 'none' | 'solid' | 'rounded' | 'pill' | 'box' | 'sharp' | 'highlight_bar' | 'marker' | 'gradient' | 'glass' | 'shadow_box';
+  backgroundPadding?: number;
+  backgroundRadius?: number;
+  gradientEnabled?: boolean;
+  gradientColors?: string[];
+  gradientAngle?: number;
+  rotation?: number;
+  opacity?: number;
   wordsPerLine: number;
   wordsPerGroup?: number;
   maxLines?: number;
@@ -596,10 +648,40 @@ export interface CaptionCustomization {
   alignment?: 'center' | 'left' | 'right';
   lineSpacing?: number;
   letterSpacing?: number;
-  animationType?: 'pop' | 'fade' | 'bounce' | 'highlight' | 'scale' | 'karaoke' | 'typewriter' | 'glitch' | 'none';
+  animationType?:
+    | 'pop'
+    | 'fade'
+    | 'bounce'
+    | 'highlight'
+    | 'scale'
+    | 'karaoke'
+    | 'typewriter'
+    | 'glitch'
+    | 'slide_up'
+    | 'slide_down'
+    | 'slide_left'
+    | 'slide_right'
+    | 'word_pop'
+    | 'lift'
+    | 'blur_in'
+    | 'glow_in'
+    | 'marker'
+    | 'underline'
+    | 'spring'
+    | 'punch'
+    | 'none';
   animationMode?: CaptionAnimationMode;
   animation?: any;
   animationSpeed?: number;
+  motionDuration?: number;
+  motionDelay?: number;
+  motionEasing?: string;
+  motionIntensity?: 'subtle' | 'balanced' | 'energetic' | 'extreme';
+  emphasisScale?: number;
+  emphasisWeight?: number | string;
+  emphasisMode?: 'normal' | 'highlight' | 'strong' | 'hero' | 'marker' | 'underline';
+  safeAreaEnabled?: boolean;
+  autoPositionMode?: 'safe_center' | 'bottom' | 'top' | 'face_avoid' | 'custom' | 'none';
   wordAnimation?: string;
   entryAnimation?: string;
   exitAnimation?: string;

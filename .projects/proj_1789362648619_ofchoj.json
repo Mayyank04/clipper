@@ -42,28 +42,64 @@
       ],
       "sfxMarkers": [
         {
-          "id": "sfx_test_1789362648673",
-          "timestamp": 3.2,
-          "duration": 1.5,
+          "id": "sfx_regen_0",
+          "timestamp": 0.5,
           "category": "impact",
-          "soundName": "AI Gen: impact",
-          "volume": 0.8,
-          "triggerText": "everything changed",
-          "audioUrl": "/assets/sfx/generated/sfx_proc_1789362648675_v1.wav",
-          "source": "ai_generated",
-          "prompt": "Short cinematic impact sound, deep sub bass boom with a punchy transient attack, dramatic reveal, intense high energy, clean release, 1.5 seconds, tailored for a vertical YouTube Short."
+          "soundName": "Sub-bass Boom",
+          "volume": 0.75,
+          "reason": "Emphasis detected on high-impact statement",
+          "triggerText": "Everything changed when AI started writing code.",
+          "confidence": 0.94,
+          "audioUrl": "/assets/sfx/impact.wav"
         },
         {
-          "id": "sfx_other_marker",
-          "timestamp": 8.5,
-          "duration": 1,
-          "category": "pop",
-          "soundName": "Secondary Pop",
-          "volume": 0.7
+          "id": "sfx_regen_1",
+          "timestamp": 6,
+          "category": "glitch",
+          "soundName": "Digital Glitch",
+          "volume": 0.75,
+          "reason": "Pattern interrupt or myth-busting statement",
+          "triggerText": "Number one stop posting random content.",
+          "confidence": 0.89,
+          "audioUrl": "/assets/sfx/glitch.wav"
         }
       ],
       "vfxMarkers": [],
-      "brollSuggestions": []
+      "brollSuggestions": [
+        {
+          "id": "broll_regen_0",
+          "timestamp": 6,
+          "duration": 4,
+          "concept": "Cinema Production & Filming Setup",
+          "imageUrl": "/assets/broll/creator_studio_broll.mp4",
+          "keyword": "cinema_production_&_filming_setup",
+          "enabled": true,
+          "reason": "Visual reinforcement of spoken topic: \"content\"",
+          "triggerText": "Number one stop posting random content.",
+          "confidence": 0.85
+        }
+      ],
+      "captionConfig": {
+        "style": "bold",
+        "preset": "bold",
+        "fontFamily": "Impact, Arial Black, sans-serif",
+        "fontSize": 32,
+        "fontWeight": 900,
+        "primaryColor": "#ffffff",
+        "highlightColor": "#facc15",
+        "strokeColor": "#000000",
+        "strokeWidth": 3.5,
+        "hasShadow": true,
+        "shadowColor": "rgba(0, 0, 0, 0.9)",
+        "positionY": 72,
+        "wordsPerLine": 3,
+        "wordsPerGroup": 3,
+        "maxLines": 2,
+        "alignment": "center",
+        "animationType": "pop",
+        "uppercase": true,
+        "animation": "pop"
+      }
     }
   ],
   "transcript": [],

@@ -53,14 +53,25 @@ export function formatAssSubtitle(captions: any[] = [], captionConfig?: any): st
   const allText = (captions || []).map((c: any) => c.text || '').join(' ');
   const baseFont = captionConfig?.fontFamily?.split(',')[0]?.replace(/['"]/g, '').trim() || 'Arial';
   const font = detectScriptFont(allText, baseFont);
-  // Crisp typography for 1080x1920: scale font size appropriately
-  const fontSize = Math.round((captionConfig?.fontSize || 28) * 2.2);
+  // Crisp typography for 1080x1920: scale font size appropriately and clamp within safe bounds (54..104px)
+  const rawFontSize = Math.round((captionConfig?.fontSize || 28) * 2.2);
+  const fontSize = Math.max(54, Math.min(104, rawFontSize));
   const primaryColor = hexToAssColor(captionConfig?.primaryColor || '#ffffff');
   const highlightColor = hexToAssColor(captionConfig?.highlightColor || '#facc15');
   const strokeColor = hexToAssColor(captionConfig?.strokeColor || '#000000');
   const strokeWidth = captionConfig?.strokeWidth !== undefined ? Math.round(captionConfig.strokeWidth * 1.5) : 4;
   const shadow = captionConfig?.hasShadow ? 3 : 0;
   const marginV = Math.round(1920 * (1 - (captionConfig?.positionY ?? 72) / 100));
+
+  // Alignment: 1 = Bottom-Left, 2 = Bottom-Center, 3 = Bottom-Right
+  const alignment = captionConfig?.alignment === 'left' ? 1 : captionConfig?.alignment === 'right' ? 3 : 2;
+
+  // Background Box / Pill style support
+  const hasBg = Boolean(captionConfig?.backgroundColor && captionConfig.backgroundColor !== 'transparent');
+  const borderStyle = hasBg && captionConfig?.backgroundShape ? 3 : 1; // 3 = opaque box in ASS
+  const backColor = hasBg
+    ? hexToAssColor(captionConfig.backgroundColor)
+    : '&HA0000000';
 
   let content = `[Script Info]
 Title: ViralClip Subtitles
@@ -72,7 +83,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${font},${fontSize},${primaryColor},${highlightColor},${strokeColor},&HA0000000,-1,0,0,0,100,100,0,0,1,${strokeWidth},${shadow},2,40,40,${marginV},1
+Style: Default,${font},${fontSize},${primaryColor},${highlightColor},${strokeColor},${backColor},-1,0,0,0,100,100,0,0,${borderStyle},${strokeWidth},${shadow},${alignment},40,40,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -92,15 +103,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         const sTime = formatAssTime(wStart);
         const eTime = formatAssTime(wEnd);
 
-        // Active word wrapped in highlight color and subtle kinetic pop (115% scale)
+        // Active word wrapped in highlight color and subtle kinetic pop (115% scale or 125% for hero emphasis)
         const lineParts = words.map((w: any, idx: number) => {
           let wordStr = String(w.word || w.text || '').trim();
           if (captionConfig?.uppercase) wordStr = wordStr.toUpperCase();
+          const isHero = w?.emphasis === 'hero' || w?.isHighlight;
+          const popScale = isHero ? 125 : 115;
+
           if (idx === wIdx) {
-            return `{\\c${highlightColor}\\b1\\fscx115\\fscy115}${wordStr}{\\c${primaryColor}\\b0\\fscx100\\fscy100}`;
+            return `{\\c${highlightColor}\\b1\\fscx${popScale}\\fscy${popScale}}${wordStr}{\\c${primaryColor}\\b0\\fscx100\\fscy100}`;
           }
           if (captionConfig?.animationMode === 'WORD_BY_WORD' && idx > wIdx) {
             return `{\\alpha&HFF&}${wordStr}{\\alpha&H00&}`;
+          }
+          if (isHero) {
+            return `{\\c${highlightColor}}${wordStr}{\\c${primaryColor}}`;
           }
           return wordStr;
         });

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -14,6 +14,7 @@ import {
   Upload,
   Shield,
   ArrowLeft,
+  Star,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -30,6 +31,7 @@ import {
   getCaptionStateAtTime,
   computeWordAnimationState,
   CaptionLayoutEngine,
+  CaptionStyleDefinition,
 } from '../../utils/captionEngine';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { getColorGradingProfile } from '../../utils/creatorStudio/videoEffectsEngine';
@@ -49,11 +51,143 @@ interface VideoCanvasProps {
   zoomPunchEnabled: boolean;
   speakerPosition?: 'center' | 'left' | 'right' | 'auto_switch';
   volume?: number; // 0 to 1
+  safeAreaEnabled?: boolean;
+  onToggleSafeArea?: (enabled: boolean) => void;
   onVideoLoaded?: (meta: { duration: number; videoWidth: number; videoHeight: number }) => void;
   onRelinkMedia?: (file: File) => void;
   onSelectCaption?: (captionId: string) => void;
   onBack?: () => void;
 }
+
+export interface LiveTemplatePreviewProps {
+  styleDef: CaptionStyleDefinition;
+  isSelected?: boolean;
+  isFavorite?: boolean;
+  onSelect?: () => void;
+  onToggleFavorite?: (e: React.MouseEvent) => void;
+}
+
+export const LiveTemplatePreview: React.FC<LiveTemplatePreviewProps> = ({
+  styleDef,
+  isSelected,
+  isFavorite,
+  onSelect,
+  onToggleFavorite,
+}) => {
+  const [ticker, setTicker] = useState<number>(0);
+  const animFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let start = performance.now();
+    const loop = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      setTicker(elapsed % 2.4);
+      animFrameRef.current = requestAnimationFrame(loop);
+    };
+    animFrameRef.current = requestAnimationFrame(loop);
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, []);
+
+  const sampleWords = useMemo(
+    () => [
+      { word: 'VIRAL', text: 'VIRAL', start: 0.1, end: 0.8 },
+      { word: 'MOMENT', text: 'MOMENT', start: 0.85, end: 1.55 },
+      { word: 'CLIPPED', text: 'CLIPPED', start: 1.6, end: 2.3 },
+    ],
+    []
+  );
+
+  const cfg = styleDef.config;
+  const strokeW = Math.max(1, Math.min(3, Math.round((cfg.strokeWidth || 3) * 0.5)));
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`relative p-3 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group select-none flex flex-col justify-between h-28 ${
+        isSelected
+          ? 'bg-amber-400/10 border-amber-400 shadow-lg shadow-amber-400/10 ring-1 ring-amber-400/40'
+          : 'bg-neutral-900/70 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900'
+      }`}
+    >
+      {/* Top Bar: Name & Category badge & Favorite Star */}
+      <div className="flex items-center justify-between gap-1 z-10">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-bold text-white truncate">{styleDef.name}</span>
+          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-neutral-800/80 text-neutral-400 font-mono shrink-0">
+            {styleDef.category}
+          </span>
+        </div>
+        {onToggleFavorite && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(e);
+            }}
+            className="p-1 text-neutral-500 hover:text-amber-400 transition cursor-pointer"
+            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Star className={`w-3.5 h-3.5 ${isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
+          </button>
+        )}
+      </div>
+
+      {/* Live Animated Canvas Container */}
+      <div className="flex-1 flex items-center justify-center my-1">
+        <div
+          className={`flex items-center justify-center gap-1 px-2.5 py-1 ${
+            cfg.backgroundShape === 'pill'
+              ? 'rounded-full'
+              : cfg.backgroundShape === 'box'
+              ? 'rounded-lg'
+              : ''
+          }`}
+          style={{
+            fontFamily: cfg.fontFamily,
+            fontSize: '13px',
+            fontWeight: cfg.fontWeight || 800,
+            textTransform: cfg.uppercase ? 'uppercase' : 'none',
+            backgroundColor: cfg.backgroundColor
+              ? `${cfg.backgroundColor}${Math.round((cfg.backgroundOpacity ?? 0.8) * 255).toString(16).padStart(2, '0')}`
+              : undefined,
+            letterSpacing: cfg.letterSpacing ? `${cfg.letterSpacing * 0.5}px` : undefined,
+          }}
+        >
+          {sampleWords.map((w, idx) => {
+            const anim = computeWordAnimationState(w, idx, ticker, cfg, sampleWords);
+            return (
+              <span
+                key={idx}
+                className="inline-block transition-all duration-75"
+                style={{
+                  color: anim.color,
+                  transform: `translate(${anim.translateX || 0}px, ${anim.translateY || 0}px) scale(${anim.scale || 1}) rotate(${anim.rotate || 0}deg)`,
+                  opacity: anim.opacity,
+                  filter: anim.blur ? `blur(${anim.blur}px)` : undefined,
+                  WebkitTextStroke: anim.strokeWidth > 0 ? `${strokeW}px ${anim.strokeColor}` : undefined,
+                  textShadow: anim.glow
+                    ? `0 0 10px ${anim.glow}, 0 2px 4px rgba(0,0,0,0.8)`
+                    : cfg.hasShadow
+                    ? '0 2px 5px rgba(0,0,0,0.9)'
+                    : undefined,
+                  textDecoration: anim.isUnderline ? 'underline' : undefined,
+                }}
+              >
+                {anim.word}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer descriptor */}
+      <div className="text-[10px] text-neutral-400 line-clamp-1 z-10">
+        {styleDef.desc}
+      </div>
+    </div>
+  );
+};
 
 export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   videoRef: externalVideoRef,
@@ -70,6 +204,8 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   zoomPunchEnabled,
   speakerPosition = 'center',
   volume = 0.85,
+  safeAreaEnabled,
+  onToggleSafeArea,
   onVideoLoaded,
   onRelinkMedia,
   onSelectCaption,
@@ -593,6 +729,27 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
             const previewStyles = CaptionLayoutEngine.getPreviewStyles(captionConfig, monitorWidth);
             const words = captionState.activeCaption.words || [];
 
+            // Face-avoid automatic positioning or explicit positionY
+            const effectivePosY = captionConfig.autoPositionMode === 'face_avoid'
+              ? Math.min(84, (captionConfig.positionY || 72) + 6)
+              : captionConfig.positionY || 72;
+
+            // Alignment styles
+            const alignClass = captionConfig.alignment === 'left'
+              ? 'text-left items-start'
+              : captionConfig.alignment === 'right'
+              ? 'text-right items-end'
+              : 'text-center items-center';
+
+            // Background shape class
+            const bgShapeClass = captionConfig.backgroundShape === 'pill'
+              ? 'rounded-full px-4 py-2'
+              : captionConfig.backgroundShape === 'sharp'
+              ? 'rounded-none px-3 py-1.5'
+              : captionConfig.backgroundColor
+              ? 'rounded-xl px-3 py-1.5'
+              : 'rounded-xl p-1';
+
             return (
               <div
                 onClick={(e) => {
@@ -601,18 +758,16 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                     onSelectCaption?.(captionState.activeCaption.id);
                   }
                 }}
-                className="absolute inset-x-3 z-20 flex flex-col items-center justify-center pointer-events-auto cursor-pointer group px-2 transition-all duration-150"
-                style={{ top: `${captionConfig.positionY}%` }}
+                className={`absolute inset-x-3 z-20 flex flex-col pointer-events-auto cursor-pointer group px-2 transition-all duration-150 ${alignClass}`}
+                style={{ top: `${effectivePosY}%` }}
                 title="Click to edit caption text, timing, font, or split/merge"
               >
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-[9px] font-mono font-bold bg-amber-400 text-neutral-950 px-2 py-0.5 rounded shadow pointer-events-none">
                   Click to edit caption
                 </div>
                 <div
-                  className={`text-center leading-snug transition-all group-hover:ring-1 group-hover:ring-amber-400/50 rounded-xl p-1 ${
+                  className={`leading-snug transition-all group-hover:ring-1 group-hover:ring-amber-400/50 ${bgShapeClass} ${
                     captionConfig.hasShadow ? 'filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]' : ''
-                  } ${
-                    captionConfig.backgroundColor ? 'px-3 py-1.5 rounded-xl backdrop-blur-sm' : ''
                   }`}
                   style={{
                     fontFamily: captionConfig.fontFamily,
@@ -635,15 +790,21 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                         key={idx}
                         className={`inline-block mx-1 transition-all duration-75 ${
                           anim.highlighted ? 'scale-110 font-black' : 'font-bold'
-                        } ${anim.strokeWidth > 0 ? 'text-stroke-sm' : ''}`}
+                        } ${anim.strokeWidth > 0 ? 'text-stroke-sm' : ''} ${
+                          anim.isMarker ? 'bg-amber-400/30 px-1 rounded' : ''
+                        }`}
                         style={{
                           color: anim.color,
-                          transform: `translateY(${anim.translateY}px) scale(${anim.scale})`,
+                          transform: `translate(${anim.translateX || 0}px, ${anim.translateY || 0}px) scale(${anim.scale || 1}) rotate(${anim.rotate || 0}deg)`,
                           opacity: anim.opacity,
+                          filter: anim.blur ? `blur(${anim.blur}px)` : undefined,
                           WebkitTextStroke: anim.strokeWidth > 0 ? `${previewStyles.strokeWidth}px ${anim.strokeColor}` : undefined,
-                          textShadow: anim.highlighted && captionConfig.hasShadow
+                          textShadow: anim.glow
+                            ? `0 0 16px ${anim.glow}, 0 4px 10px rgba(0,0,0,0.95)`
+                            : anim.highlighted && captionConfig.hasShadow
                             ? `0 0 16px ${anim.color}80, 0 4px 10px rgba(0,0,0,0.95)`
                             : undefined,
+                          textDecoration: anim.isUnderline ? 'underline' : undefined,
                         }}
                       >
                         {anim.word}
@@ -657,7 +818,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         )}
 
         {/* 9:16 Safe-Zone Overlay Guides */}
-        {showSafeZones && aspectRatio === '9:16' && (
+        {(safeAreaEnabled !== undefined ? safeAreaEnabled : showSafeZones) && aspectRatio === '9:16' && (
           <div className="absolute inset-0 pointer-events-none z-25 border-2 border-dashed border-sky-400/40">
             <div className="absolute top-0 inset-x-0 h-[15%] bg-red-500/10 border-b border-dashed border-red-400/50 flex items-center justify-center">
               <span className="text-[9px] font-mono font-bold text-red-300 tracking-wider bg-black/60 px-2 py-0.5 rounded">
@@ -762,9 +923,18 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
 
         {/* Safe Zones Toggle */}
         <button
-          onClick={() => setShowSafeZones(!showSafeZones)}
+          onClick={() => {
+            const current = safeAreaEnabled !== undefined ? safeAreaEnabled : showSafeZones;
+            if (onToggleSafeArea) {
+              onToggleSafeArea(!current);
+            } else {
+              setShowSafeZones(!current);
+            }
+          }}
           className={`p-1.5 rounded transition-colors ml-1 cursor-pointer ${
-            showSafeZones ? 'text-amber-400 bg-amber-400/10' : 'text-neutral-400 hover:text-white'
+            (safeAreaEnabled !== undefined ? safeAreaEnabled : showSafeZones)
+              ? 'text-amber-400 bg-amber-400/10'
+              : 'text-neutral-400 hover:text-white'
           }`}
           title="Toggle 9:16 UI Safe-Zones Guide"
         >

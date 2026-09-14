@@ -1350,10 +1350,661 @@ export const EXTENDED_CAPTION_STYLES: CaptionStyleDefinition[] = [
   },
 ];
 
+export const ORIGINAL_CREATOR_PRESETS: CaptionStyleDefinition[] = [
+  // --- CREATOR ---
+  {
+    id: 'beast_mode',
+    name: 'Beast Mode Punch',
+    desc: 'Aggressive heavy all-caps with neon green highlights and high-impact bounce',
+    category: 'creator',
+    config: {
+      style: 'beast_mode',
+      preset: 'beast_mode',
+      fontFamily: 'Montserrat, American Captain, Impact, sans-serif',
+      fontSize: 32,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#22C55E',
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.95)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'hormozi_stack',
+    name: 'Hormozi Pill Stack',
+    desc: 'Electric yellow keyword pop over dark backdrop capsule',
+    category: 'creator',
+    config: {
+      style: 'hormozi_stack',
+      preset: 'hormozi_stack',
+      fontFamily: 'Bebas Neue, Montserrat, sans-serif',
+      fontSize: 34,
+      fontWeight: 800,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FACC15',
+      strokeColor: '#000000',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      backgroundColor: '#000000',
+      backgroundOpacity: 0.85,
+      backgroundShape: 'pill',
+      positionY: 70,
+      wordsPerLine: 2,
+      wordsPerGroup: 2,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'bounce',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'ali_abdaal',
+    name: 'Productivity Clean',
+    desc: 'Minimalist editorial font with gentle cyan active word highlights',
+    category: 'creator',
+    config: {
+      style: 'ali_abdaal',
+      preset: 'ali_abdaal',
+      fontFamily: 'Outfit, Plus Jakarta Sans, Inter, sans-serif',
+      fontSize: 25,
+      fontWeight: 700,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#38BDF8',
+      strokeColor: '#0f172a',
+      strokeWidth: 2.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.7)',
+      positionY: 76,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'iman_gadzi',
+    name: 'Aesthetic Editorial',
+    desc: 'Monochrome luxury serif with subtle champagne gold accent',
+    category: 'luxury',
+    config: {
+      style: 'iman_gadzi',
+      preset: 'iman_gadzi',
+      fontFamily: 'Cinzel, Playfair Display, Georgia, serif',
+      fontSize: 26,
+      fontWeight: 700,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FBBF24',
+      strokeColor: '#000000',
+      strokeWidth: 2.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.85)',
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'slide_up',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+
+  // --- COMEDY ---
+  {
+    id: 'punchline_pop',
+    name: 'Punchline Pop',
+    desc: 'Comic cartoon high-energy display with vibrant magenta highlights',
+    category: 'comedy',
+    config: {
+      style: 'punchline_pop',
+      preset: 'punchline_pop',
+      fontFamily: 'Bangers, Comic Sans MS, Impact, sans-serif',
+      fontSize: 34,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#F43F5E',
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.95)',
+      positionY: 68,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'bounce',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'standup_snappy',
+    name: 'Standup Snappy',
+    desc: 'Ultra-fast 2-word groups with bright amber contrast',
+    category: 'comedy',
+    config: {
+      style: 'standup_snappy',
+      preset: 'standup_snappy',
+      fontFamily: 'Impact, Arial Black, sans-serif',
+      fontSize: 33,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FB923C',
+      strokeColor: '#000000',
+      strokeWidth: 4.0,
+      hasShadow: true,
+      positionY: 72,
+      wordsPerLine: 2,
+      wordsPerGroup: 2,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'punch',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+
+  // --- LUXURY ---
+  {
+    id: 'quiet_luxury',
+    name: 'Quiet Luxury',
+    desc: 'Refined Playfair typography with platinum text and gold shine',
+    category: 'luxury',
+    config: {
+      style: 'quiet_luxury',
+      preset: 'quiet_luxury',
+      fontFamily: 'Playfair Display, Georgia, serif',
+      fontSize: 24,
+      fontWeight: 600,
+      primaryColor: '#F1F5F9',
+      highlightColor: '#D97706',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.85)',
+      positionY: 80,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+
+  // --- DOCUMENTARY ---
+  {
+    id: 'documentary_sub',
+    name: 'Documentary Sub',
+    desc: 'Clean geometric sans with warm amber highlights for investigative pacing',
+    category: 'documentary',
+    config: {
+      style: 'documentary_sub',
+      preset: 'documentary_sub',
+      fontFamily: 'Inter, Plus Jakarta Sans, sans-serif',
+      fontSize: 24,
+      fontWeight: 700,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#F59E0B',
+      strokeColor: '#020617',
+      strokeWidth: 2.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.9)',
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'slide_up',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'true_crime',
+    name: 'True Crime Suspense',
+    desc: 'Dark moody slate with blood crimson active word emphasis',
+    category: 'documentary',
+    config: {
+      style: 'true_crime',
+      preset: 'true_crime',
+      fontFamily: 'Oswald, Montserrat, sans-serif',
+      fontSize: 29,
+      fontWeight: 800,
+      primaryColor: '#E2E8F0',
+      highlightColor: '#DC2626',
+      strokeColor: '#050505',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.98)',
+      positionY: 74,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'blur_in',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+
+  // --- MEME ---
+  {
+    id: 'brainrot_turbo',
+    name: 'Brainrot Turbo',
+    desc: 'Ultra rapid single-word spring punch with neon lime and cyan flashes',
+    category: 'meme',
+    config: {
+      style: 'brainrot_turbo',
+      preset: 'brainrot_turbo',
+      fontFamily: 'American Captain, Impact, sans-serif',
+      fontSize: 36,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#A3E635',
+      strokeColor: '#000000',
+      strokeWidth: 5.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,1.0)',
+      positionY: 65,
+      wordsPerLine: 1,
+      wordsPerGroup: 1,
+      maxLines: 1,
+      alignment: 'center',
+      animationType: 'spring',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+
+  // --- KARAOKE ---
+  {
+    id: 'karaoke_party',
+    name: 'Karaoke Party',
+    desc: 'Dual-tone continuous word wipe with electric violet to hot pink transition',
+    category: 'karaoke',
+    config: {
+      style: 'karaoke_party',
+      preset: 'karaoke_party',
+      fontFamily: 'Montserrat, Outfit, sans-serif',
+      fontSize: 27,
+      fontWeight: 800,
+      primaryColor: 'rgba(255,255,255,0.65)',
+      highlightColor: '#EC4899',
+      strokeColor: '#000000',
+      strokeWidth: 3.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.85)',
+      positionY: 75,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'karaoke',
+      animationMode: 'KARAOKE',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'neon_karaoke',
+    name: 'Neon Karaoke',
+    desc: 'Electric cyan lyric highlight with deep blue aura on spoken words',
+    category: 'karaoke',
+    config: {
+      style: 'neon_karaoke',
+      preset: 'neon_karaoke',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: 28,
+      fontWeight: 800,
+      primaryColor: '#94A3B8',
+      highlightColor: '#00F5FF',
+      strokeColor: '#030712',
+      strokeWidth: 3.0,
+      hasShadow: true,
+      glowEnabled: true,
+      glowColor: '#00F5FF',
+      glowBlur: 14,
+      positionY: 74,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'karaoke',
+      animationMode: 'KARAOKE',
+      uppercase: true,
+    },
+  },
+
+  // --- DARK / NEON ---
+  {
+    id: 'midnight_cyber',
+    name: 'Midnight Cyber',
+    desc: 'Dark stealth background with piercing cyan electric glow',
+    category: 'dark',
+    config: {
+      style: 'midnight_cyber',
+      preset: 'midnight_cyber',
+      fontFamily: 'Syne, Montserrat, sans-serif',
+      fontSize: 28,
+      fontWeight: 800,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#06B6D4',
+      strokeColor: '#020617',
+      strokeWidth: 3.5,
+      hasShadow: true,
+      shadowColor: 'rgba(2,6,23,0.95)',
+      glowEnabled: true,
+      glowColor: '#06B6D4',
+      glowBlur: 16,
+      positionY: 74,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'glow_in',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'tokyo_neon',
+    name: 'Tokyo Cyberpunk Neon',
+    desc: 'High-voltage magenta and neon cyan pulse with heavy dark stroke',
+    category: 'neon',
+    config: {
+      style: 'tokyo_neon',
+      preset: 'tokyo_neon',
+      fontFamily: 'American Captain, Bebas Neue, sans-serif',
+      fontSize: 33,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FF007F',
+      strokeColor: '#09090B',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      glowEnabled: true,
+      glowColor: '#FF007F',
+      glowBlur: 18,
+      positionY: 70,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+
+  // --- CLEAN / MINIMAL ---
+  {
+    id: 'minimal_studio',
+    name: 'Minimal Studio Pill',
+    desc: 'Clean white typography inside a frosted translucent capsule',
+    category: 'clean',
+    config: {
+      style: 'minimal_studio',
+      preset: 'minimal_studio',
+      fontFamily: 'Plus Jakarta Sans, Inter, sans-serif',
+      fontSize: 23,
+      fontWeight: 600,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#38BDF8',
+      strokeColor: 'transparent',
+      strokeWidth: 0,
+      hasShadow: false,
+      backgroundColor: '#0f172a',
+      backgroundOpacity: 0.8,
+      backgroundShape: 'pill',
+      positionY: 82,
+      wordsPerLine: 5,
+      wordsPerGroup: 5,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+  {
+    id: 'swiss_modern',
+    name: 'Swiss Modernist',
+    desc: 'Strict Swiss typographic hierarchy with subtle emerald word tint',
+    category: 'clean',
+    config: {
+      style: 'swiss_modern',
+      preset: 'swiss_modern',
+      fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+      fontSize: 24,
+      fontWeight: 700,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#10B981',
+      strokeColor: '#000000',
+      strokeWidth: 2.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.8)',
+      positionY: 78,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+
+  // --- INDIAN CREATOR & HINGLISH & HINDI ---
+  {
+    id: 'desi_creator_bold',
+    name: 'Desi Creator Saffron',
+    desc: 'Vibrant saffron orange keyword punch tailored for high-energy Hindi/Hinglish creators',
+    category: 'indian_creator',
+    config: {
+      style: 'desi_creator_bold',
+      preset: 'desi_creator_bold',
+      fontFamily: 'Poppins, Montserrat, sans-serif',
+      fontSize: 31,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FF6B00',
+      strokeColor: '#000000',
+      strokeWidth: 4.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.95)',
+      positionY: 72,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'pop',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'hinglish_hype',
+    name: 'Hinglish Hype Punch',
+    desc: 'Two-tone dynamic punch with electric yellow and emerald accents for viral shorts',
+    category: 'hinglish',
+    config: {
+      style: 'hinglish_hype',
+      preset: 'hinglish_hype',
+      fontFamily: 'American Captain, Poppins, sans-serif',
+      fontSize: 33,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FACC15',
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.95)',
+      positionY: 70,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'punch',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'devanagari_clarity',
+    name: 'Devanagari Clarity',
+    desc: 'Engineered for flawless Devanagari Hindi ligature rendering with warm golden highlight',
+    category: 'hindi',
+    config: {
+      style: 'devanagari_clarity',
+      preset: 'devanagari_clarity',
+      fontFamily: 'Noto Sans Devanagari, Poppins, sans-serif',
+      fontSize: 27,
+      fontWeight: 700,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#FBBF24',
+      strokeColor: '#0f172a',
+      strokeWidth: 2.8,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.9)',
+      positionY: 76,
+      wordsPerLine: 4,
+      wordsPerGroup: 4,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'fade',
+      animationMode: 'ACTIVE_WORD',
+      uppercase: false,
+    },
+  },
+
+  // --- MOTIVATIONAL ---
+  {
+    id: 'gym_mindset',
+    name: 'Gym Mindset Fiery',
+    desc: 'Heavy condensed bold with fiery red/orange punch for gym, hustle, and motivational reels',
+    category: 'motivational',
+    config: {
+      style: 'gym_mindset',
+      preset: 'gym_mindset',
+      fontFamily: 'American Captain, Bebas Neue, Impact, sans-serif',
+      fontSize: 34,
+      fontWeight: 900,
+      primaryColor: '#FFFFFF',
+      highlightColor: '#EF4444',
+      strokeColor: '#000000',
+      strokeWidth: 4.5,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,1.0)',
+      positionY: 68,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'punch',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+  {
+    id: 'titan_discipline',
+    name: 'Titan Discipline',
+    desc: 'Stoic monochrome with subtle gold keyword highlights and smooth lift',
+    category: 'motivational',
+    config: {
+      style: 'titan_discipline',
+      preset: 'titan_discipline',
+      fontFamily: 'Oswald, Montserrat, sans-serif',
+      fontSize: 28,
+      fontWeight: 800,
+      primaryColor: '#F8FAFC',
+      highlightColor: '#EAB308',
+      strokeColor: '#000000',
+      strokeWidth: 3.0,
+      hasShadow: true,
+      shadowColor: 'rgba(0,0,0,0.9)',
+      positionY: 74,
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      alignment: 'center',
+      animationType: 'lift',
+      animationMode: 'POP_WORD',
+      uppercase: true,
+    },
+  },
+];
+
 export const ALL_CAPTION_STYLES: CaptionStyleDefinition[] = [
   ...CAPTION_STYLES_REGISTRY,
   ...EXTENDED_CAPTION_STYLES,
+  ...ORIGINAL_CREATOR_PRESETS,
 ];
+
+const CUSTOM_PRESETS_STORAGE_KEY = 'viralclip_custom_caption_presets_v1';
+
+export function getCustomCaptionPresets(): CaptionStyleDefinition[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_PRESETS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomCaptionPreset(preset: CaptionStyleDefinition): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getCustomCaptionPresets().filter((p) => p.id !== preset.id);
+    existing.unshift(preset);
+    localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(existing));
+  } catch (err) {
+    console.error('Failed to save custom preset', err);
+  }
+}
+
+export function deleteCustomCaptionPreset(presetId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getCustomCaptionPresets().filter((p) => p.id !== presetId);
+    localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(existing));
+  } catch (err) {
+    console.error('Failed to delete custom preset', err);
+  }
+}
+
+export function renameCustomCaptionPreset(presetId: string, newName: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getCustomCaptionPresets().map((p) => {
+      if (p.id === presetId) return { ...p, name: newName };
+      return p;
+    });
+    localStorage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(existing));
+  } catch (err) {
+    console.error('Failed to rename custom preset', err);
+  }
+}
+
+export function getAllAvailableCaptionStyles(): CaptionStyleDefinition[] {
+  const custom = getCustomCaptionPresets();
+  return [...custom, ...ALL_CAPTION_STYLES];
+}
 
 // Map backward compatibility aliases & uppercase production presets
 const ALIAS_MAP: Record<string, CaptionStyleId> = {
@@ -1393,7 +2044,7 @@ const ALIAS_MAP: Record<string, CaptionStyleId> = {
 export function getCaptionStylePreset(styleId: CaptionStyleId): CaptionCustomization {
   const canonicalId = ALIAS_MAP[styleId] || styleId;
   const match =
-    ALL_CAPTION_STYLES.find((s) => s.id === canonicalId) ||
+    getAllAvailableCaptionStyles().find((s) => s.id === canonicalId) ||
     CAPTION_STYLES_REGISTRY[0];
   return {
     ...match.config,
@@ -1411,7 +2062,8 @@ export function getCaptionStylePreset(styleId: CaptionStyleId): CaptionCustomiza
 export class CaptionLayoutEngine {
   /**
    * Resolves preview monitor styling with strict parity to 1080x1920 export canvas.
-   * Prevents oversized text in preview and maintains legible spacing across all 25 presets.
+   * Enforces safe font bounds (54..104px output scale) to keep captions legible
+   * without ever obscuring faces or video action.
    */
   static getPreviewStyles(
     config: CaptionCustomization,
@@ -1426,8 +2078,12 @@ export class CaptionLayoutEngine {
     const scale = width / 1080;
 
     const baseFontSize = config.fontSize || 28;
-    const exportFontSize = baseFontSize >= 50 ? baseFontSize : Math.round(baseFontSize * 2.1);
-    const previewFontSize = Math.max(14, Math.min(24, Math.round(exportFontSize * scale)));
+    // Map user slider (18..48) or raw font size to 1080p scale
+    let exportFontSize = baseFontSize >= 50 ? baseFontSize : Math.round(baseFontSize * 2.2);
+    // Safe bounds clamp: 54px min to 104px max
+    exportFontSize = Math.max(54, Math.min(104, exportFontSize));
+
+    const previewFontSize = Math.max(14, Math.min(26, Math.round(exportFontSize * scale)));
 
     const baseStroke = config.strokeWidth !== undefined ? config.strokeWidth : 3;
     const previewStroke = Math.max(1, Math.min(4, Math.round(baseStroke * (width / 540))));
@@ -1611,6 +2267,9 @@ export interface WordAnimationState {
   progress: number;
   scale: number;
   translateY: number;
+  translateX: number;
+  rotate: number;
+  blur: number;
   opacity: number;
   color: string;
   highlighted: boolean;
@@ -1618,12 +2277,16 @@ export interface WordAnimationState {
   revealedText?: string;
   strokeWidth: number;
   strokeColor: string;
+  glow?: string;
+  isMarker?: boolean;
+  isUnderline?: boolean;
+  isHero?: boolean;
 }
 
 /**
  * High-performance speech-synchronized word animation state calculation.
- * Resolves deterministic motion curves (translateY, scale, opacity, highlight color)
- * based strictly on currentTime and word timing. Zero setInterval, seek-safe.
+ * Resolves deterministic motion curves (translateY, translateX, scale, opacity, highlight color, blur)
+ * across 18+ animation styles based strictly on currentTime and word timing.
  */
 export function computeWordAnimationState(
   wordObj: any,
@@ -1639,63 +2302,152 @@ export function computeWordAnimationState(
   const isPast = currentTime > wordEnd;
   const isFuture = currentTime < wordStart;
 
-  const mode = captionConfig.animationMode ||
-    (captionConfig.animationType === 'karaoke' ? 'KARAOKE' :
-     captionConfig.animationType === 'typewriter' ? 'TYPE_ON' :
-     captionConfig.animationType === 'bounce' ? 'POP_WORD' :
-     captionConfig.style === 'reference_typing' || captionConfig.preset === 'reference_typing' ? 'REFERENCE_TYPING' :
-     'REFERENCE_TYPING');
+  const animType = (captionConfig.animationType || captionConfig.animation || 'pop').toLowerCase();
+  const intensityMap: Record<string, number> = {
+    subtle: 0.65,
+    balanced: 1.0,
+    energetic: 1.45,
+    extreme: 1.9,
+  };
+  const intensity = intensityMap[captionConfig.motionIntensity || 'balanced'] || 1.0;
 
   const dur = Math.max(0.05, wordEnd - wordStart);
   const rawProgress = isSpoken ? Math.min(1, Math.max(0, (currentTime - wordStart) / dur)) : (isPast ? 1 : 0);
 
   let scale = 1.0;
   let translateY = 0;
-  let opacity = 1.0;
+  let translateX = 0;
+  let rotate = captionConfig.rotation || 0;
+  let blur = 0;
+  let opacity = captionConfig.opacity !== undefined ? captionConfig.opacity / 100 : 1.0;
   let visible = true;
   let highlighted = false;
-  let color = captionConfig.primaryColor;
+  let color = captionConfig.primaryColor || '#FFFFFF';
   let revealedText: string | undefined = undefined;
+  let glow: string | undefined = captionConfig.glowEnabled ? captionConfig.glowColor || captionConfig.highlightColor : undefined;
+  let isMarker = false;
+  let isUnderline = false;
+  let isHero = false;
 
-  switch (mode) {
-    case 'WORD_BY_WORD': {
-      if (isFuture) {
-        visible = false;
-        opacity = 0;
-      } else if (isSpoken) {
-        visible = true;
-        opacity = 1;
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        scale = 1.08;
-      } else {
-        visible = true;
-        opacity = 1;
-        highlighted = false;
-        color = captionConfig.primaryColor;
-      }
-      break;
-    }
+  // 1. Spoken Word Highlighting
+  if (isSpoken) {
+    highlighted = true;
+    color = wordObj?.highlightColor || captionConfig.highlightColor || '#FACC15';
+  } else if (isPast) {
+    color = captionConfig.primaryColor || '#FFFFFF';
+    opacity = Math.max(0.7, opacity);
+  } else {
+    color = captionConfig.primaryColor || '#FFFFFF';
+    opacity = captionConfig.animationMode === 'WORD_BY_WORD' ? 0 : Math.max(0.4, opacity * 0.65);
+    if (captionConfig.animationMode === 'WORD_BY_WORD') visible = false;
+  }
 
-    case 'KARAOKE': {
-      visible = true;
+  // 2. Specific Animation Curves (18+ types)
+  switch (animType) {
+    case 'pop':
+    case 'word_pop': {
       if (isSpoken) {
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        scale = 1.08;
-        opacity = 1;
-      } else if (isPast) {
-        color = captionConfig.primaryColor;
-        opacity = 1;
-      } else {
-        color = captionConfig.primaryColor;
-        opacity = 0.65;
+        const bounce = Math.sin(rawProgress * Math.PI);
+        scale = 1.0 + (0.18 + bounce * 0.08) * intensity;
+        translateY = -3 * bounce * intensity;
       }
       break;
     }
 
-    case 'TYPE_ON': {
-      visible = true;
+    case 'bounce': {
+      if (isSpoken) {
+        const bounce = Math.sin(rawProgress * Math.PI);
+        scale = 1.0 + 0.14 * bounce * intensity;
+        translateY = -7 * bounce * intensity;
+      }
+      break;
+    }
+
+    case 'punch': {
+      if (isSpoken) {
+        const punchFactor = rawProgress < 0.25 ? 1.3 : 1.08 + (1 - rawProgress) * 0.12;
+        scale = 1.0 + (punchFactor - 1.0) * intensity;
+        translateY = -2 * intensity;
+      }
+      break;
+    }
+
+    case 'spring': {
+      if (isSpoken) {
+        // Damped harmonic spring curve
+        const spring = Math.sin(rawProgress * Math.PI * 2.5) * Math.exp(-rawProgress * 3);
+        scale = 1.0 + (0.26 * spring) * intensity;
+        rotate = (rotate || 0) + spring * 3 * intensity;
+      }
+      break;
+    }
+
+    case 'slide_up': {
+      if (isSpoken) {
+        translateY = (1 - rawProgress) * 7 * intensity;
+        scale = 1.0 + 0.06 * intensity;
+      }
+      break;
+    }
+
+    case 'slide_down': {
+      if (isSpoken) {
+        translateY = -(1 - rawProgress) * 7 * intensity;
+        scale = 1.0 + 0.06 * intensity;
+      }
+      break;
+    }
+
+    case 'slide_left': {
+      if (isSpoken) {
+        translateX = (1 - rawProgress) * 10 * intensity;
+        scale = 1.06;
+      }
+      break;
+    }
+
+    case 'slide_right': {
+      if (isSpoken) {
+        translateX = -(1 - rawProgress) * 10 * intensity;
+        scale = 1.06;
+      }
+      break;
+    }
+
+    case 'lift': {
+      if (isSpoken) {
+        const liftProgress = Math.min(1, (currentTime - wordStart) / Math.min(0.14, dur));
+        const ease = 1 - Math.pow(1 - liftProgress, 3);
+        translateY = 4 * (1 - ease) * intensity;
+        scale = 1.0 + 0.08 * ease * intensity;
+      }
+      break;
+    }
+
+    case 'scale': {
+      if (isSpoken) {
+        scale = 1.0 + 0.16 * rawProgress * intensity;
+      }
+      break;
+    }
+
+    case 'blur_in': {
+      if (isSpoken) {
+        blur = Math.max(0, (1 - rawProgress) * 4);
+        scale = 1.0 + 0.08 * rawProgress * intensity;
+      }
+      break;
+    }
+
+    case 'glow_in': {
+      if (isSpoken) {
+        glow = captionConfig.glowColor || captionConfig.highlightColor || '#00F5FF';
+        scale = 1.0 + 0.1 * intensity;
+      }
+      break;
+    }
+
+    case 'typewriter': {
       if (isFuture) {
         visible = false;
         opacity = 0;
@@ -1703,84 +2455,64 @@ export function computeWordAnimationState(
         const charCount = curWordStr.length;
         const revealedChars = Math.max(1, Math.floor(rawProgress * charCount));
         revealedText = curWordStr.slice(0, revealedChars);
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-      } else {
-        revealedText = curWordStr;
-        color = captionConfig.primaryColor;
+        scale = 1.04;
       }
       break;
     }
 
-    case 'POP_WORD': {
-      visible = true;
+    case 'marker': {
       if (isSpoken) {
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        const bounce = Math.sin(rawProgress * Math.PI);
-        scale = 1.18 + bounce * 0.1;
-        translateY = -3 * bounce;
-      } else {
-        color = isPast && captionConfig.style === 'podcast' ? '#64748b' : captionConfig.primaryColor;
-        scale = 1.0;
-        translateY = 0;
+        isMarker = true;
+        scale = 1.06;
       }
       break;
     }
 
-    case 'ACTIVE_WORD': {
-      visible = true;
+    case 'underline': {
       if (isSpoken) {
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        scale = 1.12;
-      } else {
-        color = captionConfig.primaryColor;
-        opacity = isPast ? 0.9 : 0.75;
+        isUnderline = true;
+        scale = 1.04;
       }
       break;
     }
 
-    case 'PHRASE_BEAT': {
-      visible = true;
+    case 'karaoke': {
       if (isSpoken) {
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        scale = 1.1;
-      } else {
-        color = captionConfig.primaryColor;
-      }
-      break;
-    }
-
-    case 'REFERENCE_TYPING':
-    default: {
-      // After Effects Bottom To Up Blurred motion preset curve
-      visible = true;
-      if (isSpoken) {
-        highlighted = true;
-        color = wordObj?.highlightColor || captionConfig.highlightColor;
-        // 120ms ease-out lift (Part S: scale 1.00 -> 1.06, 80-140ms)
-        const liftProgress = Math.min(1, (currentTime - wordStart) / Math.min(0.14, dur));
-        const ease = 1 - Math.pow(1 - liftProgress, 3);
-        translateY = 4 * (1 - ease);
-        scale = Number((1.00 + 0.06 * ease).toFixed(3));
-        opacity = 0.5 + 0.5 * ease;
+        scale = 1.08;
+        opacity = 1.0;
       } else if (isPast) {
-        highlighted = false;
-        color = captionConfig.primaryColor;
-        scale = 1.0;
-        translateY = 0;
         opacity = 1.0;
       } else {
-        highlighted = false;
-        color = captionConfig.primaryColor;
-        scale = 1.0;
-        translateY = 0;
-        opacity = 0.5;
+        opacity = 0.55;
       }
       break;
     }
+
+    case 'fade':
+    default: {
+      if (isSpoken) {
+        scale = 1.0 + 0.05 * intensity;
+        opacity = 1.0;
+      }
+      break;
+    }
+  }
+
+  // 3. Word-Level Emphasis Super-Scaling
+  const wordEmphasis = (wordObj as any)?.emphasis || (wordObj as any)?.isHighlight;
+  if (wordEmphasis === 'hero' || wordEmphasis === true) {
+    isHero = true;
+    const empScale = captionConfig.emphasisScale || 1.25;
+    scale *= empScale;
+    if (isSpoken) {
+      glow = captionConfig.glowColor || captionConfig.highlightColor || '#FACC15';
+    }
+  } else if (wordEmphasis === 'strong') {
+    scale *= 1.14;
+  } else if (wordEmphasis === 'marker') {
+    isMarker = true;
+  } else if (wordEmphasis === 'underline') {
+    isUnderline = true;
   }
 
   return {
@@ -1789,15 +2521,22 @@ export function computeWordAnimationState(
     isPast,
     isFuture,
     progress: rawProgress,
-    scale,
-    translateY,
-    opacity,
+    scale: Number(scale.toFixed(3)),
+    translateY: Number(translateY.toFixed(2)),
+    translateX: Number(translateX.toFixed(2)),
+    rotate: Number(rotate.toFixed(2)),
+    blur: Number(blur.toFixed(2)),
+    opacity: Number(opacity.toFixed(2)),
     color,
     highlighted,
     visible,
     revealedText,
     strokeWidth: captionConfig.strokeWidth || 0,
     strokeColor: captionConfig.strokeColor || '#000000',
+    glow,
+    isMarker,
+    isUnderline,
+    isHero,
   };
 }
 

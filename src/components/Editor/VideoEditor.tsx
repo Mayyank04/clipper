@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   RotateCcw,
   X,
+  Eye,
 } from 'lucide-react';
 import { generateContentAwareBRollSuggestions } from '../../utils/analysisEngine';
 import {
@@ -279,6 +280,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     animationType: 'pop',
     animationMode: 'REFERENCE_TYPING',
   });
+
+  // Safe Area overlay state (lifted for header & canvas sync)
+  const [safeAreaEnabled, setSafeAreaEnabled] = useState<boolean>(true);
 
   // Playhead update handler
   const handleTimeUpdate = (time: number) => {
@@ -1091,6 +1095,65 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     pushState(updated);
   };
 
+  // Update Individual Word Timing (from draggable timeline word boundaries)
+  const handleUpdateWordTiming = (captionId: string, wordIndex: number, newStart: number, newEnd: number) => {
+    const target = (currentShort.captions || []).find((c) => c.id === captionId);
+    if (!target) return;
+
+    let words = target.words;
+    if (!words || words.length === 0) {
+      const rawWords = (target.text || '').trim().split(/\s+/).filter(Boolean);
+      const dur = Math.max(0.1, target.end - target.start);
+      const step = dur / Math.max(1, rawWords.length);
+      words = rawWords.map((w, i) => ({
+        id: `w_${target.id}_${i}`,
+        word: w,
+        start: Number((target.start + i * step).toFixed(3)),
+        end: Number((target.start + (i + 1) * step).toFixed(3)),
+      }));
+    }
+
+    if (!words[wordIndex]) return;
+
+    const updatedWords = [...words];
+    const oldWord = updatedWords[wordIndex];
+    updatedWords[wordIndex] = {
+      ...oldWord,
+      start: Number(newStart.toFixed(3)),
+      end: Number(newEnd.toFixed(3)),
+    };
+
+    const minStart = Math.min(target.start, newStart);
+    const maxEnd = Math.max(target.end, newEnd);
+
+    const updatedCaption: CaptionSegment = {
+      ...target,
+      start: Number(minStart.toFixed(3)),
+      end: Number(maxEnd.toFixed(3)),
+      words: updatedWords,
+    };
+
+    const updatedCaptions = (currentShort.captions || []).map((c) =>
+      c.id === captionId ? updatedCaption : c
+    );
+
+    pushState({
+      ...currentShort,
+      captions: updatedCaptions,
+    });
+  };
+
+  // Reset workspace layout
+  const handleResetLayout = () => {
+    setAspectRatio('9:16');
+    setSafeAreaEnabled(true);
+    setActiveTab('captions');
+    setPanelMode('standard');
+    setSelectedItemId(null);
+    setAiEditNotice('🔄 Layout reset to default 9:16 configuration');
+    setTimeout(() => setAiEditNotice(null), 2000);
+  };
+
   // Split Caption at Playhead (Part 9 & 11)
   const handleSplitCaption = (captionId?: string, splitTime?: number) => {
     const targetId = captionId || selectedItemId;
@@ -1223,6 +1286,33 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   // Delete selected marker, caption or video clip
   const handleDeleteSelected = () => {
     if (!selectedItemId) return;
+
+    // Check if selected item is a word
+    if (selectedItemId.startsWith('word_')) {
+      const parts = selectedItemId.split('_');
+      const capId = parts.slice(1, -1).join('_');
+      const wIdx = parseInt(parts[parts.length - 1], 10);
+      const target = (currentShort.captions || []).find((c) => c.id === capId);
+      if (target && target.words && target.words[wIdx] !== undefined) {
+        const updatedWords = target.words.filter((_, idx) => idx !== wIdx);
+        const updatedCaption: CaptionSegment = {
+          ...target,
+          text: updatedWords.map((w) => w.word || (w as any).text).join(' '),
+          words: updatedWords,
+        };
+        const updatedCaptions = (currentShort.captions || []).map((c) =>
+          c.id === capId ? updatedCaption : c
+        );
+        pushState({
+          ...currentShort,
+          captions: updatedCaptions,
+        });
+        setSelectedItemId(null);
+        setAiEditNotice('🗑️ Deleted word from timeline');
+        setTimeout(() => setAiEditNotice(null), 2000);
+        return;
+      }
+    }
 
     // Check if it's a video clip
     if (currentShort.videoClips && currentShort.videoClips.some((c) => c.id === selectedItemId)) {
@@ -1631,6 +1721,30 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               <span className="hidden md:inline">16:9</span>
             </button>
           </div>
+
+          {/* Safe Area Overlay Toggle Button */}
+          <button
+            onClick={() => setSafeAreaEnabled((p) => !p)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+              safeAreaEnabled
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                : 'bg-neutral-950 text-neutral-500 border-neutral-800 hover:text-neutral-300'
+            }`}
+            title="Toggle 9:16 Social Safe Zones overlay"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Safe Zone</span>
+          </button>
+
+          {/* Reset Layout Button */}
+          <button
+            onClick={handleResetLayout}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-xs font-semibold text-neutral-400 hover:text-white transition-all cursor-pointer"
+            title="Reset workspace layout, panels and safe zones"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+            <span className="hidden xl:inline">Reset Layout</span>
+          </button>
         </div>
 
         {/* Right: Diagnostics, One-Click AI Edit & Export */}
@@ -1702,6 +1816,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             aspectRatio={aspectRatio}
             captionConfig={captionConfig}
             brandKit={brandKit}
+            safeAreaEnabled={safeAreaEnabled}
+            onToggleSafeArea={() => setSafeAreaEnabled((prev) => !prev)}
             zoomPunchEnabled={zoomPunchEnabled}
             speakerPosition={speakerPosition}
             onRelinkMedia={handleRelinkFile}
@@ -1838,7 +1954,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         onSelectVFX={(vfx) => setSelectedItemId(vfx.id)}
         onSelectBRoll={(br) => setSelectedItemId(br.id)}
         onSelectCaption={(cap) => setSelectedItemId(cap.id)}
+        onSelectWord={(capId, wIdx) => setSelectedItemId(`word_${capId}_${wIdx}`)}
         onUpdateCaptionTiming={handleUpdateCaptionTiming}
+        onUpdateWordTiming={handleUpdateWordTiming}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
         onTrimChange={handleTrimChange}
         selectedItemId={selectedItemId}
         videoUrl={currentShort.videoProxyUrl || currentShort.audioUrl || project.videoUrl || ''}
