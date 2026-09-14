@@ -2315,6 +2315,8 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
   const rawVideoUrl =
     body.sourceUrl ||
     body.videoUrl ||
+    body.renderPlan?.sourceUrl ||
+    body.renderPlan?.videoUrl ||
     targetShort?.videoProxyUrl ||
     project?.videoUrl ||
     targetShort?.audioUrl ||
@@ -2367,8 +2369,8 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
     ? body.imageOverlays
     : targetShort?.imageOverlays || [];
 
-  const startTime = Number(body.startTime ?? targetShort?.startTime ?? 0);
-  const duration = Number(body.duration ?? targetShort?.duration ?? (targetShort?.endTime ? targetShort.endTime - targetShort.startTime : 30));
+  const startTime = Number(body.startTime ?? body.renderPlan?.startTime ?? targetShort?.startTime ?? 0);
+  const duration = Number(body.duration ?? body.renderPlan?.duration ?? targetShort?.duration ?? (targetShort?.endTime ? targetShort.endTime - targetShort.startTime : 30));
 
   const rawQualityMode =
     body.qualityMode ||
