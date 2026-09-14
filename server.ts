@@ -1388,7 +1388,9 @@ Requirements:
   // NO fabricated speech or fake quotes
   if (!aiClips || aiClips.length === 0) {
     aiClips = [];
-    const transcriptSegs = Array.isArray(project.transcript) ? project.transcript : [];
+    const transcriptSegs = Array.isArray(project.transcript)
+      ? project.transcript
+      : (project.normalizedTranscript?.segments || []);
     
     if (transcriptSegs.length > 0) {
       // Detect natural dialogue boundaries from actual transcript
@@ -1674,7 +1676,11 @@ Requirements:
   console.log('[PROCESS] current stage: preparing_editor (90%)');
 
   // Build canonical single-source-of-truth ProjectAnalysis
-  const fullTranscriptText = (project.transcript || []).map((t: any) => t.text || t).join(' ') || project.originalTitle;
+  const fullTranscriptText = typeof project.transcript === 'string'
+    ? project.transcript
+    : Array.isArray(project.transcript)
+      ? project.transcript.map((t: any) => t.text || t).join(' ')
+      : (project.normalizedTranscript?.segments || []).map((s: any) => s.text).join(' ') || project.originalTitle;
   const canonicalAnalysis = buildCanonicalProjectAnalysis({
     projectId: project.id,
     sourceMedia: canonicalSourceMedia,
@@ -2087,7 +2093,45 @@ Return a JSON object:
     }
   } catch (_) {}
 
-  // 5. Fallback to existing companion subtitle files on disk if Gemini failed or unconfigured
+  // 4.5. Fallback to Local Whisper ASR via TranscriptionManager if Gemini is unconfigured
+  if (!rawTranscriptionData) {
+    try {
+      const manager = TranscriptionManager.getInstance();
+      const whisperRes = await manager.transcribe({
+        sourceMediaPath: localDiskPath,
+        startTime,
+        duration: clipDuration,
+        language: 'auto',
+        title: options.title || 'Audio Speech',
+      });
+      if (whisperRes && whisperRes.canonicalTranscript && (whisperRes.canonicalTranscript.segments?.length || 0) > 0) {
+        rawTranscriptionData = {
+          language: whisperRes.language || 'English',
+          languageConfidence: whisperRes.languageConfidence || 0.9,
+          detectedLanguages: whisperRes.detectedLanguages || [],
+          duration: clipDuration,
+          segments: (whisperRes.canonicalTranscript.segments || []).map((seg: any) => ({
+            id: seg.id || `seg_${Math.random().toString(36).slice(2, 6)}`,
+            text: seg.text,
+            start: seg.start,
+            end: seg.end,
+            words: (seg.words || []).map((w: any) => ({
+              word: w.text || w.word,
+              start: w.start,
+              end: w.end,
+              confidence: w.confidence ?? 0.95,
+              isHighlight: !!w.isHighlight,
+            })),
+          })),
+        };
+        console.log(`[Auto-Transcribe] Transcribed audio via Local Whisper ASR: ${whisperRes.canonicalTranscript.segments?.length || 0} segments.`);
+      }
+    } catch (whisperErr: any) {
+      console.warn('[Auto-Transcribe] Local Whisper attempt notice:', whisperErr?.message);
+    }
+  }
+
+  // 5. Fallback to existing companion subtitle files on disk if Gemini and Whisper failed
   if (!rawTranscriptionData) {
     try {
       const dirName = path.dirname(localDiskPath);
@@ -2789,7 +2833,10 @@ app.post('/api/projects/:id/generate-more', (req: Request, res: Response) => {
       const angle = ['bold', 'educational', 'shock', 'curiosity', 'question'][idx % 5];
       
       // Extract real transcript sentences if they fall within [timing.start, timing.end]
-      const realSentences = (project.transcript || []).filter(
+      const segmentsArray = Array.isArray(project.transcript)
+        ? project.transcript
+        : (project.normalizedTranscript?.segments || []);
+      const realSentences = segmentsArray.filter(
         (s: any) => s.start >= timing.start && s.end <= timing.end + 1
       );
       const captions = realSentences.map((s: any, sIdx: number) => ({

@@ -14,6 +14,7 @@ import ffprobeStatic from 'ffprobe-static';
 import { probeSourceMedia } from './sourceQualityAnalyzer';
 import { formatAssSubtitle } from '../subtitleFormatter';
 import { SourceMediaQualityInfo } from './types';
+import { resolveMediaFilesystemPath } from '../mediaStorage';
 
 const ffprobePath = ffprobeStatic?.path || 'ffprobe';
 
@@ -187,21 +188,27 @@ export async function prepareRenderAssets(
     const ext = path.extname(rawSourceUrl.split('?')[0]) || '.mp4';
     const downloadedSource = path.join(baseTmp, `source${ext}`);
     sourceLocalPath = await downloadFile(rawSourceUrl, downloadedSource);
-  } else if (rawSourceUrl.startsWith('/uploads/')) {
-    sourceLocalPath = path.join(projectDir, 'public', rawSourceUrl);
-  } else if (rawSourceUrl.startsWith('/public/uploads/')) {
-    sourceLocalPath = path.join(projectDir, rawSourceUrl);
-  } else if (rawSourceUrl.startsWith('/demo/')) {
-    sourceLocalPath = path.join(projectDir, 'public', rawSourceUrl);
-  } else if (rawSourceUrl.startsWith('/public/demo/')) {
-    sourceLocalPath = path.join(projectDir, rawSourceUrl);
-  } else if (path.isAbsolute(rawSourceUrl) && fs.existsSync(rawSourceUrl)) {
-    sourceLocalPath = rawSourceUrl;
   } else {
-    // Check inside public folder
-    const fallback = path.join(projectDir, 'public', rawSourceUrl.replace(/^\//, ''));
-    if (fs.existsSync(fallback)) {
-      sourceLocalPath = fallback;
+    // Check media storage first (handles /media/media_.../source.mp4 and media IDs)
+    const mediaResolved = resolveMediaFilesystemPath(rawSourceUrl);
+    if (mediaResolved && fs.existsSync(mediaResolved)) {
+      sourceLocalPath = mediaResolved;
+    } else if (rawSourceUrl.startsWith('/uploads/')) {
+      sourceLocalPath = path.join(projectDir, 'public', rawSourceUrl);
+    } else if (rawSourceUrl.startsWith('/public/uploads/')) {
+      sourceLocalPath = path.join(projectDir, rawSourceUrl);
+    } else if (rawSourceUrl.startsWith('/demo/')) {
+      sourceLocalPath = path.join(projectDir, 'public', rawSourceUrl);
+    } else if (rawSourceUrl.startsWith('/public/demo/')) {
+      sourceLocalPath = path.join(projectDir, rawSourceUrl);
+    } else if (path.isAbsolute(rawSourceUrl) && fs.existsSync(rawSourceUrl)) {
+      sourceLocalPath = rawSourceUrl;
+    } else {
+      // Check inside public folder
+      const fallback = path.join(projectDir, 'public', rawSourceUrl.replace(/^\//, ''));
+      if (fs.existsSync(fallback)) {
+        sourceLocalPath = fallback;
+      }
     }
   }
 
