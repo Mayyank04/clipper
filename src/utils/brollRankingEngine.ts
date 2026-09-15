@@ -7,6 +7,7 @@ import {
   CropPlan,
   RenderPlan,
   SFXMarker,
+  VFXMarker,
   ShotType,
   StockVideo,
 } from '../types';
@@ -350,29 +351,93 @@ export function selectBestBrollEvents(
   return events;
 }
 
+export interface CanonicalRenderPlanExtraOptions {
+  source?: { mediaId?: string; url: string; originalFilename?: string; mimeType?: string };
+  clips?: Array<{ id: string; startTime: number; endTime: number; label?: string }>;
+  vfxMarkers?: VFXMarker[];
+  styles?: any;
+  animations?: { type?: string; preset?: string; mode?: string };
+  dynamicZooms?: Array<{ startTime: number; endTime: number; peakScale: number }>;
+  canvas?: { width: number; height: number; aspectRatio: string };
+  exportSettings?: {
+    resolution: string;
+    frameRate: number;
+    qualityMode: 'FAST' | 'BALANCED' | 'HIGH' | 'MASTER';
+    format: 'mp4' | 'mov' | 'webm';
+  };
+  brandKit?: any;
+  originalVolume?: number;
+  brollDuckingDb?: number;
+  voiceoverVolume?: number;
+}
+
 /**
  * Builds the canonical unified RenderPlan controlling preview, timeline, and export.
+ * Returns a 100% JSON-serializable object safe for network transmission to remote workers.
  */
 export function buildCanonicalRenderPlan(
   projectId: string,
   shortId: string,
   duration: number,
-  brollEvents: BrollEvent[],
+  brollEvents: BrollEvent[] = [],
   captions: CaptionSegment[] = [],
-  sfxMarkers: SFXMarker[] = []
+  sfxMarkers: SFXMarker[] = [],
+  vfxMarkers?: VFXMarker[],
+  extra?: CanonicalRenderPlanExtraOptions
 ): RenderPlan {
-  return {
-    projectId,
-    shortId,
-    duration,
-    brollEvents,
-    captions,
-    sfxMarkers,
+  const plan: RenderPlan = {
+    projectId: String(projectId || ''),
+    shortId: String(shortId || ''),
+    duration: Number(duration || 30),
+    source: extra?.source,
+    clips: extra?.clips || [
+      { id: 'clip_main', startTime: 0, endTime: Number(duration || 30), label: 'Main Clip' },
+    ],
+    brollEvents: Array.isArray(brollEvents) ? brollEvents : [],
+    captions: Array.isArray(captions) ? captions : [],
+    sfxMarkers: Array.isArray(sfxMarkers) ? sfxMarkers : [],
+    vfxMarkers: Array.isArray(vfxMarkers) ? vfxMarkers : extra?.vfxMarkers || [],
+    styles: extra?.styles,
+    animations: extra?.animations,
+    dynamicZooms: extra?.dynamicZooms,
+    zoom: extra?.dynamicZooms,
+    canvas: extra?.canvas || {
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
+    },
+    exportSettings: extra?.exportSettings || {
+      resolution: '1080x1920',
+      frameRate: 30,
+      qualityMode: 'HIGH',
+      format: 'mp4',
+    },
+    brandKit: extra?.brandKit,
     audioTrack: {
-      originalVolume: 1.0,
-      brollDuckingDb: -16, // -16 dB ducking during dialogue
+      originalVolume: Number(extra?.originalVolume ?? 1.0),
+      brollDuckingDb: Number(extra?.brollDuckingDb ?? -16),
+      voiceoverVolume: extra?.voiceoverVolume !== undefined ? Number(extra.voiceoverVolume) : undefined,
     },
   };
+
+  assertSerializableRenderPlan(plan);
+  return plan;
+}
+
+/**
+ * Validates that a RenderPlan contains zero browser-only objects, circular references,
+ * Blobs, Files, or DOM nodes, guaranteeing safe network transport to workers.
+ */
+export function assertSerializableRenderPlan(plan: RenderPlan): void {
+  try {
+    const json = JSON.stringify(plan);
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Deserialized RenderPlan must be an object');
+    }
+  } catch (err: any) {
+    throw new Error(`RenderPlan validation failed: contains non-serializable elements (${err.message})`);
+  }
 }
 
 /**

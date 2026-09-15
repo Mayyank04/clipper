@@ -1322,13 +1322,53 @@ export interface RenderPlan {
   projectId: string;
   shortId: string;
   duration: number;
+  source?: {
+    mediaId?: string;
+    url: string;
+    originalFilename?: string;
+    mimeType?: string;
+  };
+  clips?: Array<{
+    id: string;
+    startTime: number;
+    endTime: number;
+    label?: string;
+  }>;
   brollEvents: BrollEvent[];
   captions: CaptionSegment[];
   sfxMarkers: SFXMarker[];
+  vfxMarkers?: VFXMarker[];
+  styles?: CaptionCustomization | Record<string, any>;
+  animations?: {
+    type?: string;
+    preset?: string;
+    mode?: string;
+  };
+  dynamicZooms?: Array<{
+    startTime: number;
+    endTime: number;
+    peakScale: number;
+  }>;
+  zoom?: Array<{
+    startTime: number;
+    endTime: number;
+    peakScale: number;
+  }>;
+  canvas?: {
+    width: number;
+    height: number;
+    aspectRatio: string;
+  };
+  exportSettings?: {
+    resolution: string;
+    frameRate: number;
+    qualityMode: 'FAST' | 'BALANCED' | 'HIGH' | 'MASTER';
+    format: 'mp4' | 'mov' | 'webm';
+  };
+  brandKit?: BrandKit;
   voiceoverEvents?: VoiceoverEvent[];
   presenterEvents?: PresenterEvent[];
   dubEvents?: DubEvent[];
-  vfxMarkers?: VFXMarker[];
   editDecisions?: EditDecision[];
   assetProvenance?: AssetProvenance[];
   audioTrack: {

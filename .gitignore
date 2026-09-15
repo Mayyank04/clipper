@@ -19,9 +19,12 @@ public/audio/*
 .cache/
 data/media/*
 !data/media/.gitkeep
+data/jobs/*
+!data/jobs/.gitkeep
 .projects/*
 !.projects/.gitkeep
 public/renders/*
 !public/renders/.gitkeep
 certification_evidence.json
+.vercel
 
