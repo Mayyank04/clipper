@@ -27,4 +27,12 @@ public/renders/*
 !public/renders/.gitkeep
 certification_evidence.json
 .vercel
+bin/
+__pycache__/
+*.py[cod]
+*$py.class
+data/storage/*
+!data/storage/.gitkeep
+data/tmp/*
+!data/tmp/.gitkeep
 

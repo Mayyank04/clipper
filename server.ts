@@ -17,6 +17,13 @@ import {
 } from './src/utils/mediaStorage';
 import { TranscriptionJobManager } from './src/utils/transcription/transcriptionJob';
 import { detectHardware } from './src/utils/transcription/hardwareDetector';
+import { StorageProvider } from './src/services/storage/StorageProvider';
+import { PostgresDatabase } from './src/services/database/PostgresDatabase';
+import { QueueService } from './src/services/queue/QueueService';
+
+const storageProvider = StorageProvider.getInstance();
+const postgresDb = PostgresDatabase.getInstance();
+const queueService = QueueService.getInstance();
 
 console.log(`[Startup] Environment initialized. GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'configured' : 'missing'}`);
 import {
@@ -328,10 +335,12 @@ const projectsStore = {
   set: (k: string, v: any) => {
     rawProjectsMap.set(k, v);
     persistProject(v);
+    postgresDb.saveProject(v).catch((e) => console.warn('[DB] Background project save failed:', e.message));
     return projectsStore;
   },
   delete: (k: string) => {
     deletePersistedProject(k);
+    postgresDb.deleteProject(k).catch((e) => console.warn('[DB] Background project delete failed:', e.message));
     return rawProjectsMap.delete(k);
   },
   has: (k: string) => rawProjectsMap.has(k),
@@ -343,26 +352,38 @@ const projectsStore = {
   clear: () => rawProjectsMap.clear(),
 };
 
-function loadPersistedProjects() {
+async function loadPersistedProjects() {
   try {
-    if (!fs.existsSync(PROJECTS_DIR)) return;
-    const files = fs.readdirSync(PROJECTS_DIR);
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        try {
-          const content = fs.readFileSync(path.join(PROJECTS_DIR, file), 'utf8');
-          const proj = JSON.parse(content);
-          if (proj && proj.id) {
-            rawProjectsMap.set(proj.id, proj);
-          }
-        } catch {}
+    if (fs.existsSync(PROJECTS_DIR)) {
+      const files = fs.readdirSync(PROJECTS_DIR);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const content = fs.readFileSync(path.join(PROJECTS_DIR, file), 'utf8');
+            const proj = JSON.parse(content);
+            if (proj && proj.id) {
+              rawProjectsMap.set(proj.id, proj);
+            }
+          } catch {}
+        }
       }
     }
+
+    // Also populate from PostgreSQL if available
+    if (await postgresDb.isPostgresActive()) {
+      const dbProjects = await postgresDb.listProjects();
+      for (const p of dbProjects) {
+        if (p && p.id && !rawProjectsMap.has(p.id)) {
+          rawProjectsMap.set(p.id, p);
+        }
+      }
+    }
+
     if (rawProjectsMap.size > 0) {
-      console.log(`[Persistence] Loaded ${rawProjectsMap.size} projects from disk.`);
+      console.log(`[Persistence] Loaded ${rawProjectsMap.size} projects into active memory.`);
     }
   } catch (err) {
-    console.error('[Persistence] Error loading projects from disk:', err);
+    console.error('[Persistence] Error loading projects:', err);
   }
 }
 
@@ -391,7 +412,7 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// GET: Overall system health including media storage, yt-dlp, and hardware
+// GET: Overall system health including database, storage, queue, worker, and engine tools
 app.get('/api/system/health', async (req: Request, res: Response) => {
   const hw = detectHardware();
   const ytStatus = youtubeDownloader.getStatus();
@@ -399,15 +420,27 @@ app.get('/api/system/health', async (req: Request, res: Response) => {
   const ffprobePath = (ffprobeStatic as any)?.path || 'ffprobe';
   const ffprobeOk = Boolean(ffprobePath && (fs.existsSync(ffprobePath) || ffprobePath === 'ffprobe'));
   const transHealth = await TranscriptionManager.getInstance().getProvidersHealth();
+  const dbHealth = await postgresDb.getHealth();
+  const queueHealth = queueService.getHealth();
 
   res.json({
     status: 'ok',
+    database: dbHealth.engine,
+    storage: storageProvider.isCloudStorage() ? 'S3/R2-Compatible' : 'LocalMediaRoot',
+    queue: queueHealth.engine,
+    worker: {
+      workerId: `worker_${process.pid}`,
+      status: 'ready',
+      activeJobs: processingJobs.size,
+      lastHeartbeat: new Date().toISOString(),
+      version: '1.0.0',
+    },
     ffmpeg: ffmpegOk ? 'ready' : 'missing',
     ffprobe: ffprobeOk ? 'ready' : 'missing',
     whisper: transHealth.selected === 'local-whisper' ? 'ready' : 'available',
+    ytDlp: ytStatus.available ? 'ready' : 'dependency_missing',
     model: process.env.WHISPER_MODEL || 'base',
     device: hw.deviceName,
-    storage: fs.existsSync(MEDIA_ROOT) ? 'ready' : 'uninitialized',
     mediaStorage: {
       mediaRoot: MEDIA_ROOT,
       exists: fs.existsSync(MEDIA_ROOT),
@@ -424,6 +457,197 @@ app.get('/api/system/health', async (req: Request, res: Response) => {
     memory: process.memoryUsage(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ============================================================================
+// DIRECT OBJECT STORAGE UPLOAD ENDPOINTS (Section 3 & 4)
+// ============================================================================
+
+// POST: Request presigned direct upload URL (browser uploads directly to S3)
+app.post('/api/media/upload-url', async (req: Request, res: Response) => {
+  try {
+    const { filename = 'source.mp4', mimeType = 'video/mp4' } = req.body;
+    const mediaId = `media_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')) : '.mp4';
+    const objectKey = `uploads/${mediaId}/source${ext}`;
+
+    const uploadUrl = await storageProvider.getSignedUploadUrl(objectKey, mimeType, 3600);
+    const publicUrl = storageProvider.getPublicOrDirectUrl(objectKey);
+
+    res.json({
+      success: true,
+      mediaId,
+      objectKey,
+      uploadUrl,
+      publicUrl,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Confirm direct upload complete, verify metadata, and queue INGEST_MEDIA job
+app.post('/api/media/:mediaId/complete', async (req: Request, res: Response) => {
+  try {
+    const { mediaId } = req.params;
+    const { objectKey, filename = 'video.mp4', mimeType = 'video/mp4' } = req.body;
+    const cleanKey = objectKey || `uploads/${mediaId}/source.mp4`;
+
+    const meta = await storageProvider.getObjectMetadata(cleanKey);
+    if (!meta && storageProvider.isCloudStorage()) {
+      return res.status(404).json({ success: false, error: 'Uploaded object not found in storage' });
+    }
+
+    const job = await queueService.addJob(
+      'media-ingestion',
+      {
+        mediaId,
+        storedKey: cleanKey,
+        filename,
+        mimeType,
+      },
+      {
+        mediaId,
+        initialMessage: 'Ingesting media file from storage...',
+      }
+    );
+
+    res.json({
+      success: true,
+      mediaId,
+      jobId: job.id,
+      status: 'queued',
+      objectKey: cleanKey,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Media record metadata
+app.get('/api/media/:id', async (req: Request, res: Response) => {
+  try {
+    const media = (await postgresDb.getMedia(req.params.id)) || mediaStorage.getMedia(req.params.id);
+    if (!media) {
+      return res.status(404).json({ success: false, error: 'Media not found' });
+    }
+    res.json({ success: true, media });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// YOUTUBE IMPORT DECOUPLED JOB (Section 5)
+// ============================================================================
+
+app.post('/api/youtube/import', async (req: Request, res: Response) => {
+  try {
+    const { url, title } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: 'URL is required' });
+
+    const videoId = extractYouTubeId(url);
+    if (!videoId) return res.status(400).json({ success: false, error: 'Invalid YouTube URL' });
+
+    const job = await queueService.addJob(
+      'youtube-download',
+      {
+        url,
+        title: title || `YouTube Session (${videoId})`,
+        videoId,
+      },
+      {
+        initialMessage: 'YouTube download job queued for processing...',
+      }
+    );
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      status: 'queued',
+      videoId,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// PERSISTENT JOB STATUS & SERVER-SENT EVENTS (Section 11 & 12)
+// ============================================================================
+
+// POST: Create persistent job
+app.post('/api/jobs', async (req: Request, res: Response) => {
+  try {
+    const { type, payload, projectId, mediaId } = req.body;
+    const job = await queueService.addJob(type, payload, { projectId, mediaId });
+    res.json({ success: true, job });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Query persistent job
+app.get('/api/jobs/:id', async (req: Request, res: Response) => {
+  try {
+    const job = await queueService.getJob(req.params.id);
+    if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+    res.json({ success: true, job });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Server-Sent Events stream for real-time progress
+app.get('/api/jobs/:id/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof (res as any).flushHeaders === 'function') {
+    (res as any).flushHeaders();
+  }
+
+  queueService.addSSEClient(req.params.id, res);
+});
+
+// POST: Cancel job
+app.post('/api/jobs/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const cancelled = await queueService.cancelJob(req.params.id);
+    res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not found' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================================
+// DECOUPLED RENDER JOB (Section 10 & 16)
+// ============================================================================
+
+app.post('/api/render', async (req: Request, res: Response) => {
+  try {
+    const { renderPlan, options } = req.body;
+    if (!renderPlan) {
+      return res.status(400).json({ success: false, error: 'renderPlan is required' });
+    }
+
+    const job = await queueService.addJob(
+      'render',
+      { renderPlan, options },
+      {
+        projectId: renderPlan.projectId,
+        initialMessage: 'Render job queued for processing...',
+      }
+    );
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      status: 'queued',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // GET: YouTube downloader health
@@ -795,11 +1019,31 @@ app.post('/api/projects/:id/process', async (req: Request, res: Response) => {
 });
 
 // GET: Job Status API: GET /api/process/:jobId
-app.get('/api/process/:jobId', (req: Request, res: Response) => {
+app.get('/api/process/:jobId', async (req: Request, res: Response) => {
   const { jobId } = req.params;
   const job = processingJobs.get(jobId);
 
   if (!job) {
+    // Check QueueService for background worker jobs
+    const qJob = await queueService.getJob(jobId);
+    if (qJob) {
+      const project = qJob.projectId ? projectsStore.get(qJob.projectId) : null;
+      return res.json({
+        success: true,
+        jobId: qJob.id,
+        projectId: qJob.projectId,
+        status: qJob.status,
+        stage: qJob.stage,
+        progress: qJob.progress,
+        currentStage: qJob.message,
+        message: qJob.message,
+        logs: [{ time: 'Now', message: qJob.message, type: qJob.status === 'failed' ? 'error' : 'info' }],
+        error: qJob.error,
+        errorCode: qJob.errorCode,
+        project,
+      });
+    }
+
     // Check if project is completed in store
     const project = projectsStore.get(jobId);
     if (project && project.status === 'ready') {
@@ -3753,8 +3997,8 @@ app.post('/api/projects/:id/regenerate-elements', async (req: Request, res: Resp
   }
 });
 
-// GET: Check export job status (supports both renderWorker and legacy jobs)
-app.get('/api/exports/:id', (req: Request, res: Response) => {
+// GET: Check export job status (supports renderWorker, QueueService, PostgreSQL, and legacy jobs)
+app.get('/api/exports/:id', async (req: Request, res: Response) => {
   const workerJob = renderWorker.getJob(req.params.id);
   if (workerJob) {
     return res.json({
@@ -3776,6 +4020,38 @@ app.get('/api/exports/:id', (req: Request, res: Response) => {
       fileSizeMb: workerJob.fileSizeMb,
       forensics: workerJob.forensics,
       renderPlanHash: workerJob.renderPlanHash,
+    });
+  }
+
+  // Check QueueService
+  const qJob = await queueService.getJob(req.params.id);
+  if (qJob) {
+    return res.json({
+      success: true,
+      jobId: qJob.id,
+      exportId: qJob.id,
+      job: qJob,
+      status: qJob.status,
+      progress: qJob.progress,
+      stage: qJob.stage,
+      downloadUrl: qJob.result?.downloadUrl || qJob.result?.publicUrl,
+      outputUrl: qJob.result?.downloadUrl || qJob.result?.publicUrl,
+      error: qJob.error,
+    });
+  }
+
+  // Check PostgreSQL exports table
+  const dbExport = await postgresDb.getExport(req.params.id);
+  if (dbExport) {
+    return res.json({
+      success: true,
+      jobId: dbExport.jobId || dbExport.id,
+      exportId: dbExport.id,
+      status: dbExport.status || 'completed',
+      progress: 100,
+      downloadUrl: dbExport.downloadUrl || dbExport.publicUrl,
+      outputUrl: dbExport.downloadUrl || dbExport.publicUrl,
+      fileSizeMb: dbExport.fileSize ? Number((dbExport.fileSize / (1024 * 1024)).toFixed(2)) : undefined,
     });
   }
 

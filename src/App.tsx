@@ -23,6 +23,7 @@ import { ProjectView } from './components/ProjectView';
 import { VideoEditor } from './components/Editor/VideoEditor';
 import { ProcessingModal } from './components/ProcessingModal';
 import { ExportModal } from './components/ExportModal';
+import { uploadFileToStorage } from './services/directUpload';
 import { BrandKitModal } from './components/BrandKitModal';
 import { NewShortModal } from './components/NewShortModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -159,23 +160,18 @@ export default function App() {
       let serverUrl = objectUrl;
       let sourceMediaId: string | undefined = undefined;
       try {
-        const formData = new FormData();
-        formData.append('video', file);
-        const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          if (upData.url || upData.fileUrl) {
-            serverUrl = upData.url || upData.fileUrl;
-          }
-          if (upData.sourceMediaId) {
-            sourceMediaId = upData.sourceMediaId;
-          }
-          if (upData.duration && upData.duration > 0) {
-            dur = upData.duration;
-          }
+        const uploadResult = await uploadFileToStorage(file);
+        if (uploadResult.url) {
+          serverUrl = uploadResult.url;
+        }
+        if (uploadResult.sourceMediaId) {
+          sourceMediaId = uploadResult.sourceMediaId;
+        }
+        if (uploadResult.duration && uploadResult.duration > 0) {
+          dur = uploadResult.duration;
         }
       } catch (err) {
-        console.warn('Backend file upload notice:', err);
+        console.warn('Direct/fallback upload notice:', err);
       }
 
       if (dur <= 0) {
@@ -232,28 +228,20 @@ export default function App() {
       // 1. Upload audio file to backend
       let serverUrl = objectUrl;
       let probedDuration = 0;
-
-      const formData = new FormData();
-      formData.append('audio', file);
-      formData.append('video', file);
-
       let sourceMediaId: string | undefined = undefined;
       try {
-        const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          if (upData.url || upData.fileUrl) {
-            serverUrl = upData.url || upData.fileUrl;
-          }
-          if (upData.sourceMediaId) {
-            sourceMediaId = upData.sourceMediaId;
-          }
-          if (upData.duration && upData.duration > 0) {
-            probedDuration = upData.duration;
-          }
+        const uploadResult = await uploadFileToStorage(file);
+        if (uploadResult.url) {
+          serverUrl = uploadResult.url;
+        }
+        if (uploadResult.sourceMediaId) {
+          sourceMediaId = uploadResult.sourceMediaId;
+        }
+        if (uploadResult.duration && uploadResult.duration > 0) {
+          probedDuration = uploadResult.duration;
         }
       } catch (err) {
-        console.warn('Backend audio upload fallback to objectUrl:', err);
+        console.warn('Direct/fallback audio upload notice:', err);
       }
 
       // If duration not probed yet from backend, check HTMLAudioElement

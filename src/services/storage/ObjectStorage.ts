@@ -1,56 +1,26 @@
 /**
- * VIRALCLIP STUDIO — OBJECT STORAGE ADAPTER (S3 / Cloudflare R2 / GCS)
- * Implements IMediaStorage for production object storage with presigned URLs.
+ * VIRALCLIP STUDIO — OBJECT STORAGE ADAPTER (S3 / Cloudflare R2 / MinIO)
+ * Implements IMediaStorage using the authoritative StorageProvider.
  */
 
 import { IMediaStorage, StoredMediaMetadata, UploadResult } from './types';
-
-export interface ObjectStorageConfig {
-  bucket: string;
-  region?: string;
-  endpoint?: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-  publicBaseUrl?: string;
-}
+import { StorageProvider } from './StorageProvider';
 
 export class ObjectStorage implements IMediaStorage {
-  private config: ObjectStorageConfig;
+  private provider: StorageProvider;
   private metadataCache = new Map<string, StoredMediaMetadata>();
 
-  constructor(config?: Partial<ObjectStorageConfig>) {
-    this.config = {
-      bucket: config?.bucket || process.env.S3_BUCKET || process.env.R2_BUCKET || '',
-      region: config?.region || process.env.S3_REGION || 'auto',
-      endpoint: config?.endpoint || process.env.S3_ENDPOINT || process.env.R2_ENDPOINT || '',
-      accessKeyId: config?.accessKeyId || process.env.S3_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID || '',
-      secretAccessKey: config?.secretAccessKey || process.env.S3_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY || '',
-      publicBaseUrl: config?.publicBaseUrl || process.env.STORAGE_PUBLIC_URL || '',
-    };
-  }
-
-  private ensureConfigured(): void {
-    if (!this.config.bucket) {
-      throw new Error(
-        'ObjectStorage is not configured: S3_BUCKET or R2_BUCKET environment variable is missing.'
-      );
-    }
+  constructor(config?: any) {
+    this.provider = config ? new StorageProvider(config) : StorageProvider.getInstance();
   }
 
   public async createUpload(filename: string, mimeType: string): Promise<UploadResult> {
-    this.ensureConfigured();
     const mediaId = `media_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')) : '.mp4';
     const key = `uploads/${mediaId}/source${ext}`;
 
-    // Generate presigned upload URL or endpoint path
-    const uploadUrl = this.config.endpoint
-      ? `${this.config.endpoint.replace(/\/+$/, '')}/${this.config.bucket}/${key}`
-      : `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/${key}`;
-
-    const publicUrl = this.config.publicBaseUrl
-      ? `${this.config.publicBaseUrl.replace(/\/+$/, '')}/${key}`
-      : uploadUrl;
+    const uploadUrl = await this.provider.getSignedUploadUrl(key, mimeType, 3600);
+    const publicUrl = this.provider.getPublicOrDirectUrl(key);
 
     const initialMetadata: StoredMediaMetadata = {
       id: mediaId,
@@ -79,33 +49,30 @@ export class ObjectStorage implements IMediaStorage {
   }
 
   public async getUploadUrl(mediaId: string): Promise<string> {
-    this.ensureConfigured();
     const meta = this.metadataCache.get(mediaId);
     const key = meta ? `uploads/${mediaId}/${meta.storedFilename}` : `uploads/${mediaId}/source.mp4`;
-
-    return this.config.endpoint
-      ? `${this.config.endpoint.replace(/\/+$/, '')}/${this.config.bucket}/${key}`
-      : `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/${key}`;
+    return this.provider.getSignedUploadUrl(key, meta?.mimeType || 'video/mp4', 3600);
   }
 
   public async getReadUrl(mediaId: string): Promise<string> {
-    this.ensureConfigured();
     const meta = this.metadataCache.get(mediaId);
-    if (meta && meta.publicUrl) {
-      return meta.publicUrl;
-    }
-    const key = `uploads/${mediaId}/source.mp4`;
-    return this.config.publicBaseUrl
-      ? `${this.config.publicBaseUrl.replace(/\/+$/, '')}/${key}`
-      : `https://${this.config.bucket}.s3.${this.config.region}.amazonaws.com/${key}`;
+    const key = meta ? `uploads/${mediaId}/${meta.storedFilename}` : `uploads/${mediaId}/source.mp4`;
+    return this.provider.getSignedDownloadUrl(key, 3600);
   }
 
   public async exists(mediaId: string): Promise<boolean> {
-    return this.metadataCache.has(mediaId);
+    const meta = this.metadataCache.get(mediaId);
+    if (!meta) return false;
+    const key = `uploads/${mediaId}/${meta.storedFilename}`;
+    return this.provider.exists(key);
   }
 
   public async delete(mediaId: string): Promise<void> {
-    this.ensureConfigured();
+    const meta = this.metadataCache.get(mediaId);
+    if (meta) {
+      const key = `uploads/${mediaId}/${meta.storedFilename}`;
+      await this.provider.delete(key);
+    }
     this.metadataCache.delete(mediaId);
   }
 
@@ -115,5 +82,9 @@ export class ObjectStorage implements IMediaStorage {
 
   public setMetadata(mediaId: string, metadata: StoredMediaMetadata): void {
     this.metadataCache.set(mediaId, metadata);
+  }
+
+  public getProvider(): StorageProvider {
+    return this.provider;
   }
 }
