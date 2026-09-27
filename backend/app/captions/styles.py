@@ -6,8 +6,10 @@ NEWS, DOCUMENTARY, LUXURY, MINIMAL, HINDI, HINGLISH, REELS, SHORTS, TIKTOK
 """
 
 from typing import Dict, Any, List
+from .presets_60 import ORIGINAL_60_PRESETS
 
 CAPTION_PRESETS: List[Dict[str, Any]] = [
+    *ORIGINAL_60_PRESETS,
     # --- VIRAL ---
     {
         "id": "viral_hyper_bold",

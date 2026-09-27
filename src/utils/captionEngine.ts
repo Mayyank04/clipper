@@ -18,6 +18,7 @@ import {
   DetectedLanguageBreakdown,
   ScriptSection,
 } from '../types';
+import { ORIGINAL_60_PRESETS } from '../data/creatorPresets60';
 
 export type { CaptionWord, CaptionSegment };
 
@@ -1950,6 +1951,7 @@ export const ORIGINAL_CREATOR_PRESETS: CaptionStyleDefinition[] = [
 ];
 
 export const ALL_CAPTION_STYLES: CaptionStyleDefinition[] = [
+  ...ORIGINAL_60_PRESETS,
   ...CAPTION_STYLES_REGISTRY,
   ...EXTENDED_CAPTION_STYLES,
   ...ORIGINAL_CREATOR_PRESETS,
@@ -2298,8 +2300,11 @@ export function computeWordAnimationState(
   const curWordStr = typeof wordObj === 'string' ? wordObj : (wordObj?.word || wordObj?.text || String(wordObj || ''));
   const wordStart = Number(wordObj?.start) || 0;
   const wordEnd = Number(wordObj?.end) || (wordStart + 0.3);
-  const isSpoken = currentTime >= wordStart && currentTime <= wordEnd;
-  const isPast = currentTime > wordEnd;
+  const nextWord = captionWords && captionWords[index + 1] ? captionWords[index + 1] : null;
+  const nextWordStart = nextWord ? (Number(nextWord?.start) || wordEnd) : (wordEnd + 0.2);
+  const activeEnd = nextWord ? Math.min(nextWordStart, wordEnd + 0.25) : (wordEnd + 0.2);
+  const isSpoken = currentTime >= wordStart && currentTime < activeEnd;
+  const isPast = currentTime >= activeEnd;
   const isFuture = currentTime < wordStart;
 
   const animType = (captionConfig.animationType || captionConfig.animation || 'pop').toLowerCase();
@@ -2327,7 +2332,7 @@ export function computeWordAnimationState(
   let glow: string | undefined = captionConfig.glowEnabled ? captionConfig.glowColor || captionConfig.highlightColor : undefined;
   let isMarker = false;
   let isUnderline = false;
-  let isHero = false;
+  let isHero = wordObj?.emphasis === 'hero' || wordObj?.isHighlight;
 
   // 1. Spoken Word Highlighting
   if (isSpoken) {
@@ -2348,8 +2353,9 @@ export function computeWordAnimationState(
     case 'word_pop': {
       if (isSpoken) {
         const bounce = Math.sin(rawProgress * Math.PI);
-        scale = 1.0 + (0.18 + bounce * 0.08) * intensity;
-        translateY = -3 * bounce * intensity;
+        const basePop = isHero ? 0.10 : 0.06;
+        scale = 1.0 + (basePop + bounce * 0.03) * intensity;
+        translateY = -2 * bounce * intensity;
       }
       break;
     }
@@ -2922,6 +2928,176 @@ export function autoFixCaptions(
     speechCoveragePercent: coverage.coveragePercent,
     message: `Captions fixed — ${coverage.coveragePercent}% speech coverage (${fixed.length} beats, ${coverage.totalWords} words)`,
   };
+}
+
+/**
+ * Removes micro-gaps (< threshold) between consecutive caption segments.
+ */
+export function removeCaptionGaps(
+  captions: CaptionSegment[],
+  gapThresholdSeconds = 0.25
+): CaptionSegment[] {
+  if (!captions || captions.length <= 1) return captions || [];
+  const updated = captions.map((c) => ({ ...c }));
+  for (let i = 0; i < updated.length - 1; i++) {
+    const cur = updated[i];
+    const next = updated[i + 1];
+    const gap = next.start - cur.end;
+    if (gap > 0 && gap <= gapThresholdSeconds) {
+      cur.end = next.start;
+      if (cur.displayEnd !== undefined) {
+        cur.displayEnd = next.start;
+      }
+    }
+  }
+  return updated;
+}
+
+/**
+ * Adds natural hold duration (e.g. 0.35s) after speech completes so viewer can finish reading.
+ */
+export function addNaturalHolds(
+  captions: CaptionSegment[],
+  holdDurationSeconds = 0.35
+): CaptionSegment[] {
+  if (!captions || captions.length === 0) return [];
+  return captions.map((c, idx) => {
+    const nextStart = captions[idx + 1] ? captions[idx + 1].start : Infinity;
+    const maxAllowedEnd = Math.min(nextStart - 0.05, c.end + holdDurationSeconds);
+    const newEnd = Math.max(c.end, maxAllowedEnd);
+    return {
+      ...c,
+      end: newEnd,
+      displayEnd: newEnd,
+    };
+  });
+}
+
+/**
+ * Aligns caption segment start and end exactly to the first and last word's spoken timestamps.
+ */
+export function alignToSpeech(captions: CaptionSegment[]): CaptionSegment[] {
+  if (!captions || captions.length === 0) return [];
+  return captions.map((c) => {
+    if (!c.words || c.words.length === 0) return c;
+    const firstWord = c.words[0];
+    const lastWord = c.words[c.words.length - 1];
+    const newStart = Math.max(0, Number(firstWord.start) || c.start);
+    const newEnd = Math.max(newStart + 0.1, Number(lastWord.end) || c.end);
+    return {
+      ...c,
+      start: newStart,
+      end: newEnd,
+      displayStart: newStart,
+      displayEnd: newEnd,
+    };
+  });
+}
+
+/**
+ * Normalizes pacing so characters per second stay within comfortable reading bounds (12-18 CPS).
+ */
+export function normalizeCaptionPacing(
+  captions: CaptionSegment[],
+  targetCpsMin = 12,
+  targetCpsMax = 18
+): CaptionSegment[] {
+  if (!captions || captions.length === 0) return [];
+  return captions.map((c, idx) => {
+    const textLen = (c.text || '').length;
+    if (textLen === 0) return c;
+    const curDur = Math.max(0.1, c.end - c.start);
+    const curCps = textLen / curDur;
+
+    if (curCps > targetCpsMax) {
+      // Too fast: expand end time if next segment allows
+      const targetDur = textLen / targetCpsMax;
+      const nextStart = captions[idx + 1] ? captions[idx + 1].start : Infinity;
+      const newEnd = Math.min(nextStart - 0.04, c.start + targetDur);
+      return {
+        ...c,
+        end: Math.max(c.end, newEnd),
+        displayEnd: Math.max(c.end, newEnd),
+      };
+    } else if (curCps < targetCpsMin && curDur > 3.0) {
+      // Too slow / on screen too long: clamp duration
+      const targetDur = Math.max(0.8, textLen / targetCpsMin);
+      const newEnd = Math.max(c.start + 0.8, c.start + targetDur);
+      return {
+        ...c,
+        end: Math.min(c.end, newEnd),
+        displayEnd: Math.min(c.end, newEnd),
+      };
+    }
+    return c;
+  });
+}
+
+export interface PolishSuggestion {
+  captionId: string;
+  originalText: string;
+  suggestedText: string;
+  reason: string;
+  category: 'repetition' | 'grammar' | 'filler' | 'pacing';
+}
+
+/**
+ * Analyzes captions for grammar, punctuation, hallucinations, repetitions, and filler words.
+ */
+export function analyzeCaptionPolish(captions: CaptionSegment[]): PolishSuggestion[] {
+  if (!captions || captions.length === 0) return [];
+  const suggestions: PolishSuggestion[] = [];
+
+  const fillerRegex = /\b(uh|um|er|ah|like|you know|basically|actually)\b/gi;
+  const loopRegex = /\b(\w+)(?:\s+\1\b){2,}/i;
+
+  captions.forEach((cap) => {
+    const orig = cap.text || '';
+    let suggested = orig;
+    let reason = '';
+    let category: 'repetition' | 'grammar' | 'filler' | 'pacing' = 'grammar';
+
+    // 1. Detect repeated words (e.g. "They They They If")
+    const loopMatch = suggested.match(loopRegex);
+    if (loopMatch) {
+      const repWord = loopMatch[1];
+      suggested = suggested.replace(new RegExp(`\\b${repWord}(?:\\s+${repWord}\\b)+`, 'gi'), repWord);
+      reason = `Remove repeated word "${repWord}" from decoder loop`;
+      category = 'repetition';
+    }
+
+    // 2. Detect filler words
+    if (fillerRegex.test(suggested)) {
+      const cleaned = suggested.replace(fillerRegex, '').replace(/\s{2,}/g, ' ').trim();
+      if (cleaned.length > 0) {
+        suggested = cleaned;
+        reason = reason ? `${reason}; Remove spoken hesitation filler words` : 'Remove spoken hesitation filler words';
+        category = 'filler';
+      }
+    }
+
+    // 3. Sentence capitalization & punctuation
+    if (suggested && suggested.length > 1) {
+      const firstChar = suggested[0].toUpperCase();
+      const rest = suggested.slice(1);
+      if (suggested[0] !== firstChar) {
+        suggested = firstChar + rest;
+        reason = reason ? `${reason}; Capitalize sentence start` : 'Capitalize sentence start';
+      }
+    }
+
+    if (suggested.trim() !== orig.trim()) {
+      suggestions.push({
+        captionId: cap.id,
+        originalText: orig,
+        suggestedText: suggested,
+        reason: reason || 'Polish readability and cadence',
+        category,
+      });
+    }
+  });
+
+  return suggestions;
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   normalizeCanonicalTranscript,
 } from '../../captionEngine';
 import { Transcript, TranscriptSegment, TranscriptWord } from '../../../types';
+import { CaptionQualityAnalyzer } from '../CaptionQualityAnalyzer';
 
 export class LocalWhisperProvider implements TranscriptionProvider {
   readonly id = 'local-whisper';
@@ -38,14 +39,14 @@ export class LocalWhisperProvider implements TranscriptionProvider {
   private isInitializing = false;
   private initPromise: Promise<any> | null = null;
 
-  constructor(preset?: 'tiny' | 'base' | 'small' | 'medium') {
+  constructor(preset?: 'tiny' | 'base' | 'small' | 'medium' | 'FAST' | 'BALANCED' | 'QUALITY' | 'MAX QUALITY') {
     // Model selection: base is default for balanced speed/accuracy on Mac
     const profile = (preset || process.env.WHISPER_MODEL || 'base').toLowerCase();
-    if (profile === 'small') {
+    if (profile === 'small' || profile === 'balanced') {
       this.modelName = 'Xenova/whisper-small';
-    } else if (profile === 'medium') {
+    } else if (profile === 'medium' || profile === 'quality' || profile === 'max quality') {
       this.modelName = 'Xenova/whisper-medium';
-    } else if (profile === 'tiny') {
+    } else if (profile === 'tiny' || profile === 'fast') {
       this.modelName = 'Xenova/whisper-tiny';
     } else {
       this.modelName = 'Xenova/whisper-base';
@@ -374,9 +375,17 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         );
       }
 
-      // 5. Group words into social-media-ready caption segments (2–5 words per beat)
+      // 5. Purge autoregressive repetition loops ("They They They If" fix) and filter noise
+      const qualityAnalysis = CaptionQualityAnalyzer.analyzeAndClean(words, {
+        allowLegitimateRepetition: true,
+        filterNoiseTokens: true,
+        filterHallucinations: true,
+      });
+      const sanitizedWords = qualityAnalysis.cleanedWords.length > 0 ? qualityAnalysis.cleanedWords : words;
+
+      // 6. Group words into social-media-ready caption segments (2–5 words per beat)
       const captionSegments = groupWordsIntoCaptionSegments(
-        words.map((w) => ({
+        sanitizedWords.map((w) => ({
           word: w.word || w.text,
           text: w.word || w.text,
           start: w.start,
@@ -416,7 +425,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         detectedLanguages: detectedLang.breakdown,
         duration: Number(actualDuration.toFixed(3)),
         segments,
-        words,
+        words: sanitizedWords,
       };
 
       const canonical = normalizeCanonicalTranscript(transcript, actualDuration);

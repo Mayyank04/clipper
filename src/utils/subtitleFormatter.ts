@@ -90,25 +90,59 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
   for (const cap of captions) {
-    const start = Math.max(0, Number(cap.start) || 0);
-    const end = Math.max(start + 0.1, Number(cap.end) || (start + 1));
+    const rawStart = Number(cap.displayStart !== undefined ? cap.displayStart : cap.start) || 0;
+    const rawEnd = Number(cap.displayEnd !== undefined ? cap.displayEnd : cap.end) || (rawStart + 1.2);
+    const start = Math.max(0, rawStart);
+    const end = Math.max(start + 0.1, rawEnd);
     const words = Array.isArray(cap.words) && cap.words.length > 0 ? cap.words : null;
 
     if (words && words.length > 0) {
-      // Per-word active timing events so exported MP4 highlights spoken words
-      for (let wIdx = 0; wIdx < words.length; wIdx++) {
-        const activeW = words[wIdx];
-        const wStart = Math.max(start, Number(activeW.start) || start);
-        const wEnd = Math.min(end, Math.max(wStart + 0.08, Number(activeW.end) || (wStart + 0.35)));
+      // Sort words by start time
+      const sortedWords = [...words].sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
+      const firstWordStart = Math.max(start, Number(sortedWords[0].start) || start);
+
+      // 1. If beat starts earlier than first spoken word, show static line until first word
+      if (firstWordStart > start + 0.05) {
+        const preambleText = sortedWords.map((w: any) => {
+          let str = String(w.word || w.text || '').trim();
+          return captionConfig?.uppercase ? str.toUpperCase() : str;
+        }).join(' ').trim();
+        if (preambleText) {
+          content += `Dialogue: 0,${formatAssTime(start)},${formatAssTime(firstWordStart)},Default,,0,0,0,,${preambleText}\n`;
+        }
+      }
+
+      // 2. Continuous per-word active timing events: bridge gaps between consecutive words to prevent blinking
+      let lastSpokenEnd = firstWordStart;
+      for (let wIdx = 0; wIdx < sortedWords.length; wIdx++) {
+        const activeW = sortedWords[wIdx];
+        const nextW = sortedWords[wIdx + 1];
+
+        const wStart = Math.max(start, Number(activeW.start) || lastSpokenEnd);
+        // Bridge until the start of the next word to eliminate inter-word blackouts
+        let wEnd: number;
+        if (nextW) {
+          const nextStart = Math.max(wStart + 0.06, Number(nextW.start) || (wStart + 0.3));
+          wEnd = Math.min(end, nextStart);
+        } else {
+          // Last word: keep active until word end or end of segment
+          wEnd = Math.min(end, Math.max(wStart + 0.1, Number(activeW.end) || (wStart + 0.35)));
+        }
+        lastSpokenEnd = Math.max(lastSpokenEnd, wEnd);
+
+        if (wEnd <= wStart) {
+          wEnd = wStart + 0.06;
+        }
+
         const sTime = formatAssTime(wStart);
         const eTime = formatAssTime(wEnd);
 
-        // Active word wrapped in highlight color and subtle kinetic pop (115% scale or 125% for hero emphasis)
-        const lineParts = words.map((w: any, idx: number) => {
+        // Active word wrapped in highlight color and subtle kinetic pop (106% default or 110% for hero emphasis)
+        const lineParts = sortedWords.map((w: any, idx: number) => {
           let wordStr = String(w.word || w.text || '').trim();
           if (captionConfig?.uppercase) wordStr = wordStr.toUpperCase();
           const isHero = w?.emphasis === 'hero' || w?.isHighlight;
-          const popScale = isHero ? 125 : 115;
+          const popScale = isHero ? 110 : 106;
 
           if (idx === wIdx) {
             return `{\\c${highlightColor}\\b1\\fscx${popScale}\\fscy${popScale}}${wordStr}{\\c${primaryColor}\\b0\\fscx100\\fscy100}`;
@@ -121,9 +155,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
           }
           return wordStr;
         });
+
         const lineText = lineParts.join(' ').replace(/[\r\n]+/g, ' ').trim();
         if (lineText) {
           content += `Dialogue: 0,${sTime},${eTime},Default,,0,0,0,,${lineText}\n`;
+        }
+      }
+
+      // 3. Post-speech visual hold: keep the segment displayed until beatEnd so viewer finishes reading
+      if (end > lastSpokenEnd + 0.05) {
+        const holdText = sortedWords.map((w: any) => {
+          let str = String(w.word || w.text || '').trim();
+          return captionConfig?.uppercase ? str.toUpperCase() : str;
+        }).join(' ').trim();
+        if (holdText) {
+          content += `Dialogue: 0,${formatAssTime(lastSpokenEnd)},${formatAssTime(end)},Default,,0,0,0,,${holdText}\n`;
         }
       }
     } else {

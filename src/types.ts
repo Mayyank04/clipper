@@ -364,6 +364,8 @@ export interface CaptionSegment {
   styleId?: string;
   position?: CaptionPosition;
   animation?: CaptionAnimation;
+  displayStart?: number;
+  displayEnd?: number;
 }
 
 // Canonical Transcript Format (Section 2 & 5)
@@ -647,6 +649,7 @@ export interface CaptionCustomization {
   maxCharacters?: number;
   alignment?: 'center' | 'left' | 'right';
   lineSpacing?: number;
+  lineHeight?: number;
   letterSpacing?: number;
   animationType?:
     | 'pop'

@@ -23,11 +23,25 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
 }) => {
   const fontFamilies = [
     { label: 'Lemon Milk (Viral Standard)', value: 'Lemon Milk, American Captain, Montserrat, sans-serif' },
-    { label: 'Montserrat (Clean & Bold)', value: 'Montserrat, sans-serif' },
-    { label: 'American Captain (Punch)', value: 'American Captain, Impact, sans-serif' },
-    { label: 'Impact (High Contrast)', value: 'Impact, Arial Black, sans-serif' },
+    { label: 'American Captain (Punch Condensed)', value: 'American Captain, Impact, sans-serif' },
+    { label: 'Coolvetica (Viral Snappy)', value: 'Coolvetica, Montserrat, sans-serif' },
+    { label: 'The Bold Font (Heavy Punch)', value: 'The Bold Font, Montserrat, sans-serif' },
+    { label: 'Montserrat (Clean & Bold)', value: 'Montserrat, system-ui, sans-serif' },
+    { label: 'Poppins (Geometric Modern)', value: 'Poppins, sans-serif' },
+    { label: 'Inter (Podcast Crisp)', value: 'Inter, sans-serif' },
     { label: 'Outfit (Modern Creator)', value: 'Outfit, Inter, sans-serif' },
-    { label: 'Inter (Podcast Clean)', value: 'Inter, sans-serif' },
+    { label: 'DM Sans (Clean Editorial)', value: 'DM Sans, sans-serif' },
+    { label: 'Plus Jakarta Sans (Tech Founder)', value: 'Plus Jakarta Sans, sans-serif' },
+    { label: 'Space Grotesk (Neo-Grotesque)', value: 'Space Grotesk, sans-serif' },
+    { label: 'Manrope (Executive Minimal)', value: 'Manrope, sans-serif' },
+    { label: 'Archivo Black (Industrial Bold)', value: 'Archivo Black, Impact, sans-serif' },
+    { label: 'Bebas Neue (Condensed Dramatic)', value: 'Bebas Neue, sans-serif' },
+    { label: 'Impact (High Contrast Classic)', value: 'Impact, Arial Black, sans-serif' },
+    { label: 'Russo One (Gaming Esports)', value: 'Russo One, sans-serif' },
+    { label: 'JetBrains Mono (Technical Code)', value: 'JetBrains Mono, monospace' },
+    { label: 'Playfair Display (Cinema Luxury)', value: 'Playfair Display, Georgia, serif' },
+    { label: 'Cinzel (Prestige Blockbuster)', value: 'Cinzel, serif' },
+    { label: 'Noto Sans Devanagari (Hindi / Hinglish)', value: 'Noto Sans Devanagari, Poppins, sans-serif' },
   ];
 
   const positionPresets = [
@@ -216,6 +230,122 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
             onChange={(e) => onChange({ ...captionConfig, positionY: Number(e.target.value) })}
             className="w-full accent-amber-400 cursor-pointer"
           />
+        </div>
+
+        {/* Letter Spacing & Line Height */}
+        <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400">Letter Spacing</label>
+              <span className="font-mono text-white text-[11px]">{captionConfig.letterSpacing || 0}px</span>
+            </div>
+            <input
+              type="range"
+              min="-2"
+              max="8"
+              step="0.5"
+              value={captionConfig.letterSpacing || 0}
+              onChange={(e) => onChange({ ...captionConfig, letterSpacing: Number(e.target.value) })}
+              className="w-full accent-amber-400 cursor-pointer"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400">Line Height</label>
+              <span className="font-mono text-white text-[11px]">{captionConfig.lineHeight || 1.3}</span>
+            </div>
+            <input
+              type="range"
+              min="1.0"
+              max="2.0"
+              step="0.05"
+              value={captionConfig.lineHeight || 1.3}
+              onChange={(e) => onChange({ ...captionConfig, lineHeight: Number(e.target.value) })}
+              className="w-full accent-amber-400 cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Background Box & Shape */}
+        <div className="space-y-2 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
+          <div className="flex justify-between items-center">
+            <label className="text-[11px] font-semibold text-neutral-400">Background Shape</label>
+            <div className="flex gap-1">
+              {(['none', 'pill', 'box'] as const).map((shape) => (
+                <button
+                  key={shape}
+                  onClick={() =>
+                    onChange({
+                      ...captionConfig,
+                      backgroundShape: shape === 'none' ? undefined : shape,
+                      backgroundColor: shape === 'none' ? 'transparent' : (captionConfig.backgroundColor && captionConfig.backgroundColor !== 'transparent' ? captionConfig.backgroundColor : '#000000'),
+                    })
+                  }
+                  className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold cursor-pointer transition ${
+                    (captionConfig.backgroundShape || 'none') === shape
+                      ? 'bg-amber-400 text-neutral-950'
+                      : 'bg-neutral-900 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {shape}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {captionConfig.backgroundShape && captionConfig.backgroundShape !== 'none' && (
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-800/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-400">Box Color</span>
+                <input
+                  type="color"
+                  value={captionConfig.backgroundColor || '#000000'}
+                  onChange={(e) => onChange({ ...captionConfig, backgroundColor: e.target.value })}
+                  className="w-6 h-6 rounded border border-neutral-700 bg-transparent cursor-pointer"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-neutral-400">Opacity</span>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="1.0"
+                  step="0.05"
+                  value={captionConfig.backgroundOpacity ?? 0.8}
+                  onChange={(e) => onChange({ ...captionConfig, backgroundOpacity: Number(e.target.value) })}
+                  className="w-16 accent-amber-400 cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Glow Bloom */}
+        <div className="space-y-2 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-[11px] font-semibold text-neutral-400">Active Word Glow</label>
+            </div>
+            <input
+              type="checkbox"
+              checked={captionConfig.glowEnabled ?? false}
+              onChange={(e) => onChange({ ...captionConfig, glowEnabled: e.target.checked })}
+              className="accent-amber-400 cursor-pointer"
+            />
+          </div>
+          {captionConfig.glowEnabled && (
+            <div className="flex items-center justify-between pt-1 border-t border-neutral-800/60">
+              <span className="text-[10px] text-neutral-400">Glow Accent Color</span>
+              <input
+                type="color"
+                value={captionConfig.glowColor || captionConfig.highlightColor || '#facc15'}
+                onChange={(e) => onChange({ ...captionConfig, glowColor: e.target.value })}
+                className="w-6 h-6 rounded border border-neutral-700 bg-transparent cursor-pointer"
+              />
+            </div>
+          )}
         </div>
 
         {/* Case & Layout */}

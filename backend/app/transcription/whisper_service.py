@@ -30,6 +30,7 @@ from .indian_languages import (
     normalize_hinglish_text,
 )
 from .correction import apply_caption_corrections
+from .quality_analyzer import CaptionQualityAnalyzer
 
 # Model cache: (model_name, device, compute_type) -> WhisperModel instance
 _MODEL_CACHE: Dict[tuple, Any] = {}
@@ -109,7 +110,15 @@ class WhisperService:
         Guarantees native word-level timestamps with rigorous validation.
         """
         options = options or TranscriptionOptions()
-        model_name = options.model or self.default_model
+        
+        # Resolve model from preset if provided
+        preset_map = {
+            "fast": "base",
+            "balanced": "small",
+            "quality": "medium",
+            "max": "large-v3-turbo" if os.environ.get("USE_LARGE_TURBO") else "medium"
+        }
+        model_name = options.model or preset_map.get(str(options.preset).lower(), self.default_model)
         model = self.get_model(model_name)
 
         # 1. Convert to 16kHz mono PCM WAV
@@ -123,14 +132,17 @@ class WhisperService:
                 lang_param = "hi"  # Whisper transcribes Hindi phonetics
 
             # 2. Execute faster-whisper transcription with word-level timestamps
-            segments_gen, info = model.transcribe(
-                wav_path,
+            transcribe_kwargs = dict(
                 language=lang_param,
                 word_timestamps=True,
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=400),
                 beam_size=5
             )
+            if options.vocabulary and options.vocabulary.strip():
+                transcribe_kwargs["initial_prompt"] = options.vocabulary.strip()
+
+            segments_gen, info = model.transcribe(wav_path, **transcribe_kwargs)
 
             detected_lang = info.language
             lang_prob = info.language_probability
@@ -186,15 +198,24 @@ class WhisperService:
                     prog = min(int((seg.end / duration) * 100), 100)
                     on_progress(prog, f"Transcribed {int(seg.end)}s of {int(duration)}s")
 
-            # 3. Post-ASR Corrections
-            cleaned_words = apply_caption_corrections(
+            # 3. Caption Quality Analyzer (Hallucination Protector & Repetition Filter)
+            analysis = CaptionQualityAnalyzer.analyze_and_clean(
                 raw_words,
+                allow_legitimate_repetition=True,
+                filter_noise=options.filter_music_tokens
+            )
+            cleaned_words = analysis["cleaned_words"]
+            quality_score = analysis["quality_score"]
+
+            # 4. Post-ASR Corrections
+            cleaned_words = apply_caption_corrections(
+                cleaned_words,
                 apply_correction=options.apply_correction,
                 remove_fillers=options.remove_fillers,
                 filter_noise=options.filter_music_tokens
             )
 
-            # 4. Hinglish Detection & Transliteration
+            # 5. Hinglish Detection & Transliteration
             combined_text = " ".join(w.text for w in cleaned_words)
             is_hinglish = (detected_lang == "hi" and detect_hinglish(combined_text)) or (options.language == "hinglish")
             romanized_text = None
@@ -217,7 +238,9 @@ class WhisperService:
                 words=cleaned_words,
                 segments=raw_segments,
                 is_hinglish=is_hinglish,
-                romanized_text=romanized_text
+                romanized_text=romanized_text,
+                quality_score=quality_score,
+                quality_metrics=analysis
             )
 
         finally:

@@ -789,7 +789,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                       <span
                         key={idx}
                         className={`inline-block mx-1 transition-all duration-75 ${
-                          anim.highlighted ? 'scale-110 font-black' : 'font-bold'
+                          anim.highlighted ? 'font-black' : 'font-bold'
                         } ${anim.strokeWidth > 0 ? 'text-stroke-sm' : ''} ${
                           anim.isMarker ? 'bg-amber-400/30 px-1 rounded' : ''
                         }`}

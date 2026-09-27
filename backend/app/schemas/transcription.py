@@ -23,6 +23,8 @@ class TranscriptSegment(BaseModel):
 class TranscriptionOptions(BaseModel):
     language: Optional[str] = "auto"
     model: Optional[str] = "base"
+    preset: Optional[str] = "balanced"  # fast, balanced, quality, max
+    vocabulary: Optional[str] = None
     apply_correction: bool = True
     transliterate_hinglish: bool = False
     remove_fillers: bool = False
@@ -45,3 +47,6 @@ class TranscriptResult(BaseModel):
     segments: List[TranscriptSegment]
     is_hinglish: bool = False
     romanized_text: Optional[str] = None
+    quality_score: Optional[int] = 100
+    quality_metrics: Optional[dict] = None
+

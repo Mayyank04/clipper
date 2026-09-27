@@ -60,8 +60,11 @@ def forensic_export_validation(video_path: str) -> Dict[str, Any]:
         "aspectRatio": f"{width}:{height}",
         "isVertical1080x1920": (width == 1080 and height == 1920),
         "videoCodec": video_codec,
+        "video_codec": video_codec,
         "audioCodec": audio_codec,
+        "audio_codec": audio_codec,
         "audioSampleRate": sample_rate,
+        "audio_sample_rate": sample_rate,
         "fileSizeBytes": file_size,
         "hasAudio": True,
         "hasVideo": True

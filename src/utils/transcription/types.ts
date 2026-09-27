@@ -39,6 +39,8 @@ export interface TranscriptionInput {
   clipEnd?: number;
   duration?: number;
   forceRefresh?: boolean;
+  vocabulary?: string[];
+  preset?: 'FAST' | 'BALANCED' | 'QUALITY' | 'MAX QUALITY' | 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 }
 
 export interface CanonicalTranscriptResult {
