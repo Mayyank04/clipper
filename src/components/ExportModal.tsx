@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Download,
   X,
@@ -77,6 +77,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   brandKit = DEFAULT_BRAND_KIT,
   onClose,
 }) => {
+  const effectiveCaptionConfig: CaptionCustomization = useMemo(() => {
+    return short?.captionCustomization || short?.captionConfig || captionConfig || DEFAULT_CAPTION_CONFIG;
+  }, [short, captionConfig]);
+
   const [resolution, setResolution] = useState<VideoResolution>('1080x1920');
   const [frameRate, setFrameRate] = useState<FrameRate>(30);
   const [qualityMode, setQualityMode] = useState<'HIGH' | 'MASTER' | 'BALANCED' | 'FAST'>('HIGH');
@@ -254,7 +258,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           qualityMode,
           frameRate,
           brandKit,
-          captionConfig,
+          captionConfig: effectiveCaptionConfig,
         }),
       });
 
@@ -315,7 +319,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       content = formatVttSubtitle(captions);
       mime = 'text/vtt';
     } else if (format === 'ass') {
-      content = formatAssSubtitle(captions, captionConfig);
+      content = formatAssSubtitle(captions, effectiveCaptionConfig);
       mime = 'text/x-ssa';
     } else if (format === 'txt') {
       content = formatTxtSubtitle(captions);

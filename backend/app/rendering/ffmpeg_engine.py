@@ -169,8 +169,13 @@ def render_video_export(
     filter_complex = [
         "scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos",
         "crop=1080:1920",
-        f"subtitles='{ass_path}'"
     ]
+    fonts_dir = os.path.abspath(os.path.join(os.getcwd(), "public", "assets", "fonts"))
+    if os.path.exists(fonts_dir):
+        escaped_fonts_dir = fonts_dir.replace("\\", "/").replace(":", "\\:")
+        filter_complex.append(f"subtitles='{ass_path}':fontsdir='{escaped_fonts_dir}'")
+    else:
+        filter_complex.append(f"subtitles='{ass_path}'")
 
     # Watermark guard: NEVER inject unless explicitly enabled
     if watermark_enabled and render_plan.get("watermarkText"):

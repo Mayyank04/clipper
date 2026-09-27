@@ -25,6 +25,7 @@ import {
   groupWordsIntoCaptionSegments,
   normalizeCanonicalTranscript,
 } from '../../captionEngine';
+import { CaptionComposer } from '../../captionComposer';
 import { Transcript, TranscriptSegment, TranscriptWord } from '../../../types';
 import { CaptionQualityAnalyzer } from '../CaptionQualityAnalyzer';
 
@@ -383,9 +384,10 @@ export class LocalWhisperProvider implements TranscriptionProvider {
       });
       const sanitizedWords = qualityAnalysis.cleanedWords.length > 0 ? qualityAnalysis.cleanedWords : words;
 
-      // 6. Group words into social-media-ready caption segments (2–5 words per beat)
-      const captionSegments = groupWordsIntoCaptionSegments(
+      // 6. Group words into social-media-ready caption beats using CaptionComposer
+      const captionBeats = CaptionComposer.compose(
         sanitizedWords.map((w) => ({
+          id: w.id,
           word: w.word || w.text,
           text: w.word || w.text,
           start: w.start,
@@ -394,24 +396,27 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           isHighlight: w.isHighlight,
         })),
         {
-          wordsPerGroup: 4,
-          maxDuration: 2.8,
-          pauseThresholdSeconds: 0.35,
+          mode: 'AUTO',
+          sentenceAwareness: true,
+          punctuationAwareness: true,
+          pauseSensitivity: 'medium',
         }
       );
 
-      const segments: TranscriptSegment[] = captionSegments.map((s, idx) => ({
-        id: s.id || `seg_${idx + 1}`,
-        text: s.text,
-        start: s.start,
-        end: s.end,
-        words: (s.words || []).map((w, wIdx) => ({
-          id: `w_${idx}_${wIdx}`,
+      const segments: TranscriptSegment[] = captionBeats.map((b, idx) => ({
+        id: b.id || `seg_${idx + 1}`,
+        text: b.text,
+        start: b.start,
+        end: b.end,
+        words: b.words.map((w, wIdx) => ({
+          id: w.id || `w_${idx}_${wIdx}`,
           text: w.word || w.text || '',
           word: w.word || w.text || '',
           start: w.start,
           end: w.end,
           confidence: w.confidence || 0.95,
+          isHighlight: w.isEmphasis ?? w.isHighlight,
+          highlightColor: w.highlightColor,
         })),
       }));
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ShortUnavailableRecovery } from '../ShortUnavailableRecovery';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { SAMPLE_PROJECTS } from '../../data/sampleProjects';
@@ -226,6 +226,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     plan.presenterEvents = newShort.presenterEvents;
     plan.dubEvents = newShort.dubEvents;
     plan.assetProvenance = newShort.provenanceList;
+    const effectiveCaptionCfg = newShort.captionCustomization || newShort.captionConfig || captionConfig;
+    newShort.captionCustomization = effectiveCaptionCfg;
+    newShort.captionConfig = effectiveCaptionCfg;
+    (plan as any).captionConfig = effectiveCaptionCfg;
     newShort.renderPlan = plan;
 
     setAutosaveStatus('saving');
@@ -274,26 +278,37 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     }
   }, [initialShort?.id, project?.id]);
 
-  const [captionConfig, setCaptionConfig] = useState<CaptionCustomization>({
-    preset: 'reference_typing',
-    style: 'reference_typing',
-    fontFamily: 'Lemon Milk, American Captain, Montserrat, sans-serif',
-    fontSize: 32,
-    fontWeight: 800,
-    primaryColor: '#ffffff',
-    highlightColor: '#facc15',
-    strokeColor: '#000000',
-    strokeWidth: 4,
-    positionY: 72,
-    uppercase: true,
-    hasShadow: true,
-    shadowColor: 'rgba(0, 0, 0, 0.95)',
-    wordsPerLine: 3,
-    wordsPerGroup: 3,
-    maxLines: 2,
-    animationType: 'pop',
-    animationMode: 'REFERENCE_TYPING',
+  const [captionConfig, setCaptionConfig] = useState<CaptionCustomization>(() => {
+    return initialShort?.captionCustomization || initialShort?.captionConfig || {
+      preset: 'punch_pop',
+      style: 'punch_pop',
+      fontFamily: 'Lemon Milk, Montserrat, sans-serif',
+      fontSize: 34,
+      fontWeight: 800,
+      primaryColor: '#ffffff',
+      highlightColor: '#facc15',
+      strokeColor: '#000000',
+      strokeWidth: 4,
+      positionY: 72,
+      uppercase: true,
+      hasShadow: true,
+      shadowColor: 'rgba(0, 0, 0, 0.95)',
+      wordsPerLine: 3,
+      wordsPerGroup: 3,
+      maxLines: 2,
+      animationType: 'pop',
+      animationMode: 'ACTIVE_WORD',
+    };
   });
+
+  const handleCaptionConfigChange = useCallback((newCfg: CaptionCustomization) => {
+    setCaptionConfig(newCfg);
+    setCurrentShort((prev) => ({
+      ...prev,
+      captionCustomization: newCfg,
+      captionConfig: newCfg,
+    }));
+  }, []);
 
   // Safe Area overlay state (lifted for header & canvas sync)
   const [safeAreaEnabled, setSafeAreaEnabled] = useState<boolean>(true);
@@ -358,48 +373,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     }
   };
 
-  // Keyboard Shortcuts: Space to Play/Pause, Arrows to Seek, S to Split, Backspace/Delete to Remove, Cmd+Z/Y for Undo/Redo, Cmd+D for Diagnostics
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
 
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handlePlayPause();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        handleTimeSeek(Math.max(0, currentTime - (e.shiftKey ? 5 : 1)));
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        handleTimeSeek(Math.min(currentShort.duration, currentTime + (e.shiftKey ? 5 : 1)));
-      } else if (e.code === 'KeyS') {
-        e.preventDefault();
-        handleSplitTimeline(currentTime);
-      } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (selectedItemId) {
-          e.preventDefault();
-          handleDeleteSelected();
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
-        e.preventDefault();
-        handleRedo();
-      } else if ((e.metaKey || e.ctrlKey) && e.code === 'KeyD') {
-        e.preventDefault();
-        setIsDebugOpen((prev) => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentTime, currentShort.duration, currentShort.startTime, currentShort.endTime, isPlaying, historyIndex, history.length, selectedItemId]);
 
   // Handle local video upload / media replacement
   const handleRelinkFile = (file: File) => {
@@ -1345,6 +1319,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
       return;
     }
 
+    const capToDelete = (currentShort.captions || []).find((c) => c.id === selectedItemId);
+    if (capToDelete) {
+      setDeletedCaptionsHistory((prev) => [...prev, capToDelete]);
+    }
+
     const updated = {
       ...currentShort,
       captions: (currentShort.captions || []).filter((c) => c.id !== selectedItemId),
@@ -1356,7 +1335,61 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     setSelectedItemId(null);
   };
 
-  // Keyboard Shortcuts (Part 11)
+  const [deletedCaptionsHistory, setDeletedCaptionsHistory] = useState<CaptionSegment[]>([]);
+
+  // Duplicate Caption (Phase 11)
+  const handleDuplicateCaption = useCallback((captionId: string) => {
+    const capIndex = (currentShort.captions || []).findIndex((c) => c.id === captionId);
+    if (capIndex === -1) return;
+    const target = currentShort.captions![capIndex];
+    const duration = Math.max(0.4, target.end - target.start);
+    const newStart = target.end + 0.05;
+    const newEnd = newStart + duration;
+    const newId = `cap_dup_${Date.now()}`;
+    const newWords = (target.words || []).map((w, wIdx) => {
+      const offset = newStart - target.start;
+      return {
+        ...w,
+        id: `${newId}_w_${wIdx}`,
+        start: w.start + offset,
+        end: w.end + offset,
+      };
+    });
+
+    const duplicatedCaption: CaptionSegment = {
+      ...target,
+      id: newId,
+      start: newStart,
+      end: newEnd,
+      displayStart: newStart,
+      displayEnd: newEnd,
+      words: newWords,
+    };
+
+    const newCaptions = [...(currentShort.captions || [])];
+    newCaptions.splice(capIndex + 1, 0, duplicatedCaption);
+
+    pushState({
+      ...currentShort,
+      captions: newCaptions,
+    });
+    setSelectedItemId(newId);
+  }, [currentShort, pushState]);
+
+  // Restore Last Deleted Caption (Phase 11)
+  const handleRestoreLastCaption = useCallback(() => {
+    if (deletedCaptionsHistory.length === 0) return;
+    const lastDeleted = deletedCaptionsHistory[deletedCaptionsHistory.length - 1];
+    setDeletedCaptionsHistory((prev) => prev.slice(0, -1));
+    const newCaptions = [...(currentShort.captions || []), lastDeleted].sort((a, b) => a.start - b.start);
+    pushState({
+      ...currentShort,
+      captions: newCaptions,
+    });
+    setSelectedItemId(lastDeleted.id);
+  }, [deletedCaptionsHistory, currentShort, pushState]);
+
+  // Consolidated Professional Keyboard Shortcuts (Phase 11)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -1384,19 +1417,31 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           e.preventDefault();
           handleDeleteSelected();
         }
-      } else if (e.code === 'ArrowLeft' && selectedItemId) {
+      } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        const delta = e.shiftKey ? 0.5 : 0.1;
-        const cap = (currentShort.captions || []).find((c) => c.id === selectedItemId);
-        if (cap) {
-          handleUpdateCaptionTiming(cap.id, Math.max(0, cap.start - delta), Math.max(0.2, cap.end - delta));
+        const cap = selectedItemId ? (currentShort.captions || []).find((c) => c.id === selectedItemId) : null;
+        if (cap && Array.isArray(cap.words) && cap.words.length > 0) {
+          const curIdx = cap.words.findIndex((w) => currentTime >= w.start && currentTime <= w.end);
+          if (curIdx > 0) {
+            handleTimeSeek(cap.words[curIdx - 1].start);
+          } else {
+            handleTimeSeek(Math.max(0, cap.start));
+          }
+        } else {
+          handleTimeSeek(Math.max(0, currentTime - (e.shiftKey ? 5 : 1)));
         }
-      } else if (e.code === 'ArrowRight' && selectedItemId) {
+      } else if (e.code === 'ArrowRight') {
         e.preventDefault();
-        const delta = e.shiftKey ? 0.5 : 0.1;
-        const cap = (currentShort.captions || []).find((c) => c.id === selectedItemId);
-        if (cap) {
-          handleUpdateCaptionTiming(cap.id, cap.start + delta, cap.end + delta);
+        const cap = selectedItemId ? (currentShort.captions || []).find((c) => c.id === selectedItemId) : null;
+        if (cap && Array.isArray(cap.words) && cap.words.length > 0) {
+          const curIdx = cap.words.findIndex((w) => currentTime >= w.start && currentTime <= w.end);
+          if (curIdx >= 0 && curIdx < cap.words.length - 1) {
+            handleTimeSeek(cap.words[curIdx + 1].start);
+          } else {
+            handleTimeSeek(Math.min(currentShort.duration, cap.end));
+          }
+        } else {
+          handleTimeSeek(Math.min(currentShort.duration, currentTime + (e.shiftKey ? 5 : 1)));
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -1405,6 +1450,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         } else {
           handleUndo();
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
+        e.preventDefault();
+        setIsDebugOpen((prev) => !prev);
       }
     };
 
@@ -1418,6 +1469,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     handleDeleteSelected,
     handleUndo,
     handleRedo,
+    handleSplitCaption,
+    handleSplitTimeline,
+    handleMergeCaptions,
+    handleTimeSeek,
   ]);
 
   // Delete SFX
@@ -1636,7 +1691,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         onOpenBrandKit={() => setIsBrandKitModalOpen(true)}
         onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
         onOpenAiTools={handleOneClickAIEdit}
-        onExport={() => onExport(currentShort)}
+        onExport={() => {
+          onExport({
+            ...currentShort,
+            captionCustomization: captionConfig,
+            captionConfig: captionConfig,
+          });
+        }}
       />
 
       {/* AI Edit Toast Notice */}
@@ -1654,10 +1715,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           activeTab={leftPanelTab}
           onTabChange={setLeftPanelTab}
           captionConfig={captionConfig}
-          onCaptionConfigChange={(newCfg) => {
-            setCaptionConfig(newCfg);
-            pushState({ ...currentShort });
-          }}
+          onCaptionConfigChange={handleCaptionConfigChange}
           currentTime={currentTime}
           onSeek={handleTimeSeek}
           onUpdateShort={pushState}
@@ -1736,10 +1794,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
           {inspectorMode === 'typography' ? (
             <TypographyInspector
               captionConfig={captionConfig}
-              onChange={(newCfg) => {
-                setCaptionConfig(newCfg);
-                pushState({ ...currentShort });
-              }}
+              onChange={handleCaptionConfigChange}
             />
           ) : currentShort.audioToVideoConfig && panelMode === 'audio_studio' ? (
             <AudioToVideoInspector
@@ -1755,7 +1810,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               activeTab={activeTab}
               onTabChange={setActiveTab}
               captionConfig={captionConfig}
-              onCaptionConfigChange={setCaptionConfig}
+              onCaptionConfigChange={handleCaptionConfigChange}
               onSelectHook={handleSelectHook}
               onRegenerateHooks={handleRegenerateHooks}
               isRegeneratingHooks={isRegeneratingHooks}
@@ -2099,8 +2154,23 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
       <BrandKitModal
         isOpen={isBrandKitModalOpen}
         brandKit={brandKit}
-        onSave={(kit) => {
+        onSave={() => {
           setIsBrandKitModalOpen(false);
+        }}
+        onApplyToProject={(kit) => {
+          const newCfg: CaptionCustomization = {
+            ...captionConfig,
+            fontFamily: kit.fontFamily || captionConfig.fontFamily,
+            primaryColor: kit.primaryColor || captionConfig.primaryColor,
+            highlightColor: kit.highlightColor || captionConfig.highlightColor,
+            strokeColor: kit.strokeColor || captionConfig.strokeColor,
+            positionY: kit.defaultPositionY ?? captionConfig.positionY,
+            preset: (kit.defaultPreset as any) || captionConfig.preset,
+          };
+          handleCaptionConfigChange(newCfg);
+          setIsBrandKitModalOpen(false);
+          setAiEditNotice('✨ Applied Brand Kit to captions & preview!');
+          setTimeout(() => setAiEditNotice(null), 2500);
         }}
         onClose={() => setIsBrandKitModalOpen(false)}
       />

@@ -353,6 +353,44 @@ export type CaptionEvent = {
   animation: CaptionAnimation;
 };
 
+export type CaptionSegmentationMode = 'WORD' | 'LINE' | 'BEAT' | 'BLOCK' | 'AUTO';
+
+export interface CaptionSegmentationOptions {
+  mode?: CaptionSegmentationMode;
+  wordsPerBeat?: number; // 2 | 3 | 4 | 5 | 6
+  maxCharacters?: number; // 20 | 28 | 32 | 38 | 45
+  readingSpeed?: 'slow' | 'balanced' | 'fast';
+  sentenceAwareness?: boolean;
+  punctuationAwareness?: boolean;
+  pauseSensitivity?: 'low' | 'medium' | 'high';
+  preserveHindiHinglish?: boolean;
+}
+
+export interface CaptionBeatWord extends WordTiming {
+  id: string;
+  word: string;
+  start: number;
+  end: number;
+  confidence?: number;
+  isEmphasis?: boolean;
+  emphasisType?: 'number' | 'metric' | 'currency' | 'hook' | 'action' | 'name' | 'custom';
+}
+
+export interface CaptionBeat {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  words: CaptionBeatWord[];
+  emphasisWords: string[];
+  confidence: number;
+  readingSpeed: number; // characters per second
+  pauseBefore: number;
+  pauseAfter: number;
+  lineCount: number;
+  semanticType: 'hook' | 'statement' | 'question' | 'punchline' | 'standard';
+}
+
 export interface CaptionSegment {
   id: string;
   text: string;
@@ -366,6 +404,13 @@ export interface CaptionSegment {
   animation?: CaptionAnimation;
   displayStart?: number;
   displayEnd?: number;
+  emphasisWords?: string[];
+  confidence?: number;
+  readingSpeed?: number;
+  pauseBefore?: number;
+  pauseAfter?: number;
+  lineCount?: number;
+  semanticType?: 'hook' | 'statement' | 'question' | 'punchline' | 'standard';
 }
 
 // Canonical Transcript Format (Section 2 & 5)
@@ -560,6 +605,7 @@ export interface ShortCandidate {
   dubEvents?: DubEvent[];
   provenanceList?: AssetProvenance[];
   captionCustomization?: CaptionCustomization;
+  captionConfig?: CaptionCustomization;
   sfxTrack?: any[];
   vfxTrack?: any[];
 }
@@ -607,6 +653,10 @@ export interface BrandKit {
   fontBody?: string;
   fontFamily?: string;
   captionStylePreset?: CaptionStyleId;
+  highlightColor?: string;
+  strokeColor?: string;
+  defaultPositionY?: number;
+  defaultPreset?: string;
   watermarkText?: string;
   watermarkPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   watermarkOpacity: number;
@@ -672,6 +722,11 @@ export interface CaptionCustomization {
     | 'underline'
     | 'spring'
     | 'punch'
+    | 'shake'
+    | 'elastic'
+    | 'rotate'
+    | 'overshoot'
+    | 'subtle_wave'
     | 'none';
   animationMode?: CaptionAnimationMode;
   animation?: any;
@@ -689,6 +744,19 @@ export interface CaptionCustomization {
   entryAnimation?: string;
   exitAnimation?: string;
   uppercase: boolean;
+  textColor?: string;
+  wordsPerBeat?: number;
+  activeWordAnimation?: string;
+  entranceAnimation?: string;
+  emphasisBehavior?: 'scale' | 'color' | 'glow' | 'bounce' | 'box' | 'underline' | 'none';
+  safeZone?: boolean;
+  textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+  glow?: boolean;
+  scale?: number;
+  tracking?: number;
+  shadow?: boolean;
+  shadowOffset?: number;
+  background?: string;
   enableSpeechHold?: boolean;
   holdThresholdSeconds?: number;
   finalHoldSeconds?: number;

@@ -20,6 +20,7 @@ import {
   TranscriptionJobStage,
   TranscriptionError,
 } from './types';
+import { PythonWhisperProvider } from './providers/PythonWhisperProvider';
 import { LocalWhisperProvider } from './providers/LocalWhisperProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
 import { detectHardware } from './hardwareDetector';
@@ -31,6 +32,8 @@ import { Transcript, CaptionSegment, ScriptSection } from '../../types';
 
 export interface ManagerTranscribeOptions {
   sourceMediaPath: string;
+  sourceMediaId?: string;
+  jobId?: string;
   startTime?: number;
   endTime?: number;
   duration?: number;
@@ -39,6 +42,7 @@ export interface ManagerTranscribeOptions {
   topic?: string;
   forceRefresh?: boolean;
   onProgress?: (stage: TranscriptionJobStage, message: string, percent: number) => void;
+  onProgressEvent?: (evt: any) => void;
 }
 
 export interface ManagerTranscribeResult {
@@ -65,9 +69,11 @@ export class TranscriptionManager {
   private activeJobs = new Map<string, TranscriptionJob>();
 
   private constructor() {
-    // Priority 1: Canonical Local Whisper (runs offline, zero external dependencies)
+    // Priority 1: High-Performance Python Whisper (Apple Silicon Metal GPU / MLX & faster-whisper)
+    this.registerProvider(new PythonWhisperProvider());
+    // Priority 2: Fallback in-process Local Whisper (ONNX Runtime)
     this.registerProvider(new LocalWhisperProvider());
-    // Priority 2: Google Gemini Cloud ASR (optional, requires GEMINI_API_KEY)
+    // Priority 3: Google Gemini Cloud ASR (optional, requires GEMINI_API_KEY)
     this.registerProvider(new GeminiProvider());
   }
 
@@ -318,13 +324,16 @@ export class TranscriptionManager {
           45
         );
 
-        const transcriptionResult: CanonicalTranscriptResult = await provider.transcribe({
+        const transcriptionResult: CanonicalTranscriptResult = await (provider as any).transcribe({
           audioPath,
           sourceMediaPath: options.sourceMediaPath,
+          sourceMediaId: options.sourceMediaId,
+          jobId: options.jobId,
           language,
           wordTimestamps: true,
           clipStart: startTime,
           duration,
+          onProgressEvent: options.onProgressEvent,
         });
 
         options.onProgress?.('DETECTING_LANGUAGE', 'Detecting language & formatting...', 80);

@@ -721,6 +721,7 @@ export default function App() {
       <ExportModal
         isOpen={Boolean(exportingShort)}
         short={exportingShort}
+        captionConfig={exportingShort?.captionCustomization || exportingShort?.captionConfig}
         brandKit={brandKit}
         onClose={() => setExportingShort(null)}
       />

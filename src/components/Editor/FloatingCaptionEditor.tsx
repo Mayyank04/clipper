@@ -93,24 +93,40 @@ export const FloatingCaptionEditor: React.FC<FloatingCaptionEditorProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [caption.id, currentTime, onSplitCaption, onMergeWithNext, onDeleteCaption, onClose]);
 
-  // Direct text edit propagation
+  // Direct text edit propagation: strictly preserve acoustic word timestamps
   const handleTextChange = (newText: string) => {
     setText(newText);
-    const tokens = newText.trim().split(/\s+/).filter(Boolean);
-    const capDuration = Math.max(0.2, endTime - startTime);
-    const tokenDur = capDuration / Math.max(1, tokens.length);
+    const newTokens = newText.trim().split(/\s+/).filter(Boolean);
+    const existingWords = caption.words || [];
 
-    const updatedWords = tokens.map((token, idx) => ({
-      id: `w_${idx}`,
-      word: token,
-      text: token,
-      start: Number((startTime + idx * tokenDur).toFixed(3)),
-      end: Number((startTime + (idx + 1) * tokenDur).toFixed(3)),
-      confidence: 0.95,
-      isHighlight: caption.words?.[idx]?.isHighlight ?? false,
-      highlightColor: caption.words?.[idx]?.highlightColor || activeHighlightColor,
-      scale: 1.0,
-    }));
+    const capDuration = Math.max(0.2, endTime - startTime);
+
+    // If token count is identical, map text directly preserving acoustic start/end
+    const updatedWords = newTokens.map((token, idx) => {
+      const existing = existingWords[idx];
+      if (existing) {
+        return {
+          ...existing,
+          word: token,
+          text: token,
+        };
+      }
+
+      // If new word inserted, interpolate within remaining duration
+      const prevEnd = idx > 0 ? existingWords[idx - 1]?.end || startTime : startTime;
+      const step = Math.min(0.35, (endTime - prevEnd) / Math.max(1, newTokens.length - idx));
+      return {
+        id: `w_${Date.now()}_${idx}`,
+        word: token,
+        text: token,
+        start: Number(prevEnd.toFixed(3)),
+        end: Number(Math.min(endTime, prevEnd + step).toFixed(3)),
+        confidence: 0.95,
+        isHighlight: false,
+        highlightColor: activeHighlightColor,
+        scale: 1.0,
+      };
+    });
 
     const updated: CaptionSegment = {
       ...caption,

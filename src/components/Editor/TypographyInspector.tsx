@@ -179,21 +179,51 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
           </div>
         </div>
 
-        {/* Shadow */}
+        {/* Shadow Controls */}
         <div className="space-y-2 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
           <div className="flex items-center justify-between">
             <label className="text-[11px] font-semibold text-neutral-400">Drop Shadow</label>
             <input
               type="checkbox"
               checked={captionConfig.hasShadow ?? true}
-              onChange={(e) => onChange({ ...captionConfig, hasShadow: e.target.checked })}
+              onChange={(e) => onChange({ ...captionConfig, hasShadow: e.target.checked, shadow: e.target.checked })}
               className="accent-amber-400 cursor-pointer"
             />
           </div>
           {captionConfig.hasShadow !== false && (
-            <div className="flex items-center justify-between pt-1 text-[10px] text-neutral-400">
-              <span>Deep cinematic contrast</span>
-              <span className="text-emerald-400 font-bold">Enabled</span>
+            <div className="space-y-2 pt-2 border-t border-neutral-800/60">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-neutral-400">Blur</span>
+                    <span className="font-mono text-white">{captionConfig.shadowBlur || 8}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value={captionConfig.shadowBlur || 8}
+                    onChange={(e) => onChange({ ...captionConfig, shadowBlur: Number(e.target.value) })}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-neutral-400">Offset</span>
+                    <span className="font-mono text-white">{captionConfig.shadowOffset || captionConfig.shadowOffsetY || 3}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="1"
+                    value={captionConfig.shadowOffset || captionConfig.shadowOffsetY || 3}
+                    onChange={(e) => onChange({ ...captionConfig, shadowOffset: Number(e.target.value), shadowOffsetY: Number(e.target.value) })}
+                    className="w-full accent-amber-400 cursor-pointer"
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -232,6 +262,41 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
           />
         </div>
 
+        {/* Rotation & Scale */}
+        <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400">Rotation</label>
+              <span className="font-mono text-white text-[11px]">{captionConfig.rotation || 0}°</span>
+            </div>
+            <input
+              type="range"
+              min="-15"
+              max="15"
+              step="1"
+              value={captionConfig.rotation || 0}
+              onChange={(e) => onChange({ ...captionConfig, rotation: Number(e.target.value) })}
+              className="w-full accent-amber-400 cursor-pointer"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between">
+              <label className="text-[11px] font-semibold text-neutral-400">Scale</label>
+              <span className="font-mono text-white text-[11px]">{(captionConfig.scale || 1.0).toFixed(2)}x</span>
+            </div>
+            <input
+              type="range"
+              min="0.8"
+              max="1.2"
+              step="0.02"
+              value={captionConfig.scale || 1.0}
+              onChange={(e) => onChange({ ...captionConfig, scale: Number(e.target.value) })}
+              className="w-full accent-amber-400 cursor-pointer"
+            />
+          </div>
+        </div>
+
         {/* Letter Spacing & Line Height */}
         <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
           <div className="space-y-1.5">
@@ -245,7 +310,7 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
               max="8"
               step="0.5"
               value={captionConfig.letterSpacing || 0}
-              onChange={(e) => onChange({ ...captionConfig, letterSpacing: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...captionConfig, letterSpacing: Number(e.target.value), tracking: Number(e.target.value) })}
               className="w-full accent-amber-400 cursor-pointer"
             />
           </div>
@@ -261,13 +326,13 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
               max="2.0"
               step="0.05"
               value={captionConfig.lineHeight || 1.3}
-              onChange={(e) => onChange({ ...captionConfig, lineHeight: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...captionConfig, lineHeight: Number(e.target.value), lineSpacing: Number(e.target.value) })}
               className="w-full accent-amber-400 cursor-pointer"
             />
           </div>
         </div>
 
-        {/* Background Box & Shape */}
+        {/* Background Box, Corner Radius & Shape */}
         <div className="space-y-2 p-3 bg-neutral-950/60 border border-neutral-800 rounded-xl">
           <div className="flex justify-between items-center">
             <label className="text-[11px] font-semibold text-neutral-400">Background Shape</label>
@@ -280,6 +345,7 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
                       ...captionConfig,
                       backgroundShape: shape === 'none' ? undefined : shape,
                       backgroundColor: shape === 'none' ? 'transparent' : (captionConfig.backgroundColor && captionConfig.backgroundColor !== 'transparent' ? captionConfig.backgroundColor : '#000000'),
+                      background: shape === 'none' ? 'transparent' : (captionConfig.backgroundColor || '#000000'),
                     })
                   }
                   className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold cursor-pointer transition ${
@@ -295,27 +361,44 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
           </div>
 
           {captionConfig.backgroundShape && captionConfig.backgroundShape !== 'none' && (
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-800/60">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-neutral-400">Box Color</span>
-                <input
-                  type="color"
-                  value={captionConfig.backgroundColor || '#000000'}
-                  onChange={(e) => onChange({ ...captionConfig, backgroundColor: e.target.value })}
-                  className="w-6 h-6 rounded border border-neutral-700 bg-transparent cursor-pointer"
-                />
+            <div className="space-y-2 pt-2 border-t border-neutral-800/60">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-neutral-400">Box Color</span>
+                  <input
+                    type="color"
+                    value={captionConfig.backgroundColor || '#000000'}
+                    onChange={(e) => onChange({ ...captionConfig, backgroundColor: e.target.value, background: e.target.value })}
+                    className="w-6 h-6 rounded border border-neutral-700 bg-transparent cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-neutral-400">Opacity</span>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1.0"
+                    step="0.05"
+                    value={captionConfig.backgroundOpacity ?? 0.8}
+                    onChange={(e) => onChange({ ...captionConfig, backgroundOpacity: Number(e.target.value) })}
+                    className="w-16 accent-amber-400 cursor-pointer"
+                  />
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-neutral-400">Opacity</span>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="1.0"
-                  step="0.05"
-                  value={captionConfig.backgroundOpacity ?? 0.8}
-                  onChange={(e) => onChange({ ...captionConfig, backgroundOpacity: Number(e.target.value) })}
-                  className="w-16 accent-amber-400 cursor-pointer"
-                />
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-neutral-400">Corner Radius</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    step="2"
+                    value={captionConfig.backgroundRadius ?? 8}
+                    onChange={(e) => onChange({ ...captionConfig, backgroundRadius: Number(e.target.value) })}
+                    className="w-24 accent-amber-400 cursor-pointer"
+                  />
+                  <span className="font-mono text-white text-[10px] w-6 text-right">{captionConfig.backgroundRadius ?? 8}px</span>
+                </div>
               </div>
             </div>
           )}
@@ -331,7 +414,7 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
             <input
               type="checkbox"
               checked={captionConfig.glowEnabled ?? false}
-              onChange={(e) => onChange({ ...captionConfig, glowEnabled: e.target.checked })}
+              onChange={(e) => onChange({ ...captionConfig, glowEnabled: e.target.checked, glow: e.target.checked })}
               className="accent-amber-400 cursor-pointer"
             />
           </div>
@@ -348,34 +431,68 @@ export const TypographyInspector: React.FC<TypographyInspectorProps> = ({
           )}
         </div>
 
-        {/* Case & Layout */}
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-800">
-          <label className="flex items-center gap-2 cursor-pointer text-[11px] text-neutral-300">
-            <input
-              type="checkbox"
-              checked={captionConfig.uppercase !== false}
-              onChange={(e) => onChange({ ...captionConfig, uppercase: e.target.checked })}
-              className="accent-amber-400 cursor-pointer"
-            />
-            <span>ALL CAPS</span>
-          </label>
+        {/* Text Case, Lines & Alignment */}
+        <div className="space-y-2 pt-2 border-t border-neutral-800">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-neutral-400">Text Case</label>
+            <div className="flex gap-1">
+              {[
+                { label: 'ALL CAPS', upper: true, transform: 'uppercase' as const },
+                { label: 'Normal', upper: false, transform: 'none' as const },
+              ].map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => onChange({ ...captionConfig, uppercase: opt.upper, textTransform: opt.transform })}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                    (captionConfig.uppercase ?? true) === opt.upper
+                      ? 'bg-amber-400 text-neutral-950'
+                      : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <div className="flex items-center justify-end gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
-            {(['left', 'center', 'right'] as const).map((align) => (
-              <button
-                key={align}
-                onClick={() => onChange({ ...captionConfig, alignment: align })}
-                className={`p-1 rounded transition-colors ${
-                  (captionConfig.alignment || 'center') === align
-                    ? 'bg-neutral-800 text-amber-400'
-                    : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
-                {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
-                {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
-              </button>
-            ))}
+          <div className="flex items-center justify-between pt-1">
+            <label className="text-[11px] font-semibold text-neutral-400">Max Lines</label>
+            <div className="flex gap-1">
+              {[1, 2, 3].map((lines) => (
+                <button
+                  key={lines}
+                  onClick={() => onChange({ ...captionConfig, maxLines: lines })}
+                  className={`px-2.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                    (captionConfig.maxLines || 2) === lines
+                      ? 'bg-amber-400 text-neutral-950'
+                      : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {lines}L
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <label className="text-[11px] font-semibold text-neutral-400">Alignment</label>
+            <div className="flex items-center gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
+              {(['left', 'center', 'right'] as const).map((align) => (
+                <button
+                  key={align}
+                  onClick={() => onChange({ ...captionConfig, alignment: align })}
+                  className={`p-1 rounded transition-colors ${
+                    (captionConfig.alignment || 'center') === align
+                      ? 'bg-neutral-800 text-amber-400'
+                      : 'text-neutral-500 hover:text-neutral-300'
+                  }`}
+                >
+                  {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                  {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                  {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>

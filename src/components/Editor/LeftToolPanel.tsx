@@ -26,6 +26,11 @@ import {
   ChevronDown,
   RefreshCw,
   Edit3,
+  Star,
+  Download,
+  Upload,
+  Bookmark,
+  X,
 } from 'lucide-react';
 import {
   ShortCandidate,
@@ -51,6 +56,18 @@ import {
   analyzeCaptionPolish,
   PolishSuggestion,
 } from '../../utils/captionEngine';
+import { CREATOR_PRESETS_80, PRESET_CATEGORIES_15 } from '../../data/creatorPresets80';
+import {
+  getFavorites,
+  toggleFavorite,
+  getRecentlyUsed,
+  addRecentlyUsed,
+  getCustomPresets,
+  saveCustomPreset,
+  deleteCustomPreset,
+  exportPresetsJson,
+  importPresetsJson,
+} from '../../utils/customPresetsManager';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { BUILTIN_SFX_CATALOG, searchSFXCatalog } from '../../utils/sfxCatalog';
 import { LiveTemplatePreview } from './VideoCanvas';
@@ -96,6 +113,12 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
   // Captions Tab sub-mode: 'word' | 'line' | 'block'
   const [captionEditMode, setCaptionEditMode] = useState<'word' | 'line' | 'block'>('word');
   const [selectedStyleCategory, setSelectedStyleCategory] = useState<string>('all');
+  const [presetSearch, setPresetSearch] = useState<string>('');
+  const [favoritesList, setFavoritesList] = useState<string[]>(() => getFavorites());
+  const [recentlyUsedList, setRecentlyUsedList] = useState<string[]>(() => getRecentlyUsed());
+  const [customPresetsList, setCustomPresetsList] = useState<CaptionStyleDefinition[]>(() => getCustomPresets());
+  const [showSavePresetModal, setShowSavePresetModal] = useState<boolean>(false);
+  const [newPresetName, setNewPresetName] = useState<string>('');
   const [sfxSearchQuery, setSfxSearchQuery] = useState<string>('');
   const [selectedWordState, setSelectedWordState] = useState<{
     captionId: string;
@@ -103,17 +126,44 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
     word: WordTiming;
   } | null>(null);
 
+  // All Available Presets (Builtin 85 + Custom)
+  const allAvailablePresets = useMemo(() => {
+    return [...customPresetsList, ...CREATOR_PRESETS_80];
+  }, [customPresetsList]);
+
   // Filtered Styles
   const filteredStyles = useMemo(() => {
-    if (selectedStyleCategory === 'all') return ALL_CAPTION_STYLES;
-    const sel = selectedStyleCategory.toLowerCase();
-    return ALL_CAPTION_STYLES.filter((s) => {
-      const cat = (s.category || '').toLowerCase();
-      if (sel === 'education' && (cat === 'education' || cat === 'educational')) return true;
-      if (sel === 'indian' && (cat === 'indian' || cat === 'indian_creator' || cat === 'hindi' || cat === 'hinglish')) return true;
-      return cat === sel;
-    });
-  }, [selectedStyleCategory]);
+    let list = allAvailablePresets;
+    const cat = selectedStyleCategory.toLowerCase();
+
+    if (cat === 'favorites') {
+      list = list.filter((p) => favoritesList.includes(p.id));
+    } else if (cat === 'recent') {
+      list = list.filter((p) => recentlyUsedList.includes(p.id));
+      list.sort((a, b) => recentlyUsedList.indexOf(a.id) - recentlyUsedList.indexOf(b.id));
+    } else if (cat === 'custom') {
+      list = list.filter((p) => p.category === 'custom');
+    } else if (cat !== 'all') {
+      list = list.filter((p) => {
+        const pCat = (p.category || '').toLowerCase();
+        if (cat === 'indian') return pCat === 'indian' || pCat === 'hindi' || pCat === 'hinglish';
+        return pCat === cat;
+      });
+    }
+
+    if (presetSearch.trim()) {
+      const q = presetSearch.toLowerCase().trim();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q) ||
+          (p.desc && p.desc.toLowerCase().includes(q)) ||
+          (p.config.fontFamily && p.config.fontFamily.toLowerCase().includes(q))
+      );
+    }
+
+    return list;
+  }, [allAvailablePresets, selectedStyleCategory, favoritesList, recentlyUsedList, presetSearch]);
 
   // Total words & duration stats
   const totalWordsCount = useMemo(() => {
@@ -148,26 +198,64 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
     return warnings;
   }, [short.captions]);
 
-  // Handle Apply Style
+  // Handle Apply Style (instantly updates config & records to recently used)
   const handleApplyStyle = (styleDef: CaptionStyleDefinition) => {
     const updatedConfig: CaptionCustomization = {
       ...captionConfig,
+      ...styleDef.config,
       preset: styleDef.id as CaptionStylePreset,
       style: styleDef.id,
-      fontFamily: styleDef.config.fontFamily || captionConfig.fontFamily,
-      fontSize: styleDef.config.fontSize || captionConfig.fontSize,
-      fontWeight: styleDef.config.fontWeight || captionConfig.fontWeight,
-      primaryColor: styleDef.config.primaryColor || captionConfig.primaryColor,
-      highlightColor: styleDef.config.highlightColor || captionConfig.highlightColor,
-      strokeColor: styleDef.config.strokeColor || captionConfig.strokeColor,
-      strokeWidth: styleDef.config.strokeWidth ?? captionConfig.strokeWidth,
-      shadowColor: styleDef.config.shadowColor || captionConfig.shadowColor,
-      hasShadow: styleDef.config.hasShadow ?? captionConfig.hasShadow,
-      positionY: styleDef.config.positionY ?? captionConfig.positionY,
-      animationType: styleDef.config.animationType || captionConfig.animationType,
-      animationMode: styleDef.config.animationMode || captionConfig.animationMode,
     };
     onCaptionConfigChange(updatedConfig);
+    const updatedRecent = addRecentlyUsed(styleDef.id);
+    setRecentlyUsedList(updatedRecent);
+  };
+
+  const handleToggleFavorite = (presetId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const updated = toggleFavorite(presetId);
+    setFavoritesList(updated);
+  };
+
+  const handleSaveCurrentPreset = () => {
+    if (!newPresetName.trim()) return;
+    saveCustomPreset(newPresetName, captionConfig);
+    setCustomPresetsList(getCustomPresets());
+    setNewPresetName('');
+    setShowSavePresetModal(false);
+    setSelectedStyleCategory('custom');
+  };
+
+  const handleDeleteCustomPreset = (presetId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = deleteCustomPreset(presetId);
+    setCustomPresetsList(updated);
+  };
+
+  const handleExportPresetsJson = () => {
+    const jsonStr = exportPresetsJson(customPresetsList.length > 0 ? customPresetsList : CREATOR_PRESETS_80.slice(0, 10));
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `viralclip_presets_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportPresetsJson = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = importPresetsJson(content);
+        setCustomPresetsList(imported);
+        setSelectedStyleCategory('custom');
+      } catch (err: any) {
+        alert(err.message || 'Failed to import presets JSON');
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Auto-Fix Captions
@@ -710,49 +798,175 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
 
         {/* ===================== TAB 2: STYLES ===================== */}
         {activeTab === 'styles' && (
-          <div className="space-y-4">
-            {/* Category Filter Pills */}
-            <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
-              {['all', 'viral', 'podcast', 'cinematic', 'gaming', 'education', 'motivational', 'meme', 'indian'].map((cat) => (
+          <div className="space-y-3.5">
+            {/* Search and Manage Presets Bar */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                <input
+                  type="text"
+                  placeholder="Search 85+ creator styles, fonts, tags..."
+                  value={presetSearch}
+                  onChange={(e) => setPresetSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                />
+                {presetSearch && (
+                  <button
+                    onClick={() => setPresetSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Actions (Save Current, Export, Import) */}
+              <div className="flex items-center justify-between text-[11px]">
+                <div className="text-[10px] text-neutral-400 font-mono">
+                  {filteredStyles.length} Styles Shown
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowSavePresetModal(true)}
+                    className="px-2 py-0.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 font-bold border border-amber-400/40 cursor-pointer flex items-center gap-1 text-[10px]"
+                    title="Save current typography as custom preset"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Save Preset
+                  </button>
+                  <button
+                    onClick={handleExportPresetsJson}
+                    className="p-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800 cursor-pointer"
+                    title="Export Presets JSON"
+                  >
+                    <Download className="w-3 h-3" />
+                  </button>
+                  <label
+                    className="p-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800 cursor-pointer flex items-center justify-center"
+                    title="Import Presets JSON"
+                  >
+                    <Upload className="w-3 h-3" />
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportPresetsJson(file);
+                        e.target.value = '';
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Save Preset Inline Modal */}
+            {showSavePresetModal && (
+              <div className="p-3 bg-neutral-950 border border-amber-400/40 rounded-xl space-y-2">
+                <span className="text-xs font-bold text-amber-300 block">Save Current Style as Preset</span>
+                <input
+                  type="text"
+                  placeholder="e.g. My MrBeast Style"
+                  value={newPresetName}
+                  onChange={(e) => setNewPresetName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveCurrentPreset()}
+                  className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-1.5">
+                  <button
+                    onClick={() => setShowSavePresetModal(false)}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-400 text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveCurrentPreset}
+                    disabled={!newPresetName.trim()}
+                    className="px-3 py-1 rounded-lg bg-amber-400 text-neutral-950 font-bold text-xs hover:bg-amber-300 disabled:opacity-50 cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Category Filter Pills (15 Categories + Favorites + Recent + Custom) */}
+            <div className="flex flex-wrap gap-1 text-[10px] font-bold max-h-24 overflow-y-auto pr-1">
+              {[
+                { id: 'all', label: 'All (85)' },
+                { id: 'favorites', label: `⭐ Favorites (${favoritesList.length})` },
+                { id: 'recent', label: '🕒 Recent' },
+                { id: 'custom', label: `🎨 My Presets (${customPresetsList.length})` },
+                ...PRESET_CATEGORIES_15.filter((c) => c !== 'all').map((c) => ({
+                  id: c,
+                  label: c.toUpperCase(),
+                })),
+              ].map((cat) => (
                 <button
-                  key={cat}
-                  onClick={() => setSelectedStyleCategory(cat)}
-                  className={`px-2.5 py-1 rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
-                    selectedStyleCategory === cat
-                      ? 'bg-amber-400 text-neutral-950 font-black'
+                  key={cat.id}
+                  onClick={() => setSelectedStyleCategory(cat.id)}
+                  className={`px-2 py-0.5 rounded-lg uppercase tracking-wider transition-all cursor-pointer ${
+                    selectedStyleCategory === cat.id
+                      ? 'bg-amber-400 text-neutral-950 font-black shadow-sm'
                       : 'bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800'
                   }`}
                 >
-                  {cat}
+                  {cat.label}
                 </button>
               ))}
             </div>
 
-            {/* 30+ Styles Grid with Live Animated Hover Preview */}
-            <div className="grid grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+            {/* 85+ Styles Grid with Live Animated Hover Preview */}
+            <div className="grid grid-cols-2 gap-2.5 max-h-[520px] overflow-y-auto pr-1">
               {filteredStyles.map((styleDef) => {
                 const isSelected = captionConfig.preset === styleDef.id || captionConfig.style === styleDef.id;
+                const isFav = favoritesList.includes(styleDef.id);
+                const isCustom = styleDef.category === 'custom';
+
                 return (
                   <div
                     key={styleDef.id}
                     onClick={() => handleApplyStyle(styleDef)}
-                    className={`group relative rounded-xl border p-2.5 flex flex-col justify-between transition-all cursor-pointer overflow-hidden ${
+                    className={`group relative rounded-xl border p-2 flex flex-col justify-between transition-all cursor-pointer overflow-hidden ${
                       isSelected
                         ? 'bg-amber-400/10 border-amber-400 shadow-md shadow-amber-500/10'
                         : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'
                     }`}
                   >
-                    {/* Live Animated Preview Canvas */}
-                    <div className="aspect-video w-full rounded-lg overflow-hidden mb-2 relative bg-black/60 flex items-center justify-center">
-                      <LiveTemplatePreview styleDef={styleDef} isSelected={isSelected} />
+                    {/* Live Animated Preview Canvas with Hover Loop */}
+                    <div className="aspect-video w-full rounded-lg overflow-hidden mb-1.5 relative bg-black/70 flex items-center justify-center">
+                      <LiveTemplatePreview
+                        styleDef={styleDef}
+                        isSelected={isSelected}
+                        isFavorite={isFav}
+                        onToggleFavorite={(e) => handleToggleFavorite(styleDef.id, e)}
+                      />
                     </div>
 
                     <div className="space-y-0.5">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-white text-[11px] truncate">{styleDef.name}</span>
-                        {isSelected && <Check className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+                        <div className="flex items-center gap-1">
+                          {isCustom && (
+                            <button
+                              onClick={(e) => handleDeleteCustomPreset(styleDef.id, e)}
+                              className="text-neutral-500 hover:text-red-400 p-0.5"
+                              title="Delete custom preset"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                          {isSelected && <Check className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+                        </div>
                       </div>
-                      <span className="text-[9px] text-neutral-500 capitalize">{styleDef.category}</span>
+                      <div className="flex items-center justify-between text-[9px] text-neutral-500">
+                        <span className="capitalize">{styleDef.category}</span>
+                        <span className="font-mono text-[8px] text-neutral-600 truncate max-w-[80px]">
+                          {styleDef.config.fontFamily?.split(',')[0]}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );

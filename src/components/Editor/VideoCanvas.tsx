@@ -74,11 +74,16 @@ export const LiveTemplatePreview: React.FC<LiveTemplatePreviewProps> = ({
   onSelect,
   onToggleFavorite,
 }) => {
-  const [ticker, setTicker] = useState<number>(0);
+  const [ticker, setTicker] = useState<number>(0.6);
+  const [isHovered, setIsHovered] = useState<boolean>(false);
   const animFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    let start = performance.now();
+    if (!isHovered && !isSelected) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      return;
+    }
+    let start = performance.now() - (ticker * 1000);
     const loop = (now: number) => {
       const elapsed = (now - start) / 1000;
       setTicker(elapsed % 2.4);
@@ -88,7 +93,7 @@ export const LiveTemplatePreview: React.FC<LiveTemplatePreviewProps> = ({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, []);
+  }, [isHovered, isSelected]);
 
   const sampleWords = useMemo(
     () => [
@@ -105,6 +110,8 @@ export const LiveTemplatePreview: React.FC<LiveTemplatePreviewProps> = ({
   return (
     <div
       onClick={onSelect}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={`relative p-3 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group select-none flex flex-col justify-between h-28 ${
         isSelected
           ? 'bg-amber-400/10 border-amber-400 shadow-lg shadow-amber-400/10 ring-1 ring-amber-400/40'
@@ -788,14 +795,13 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
                     return (
                       <span
                         key={idx}
-                        className={`inline-block mx-1 transition-all duration-75 ${
-                          anim.highlighted ? 'font-black' : 'font-bold'
-                        } ${anim.strokeWidth > 0 ? 'text-stroke-sm' : ''} ${
-                          anim.isMarker ? 'bg-amber-400/30 px-1 rounded' : ''
-                        }`}
+                        className={`inline-block mx-1 transition-all duration-75 select-none ${
+                          anim.strokeWidth > 0 ? 'text-stroke-sm' : ''
+                        } ${anim.isMarker ? 'bg-amber-400/30 px-1 rounded' : ''}`}
                         style={{
                           color: anim.color,
                           transform: `translate(${anim.translateX || 0}px, ${anim.translateY || 0}px) scale(${anim.scale || 1}) rotate(${anim.rotate || 0}deg)`,
+                          transformOrigin: 'center center',
                           opacity: anim.opacity,
                           filter: anim.blur ? `blur(${anim.blur}px)` : undefined,
                           WebkitTextStroke: anim.strokeWidth > 0 ? `${previewStyles.strokeWidth}px ${anim.strokeColor}` : undefined,
@@ -817,22 +823,31 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           })()
         )}
 
-        {/* 9:16 Safe-Zone Overlay Guides */}
+        {/* 9:16 Safe-Zone Overlay Guides (TikTok / Reels / Shorts Parity) */}
         {(safeAreaEnabled !== undefined ? safeAreaEnabled : showSafeZones) && aspectRatio === '9:16' && (
           <div className="absolute inset-0 pointer-events-none z-25 border-2 border-dashed border-sky-400/40">
-            <div className="absolute top-0 inset-x-0 h-[15%] bg-red-500/10 border-b border-dashed border-red-400/50 flex items-center justify-center">
-              <span className="text-[9px] font-mono font-bold text-red-300 tracking-wider bg-black/60 px-2 py-0.5 rounded">
-                HEADER SAFE MARGIN (15%)
+            {/* Top Bar Safe Zone */}
+            <div className="absolute top-0 inset-x-0 h-[14%] bg-red-500/10 border-b border-dashed border-red-400/50 flex items-center justify-between px-3">
+              <span className="text-[9px] font-mono font-bold text-red-300 tracking-wider bg-black/75 px-2 py-0.5 rounded border border-red-500/30">
+                TOP SAFE ZONE (14% — Search & Status Bar)
+              </span>
+              <span className="text-[8px] font-mono text-neutral-300 bg-neutral-900/80 px-1.5 py-0.5 rounded">
+                TikTok / Reels / Shorts
               </span>
             </div>
-            <div className="absolute top-[15%] right-0 bottom-[20%] w-[20%] bg-red-500/10 border-l border-dashed border-red-400/50 flex items-center justify-center">
-              <span className="text-[8px] font-mono font-bold text-red-300 tracking-wider bg-black/60 px-1 py-0.5 rounded rotate-90 whitespace-nowrap">
-                SOCIAL ACTIONS (20%)
+            {/* Right Action Icons Safe Zone */}
+            <div className="absolute top-[14%] right-0 bottom-[22%] w-[18%] bg-red-500/10 border-l border-dashed border-red-400/50 flex items-center justify-center">
+              <span className="text-[8px] font-mono font-bold text-red-300 tracking-wider bg-black/75 px-1.5 py-0.5 rounded rotate-90 whitespace-nowrap border border-red-500/30">
+                ACTION BUTTONS (18% — Like / Share / Remix)
               </span>
             </div>
-            <div className="absolute bottom-0 inset-x-0 h-[20%] bg-amber-500/10 border-t border-dashed border-amber-400/50 flex items-center justify-center">
-              <span className="text-[9px] font-mono font-bold text-amber-300 tracking-wider bg-black/60 px-2 py-0.5 rounded">
-                DESCRIPTION & CAPTION SAFE MARGIN (20%)
+            {/* Bottom Metadata & Controls Safe Zone */}
+            <div className="absolute bottom-0 inset-x-0 h-[22%] bg-amber-500/10 border-t border-dashed border-amber-400/50 flex items-center justify-between px-3">
+              <span className="text-[9px] font-mono font-bold text-amber-300 tracking-wider bg-black/75 px-2 py-0.5 rounded border border-amber-500/30">
+                BOTTOM SAFE ZONE (22% — Username / Title / Audio Track)
+              </span>
+              <span className="text-[8px] font-mono font-bold text-emerald-300 bg-black/75 px-2 py-0.5 rounded border border-emerald-500/30">
+                OPTIMAL CAPTION Y: 60% – 76%
               </span>
             </div>
           </div>

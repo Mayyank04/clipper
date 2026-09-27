@@ -81,6 +81,23 @@ const CHECKLIST_STAGES = [
   },
 ];
 
+interface TranscriptionMetrics {
+  backend?: string;
+  device?: string;
+  workerPid?: number;
+  audioProcessed?: number;
+  audioTotal?: number;
+  words?: number;
+  segments?: number;
+  realtimeSpeed?: number;
+  etaSeconds?: number;
+  currentChunk?: number;
+  totalChunks?: number;
+  stallWarning?: boolean;
+  stallDiagnostic?: boolean;
+  stallUnhealthy?: boolean;
+}
+
 export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   isOpen,
   projectId,
@@ -96,6 +113,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   const [progress, setProgress] = useState<number>(0);
   const [currentStageText, setCurrentStageText] = useState<string>('Validating source...');
   const [status, setStatus] = useState<string>('validating');
+  const [transcriptionMetrics, setTranscriptionMetrics] = useState<TranscriptionMetrics | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -138,6 +156,9 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
         setStatus(statusData.status || 'validating');
         if (statusData.currentStage) {
           setCurrentStageText(statusData.currentStage);
+        }
+        if (statusData.transcriptionMetrics) {
+          setTranscriptionMetrics(statusData.transcriptionMetrics);
         }
         if (Array.isArray(statusData.logs)) {
           setLogs(statusData.logs);
@@ -414,7 +435,108 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
               </div>
             );
           })() : (
-            /* Active Observable Checklist */
+            <>
+            {/* Live Whisper ASR Engine Card */}
+            {(transcriptionMetrics || status === 'transcribing' || status === 'analyzing') && (
+              <div className="p-4 rounded-xl bg-neutral-950 border border-amber-500/20 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-xs font-bold text-neutral-200">
+                      {transcriptionMetrics?.backend === 'mlx-whisper' ? 'MLX Whisper (Metal GPU)' : 'Whisper ASR Engine'}
+                    </span>
+                    {transcriptionMetrics?.device && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-400/10 text-amber-300 font-mono">
+                        {transcriptionMetrics.device}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-[11px] text-neutral-400">
+                    {transcriptionMetrics?.workerPid && <span>PID {transcriptionMetrics.workerPid}</span>}
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">
+                      ACTIVE
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sub-progress bar for transcription audio stream */}
+                {transcriptionMetrics?.audioTotal && transcriptionMetrics.audioTotal > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] font-mono text-neutral-400">
+                      <span>Audio Processed</span>
+                      <span className="text-amber-400 font-bold">
+                        {Math.round(transcriptionMetrics.audioProcessed || 0)}s / {Math.round(transcriptionMetrics.audioTotal)}s (
+                        {Math.round(((transcriptionMetrics.audioProcessed || 0) / transcriptionMetrics.audioTotal) * 100)}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-neutral-900 h-1.5 rounded-full overflow-hidden border border-neutral-800">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-300"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.round(((transcriptionMetrics.audioProcessed || 0) / transcriptionMetrics.audioTotal) * 100)
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Performance Stats Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
+                  <div className="p-2 rounded-lg bg-neutral-900/80 border border-neutral-800/80">
+                    <div className="text-[10px] text-neutral-500 uppercase">Words</div>
+                    <div className="text-neutral-200 font-bold">
+                      {transcriptionMetrics?.words?.toLocaleString() || '0'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-neutral-900/80 border border-neutral-800/80">
+                    <div className="text-[10px] text-neutral-500 uppercase">Segments</div>
+                    <div className="text-neutral-200 font-bold">
+                      {transcriptionMetrics?.segments?.toLocaleString() || '0'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-neutral-900/80 border border-neutral-800/80">
+                    <div className="text-[10px] text-neutral-500 uppercase">Speed</div>
+                    <div className="text-emerald-400 font-bold">
+                      {transcriptionMetrics?.realtimeSpeed ? `${transcriptionMetrics.realtimeSpeed.toFixed(1)}x realtime` : 'Calculating...'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-neutral-900/80 border border-neutral-800/80">
+                    <div className="text-[10px] text-neutral-500 uppercase">ETA</div>
+                    <div className="text-amber-400 font-bold">
+                      {typeof transcriptionMetrics?.etaSeconds === 'number'
+                        ? `${Math.round(transcriptionMetrics.etaSeconds)}s`
+                        : '--'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stall Warning & Diagnostics if slow */}
+                {transcriptionMetrics?.stallUnhealthy ? (
+                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+                    <span>Worker stalled (&gt;60s without heartbeat).</span>
+                    <button
+                      onClick={handleRetry}
+                      className="px-2 py-1 rounded bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-bold"
+                    >
+                      Restart Worker
+                    </button>
+                  </div>
+                ) : transcriptionMetrics?.stallDiagnostic ? (
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px]">
+                    Whisper processing is taking longer than expected... (Backend: {transcriptionMetrics.backend || 'Local'}, chunk {transcriptionMetrics.currentChunk || 1}/{transcriptionMetrics.totalChunks || 1})
+                  </div>
+                ) : transcriptionMetrics?.stallWarning ? (
+                  <div className="p-1.5 rounded bg-neutral-900 text-neutral-400 text-[10px] italic">
+                    Transcribing dense audio sequence...
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* Active Observable Checklist */}
             <div className="space-y-2.5 p-4 rounded-xl bg-neutral-950/70 border border-neutral-800">
               <div className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
                 Pipeline Stages
@@ -451,6 +573,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
                 );
               })}
             </div>
+            </>
           )}
 
           {/* Real Backend Logs Console */}

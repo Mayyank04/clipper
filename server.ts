@@ -274,6 +274,22 @@ interface ProcessingJob {
   stage?: string;
   progress: number; // 0 to 100
   currentStage: string;
+  transcriptionMetrics?: {
+    backend?: string;
+    device?: string;
+    workerPid?: number;
+    audioProcessed?: number;
+    audioTotal?: number;
+    words?: number;
+    segments?: number;
+    realtimeSpeed?: number;
+    etaSeconds?: number;
+    currentChunk?: number;
+    totalChunks?: number;
+    stallWarning?: boolean;
+    stallDiagnostic?: boolean;
+    stallUnhealthy?: boolean;
+  };
   logs: { time: string; message: string; type: 'info' | 'success' | 'warn' | 'error' }[];
   error?: string;
   errorCode?: string;
@@ -1079,6 +1095,7 @@ app.get('/api/process/:jobId', async (req: Request, res: Response) => {
     progress: job.progress,
     currentStage: job.currentStage,
     message: job.currentStage,
+    transcriptionMetrics: job.transcriptionMetrics,
     logs: job.logs,
     error: job.error,
     clips: project?.shorts || [],
@@ -1121,6 +1138,7 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
     progress: job.progress,
     currentStage: job.currentStage,
     message: job.currentStage,
+    transcriptionMetrics: job.transcriptionMetrics,
     logs: job.logs,
     error: job.error,
     errorCode: job.errorCode,
@@ -1135,6 +1153,10 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
 app.post('/api/process/:jobId/cancel', (req: Request, res: Response) => {
   const { jobId } = req.params;
   const job = processingJobs.get(jobId);
+
+  // Terminate any active transcription subprocess for this job
+  TranscriptionJobManager.getInstance().cancelJob(`trans_${jobId}`);
+  TranscriptionJobManager.getInstance().cancelJob(jobId);
 
   if (!job) {
     return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Job not found' });
@@ -1155,14 +1177,20 @@ app.post('/api/projects/:id/cancel', (req: Request, res: Response) => {
   const { id } = req.params;
   const job = processingJobs.get(id);
 
-  if (job) {
-    job.status = 'cancelled';
-    job.stage = 'cancelled';
-    job.cancelled = true;
-    job.currentStage = 'Job was cancelled by user';
-    addJobLog(job, 'Processing job was cancelled by user', 'warn');
-    console.log(`[PROCESS] job cancelled: ${job.id}`);
+  // Terminate any active transcription subprocess for this project
+  TranscriptionJobManager.getInstance().cancelJob(`trans_${id}`);
+  TranscriptionJobManager.getInstance().cancelJob(id);
+
+  if (!job) {
+    return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Job not found' });
   }
+
+  job.status = 'cancelled';
+  job.stage = 'cancelled';
+  job.cancelled = true;
+  job.currentStage = 'Job was cancelled by user';
+  addJobLog(job, 'Processing job was cancelled by user', 'warn');
+  console.log(`[PROCESS] project job cancelled: ${job.id}`);
 
   res.json({ success: true, status: 'cancelled', message: 'Job cancelled successfully' });
 });
@@ -1396,11 +1424,31 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
         totalDuration,
         language: 'auto',
         onUpdate: (activeJob) => {
-          // Dynamic progress between 45% and 59%
+          // Dynamic progress between 35% and 65% based on real audio work done
           const stageRatio = (activeJob.progressPercent || 0) / 100;
-          job.progress = Math.min(59, Math.round(45 + stageRatio * 14));
-          job.currentStage = `[Whisper ASR] ${activeJob.stageMessage} (${activeJob.processedSeconds}s/${Math.round(totalDuration)}s)`;
-          addJobLog(job, `[Whisper] ${activeJob.stageMessage}`, 'info');
+          job.progress = Math.min(65, Math.round(35 + stageRatio * 30));
+          job.currentStage = `[Whisper ASR] ${activeJob.stageMessage} (${Math.round(activeJob.processedSeconds)}s/${Math.round(totalDuration)}s)`;
+          job.transcriptionMetrics = {
+            backend: activeJob.backend || 'mlx-whisper',
+            device: activeJob.device || 'Apple Silicon Metal GPU',
+            workerPid: activeJob.workerPid,
+            audioProcessed: activeJob.processedSeconds,
+            audioTotal: activeJob.totalSeconds || totalDuration,
+            words: activeJob.wordsGenerated,
+            segments: activeJob.segmentsGenerated,
+            realtimeSpeed: activeJob.realtimeSpeed,
+            etaSeconds: activeJob.etaSeconds,
+            currentChunk: activeJob.currentChunkIndex,
+            totalChunks: activeJob.totalChunks,
+            stallWarning: activeJob.stallWarning,
+            stallDiagnostic: activeJob.stallDiagnostic,
+            stallUnhealthy: activeJob.stallUnhealthy,
+          };
+          const lastLog = job.logs[job.logs.length - 1];
+          const newMsg = `[Whisper] ${activeJob.stageMessage}`;
+          if (!lastLog || lastLog.message !== newMsg) {
+            addJobLog(job, newMsg, 'info');
+          }
         },
       });
 
@@ -2933,7 +2981,7 @@ function buildExportRenderPlan(body: any, project?: any, short?: any) {
     resolution: body.resolution || '1080x1920',
     frameRate: body.frameRate || body.fps,
     brandKit: (body.brandKit?.enabled && body.brandKit?.brandName) ? body.brandKit : undefined,
-    captionConfig: body.captionConfig || targetShort?.captionConfig,
+    captionConfig: body.captionConfig || targetShort?.captionCustomization || targetShort?.captionConfig,
     captions,
     brollList,
     sfxList,
