@@ -91,6 +91,32 @@ def test_visual_distinctness():
     assert len(color_pairs) >= 20, "Presets must utilize distinct color contrast pairs"
     print("  -> PASS: Presets exhibit high visual entropy and professional diversity.")
 
+def test_all_100_presets_in_frontend():
+    print("\n[TEST 4] Verifying 100+ Creator Presets Across All 20 Categories in Frontend...")
+    ts_file = root_dir / "src" / "data" / "creatorPresets80.ts"
+    assert ts_file.exists(), "src/data/creatorPresets80.ts must exist"
+    content = ts_file.read_text(encoding="utf-8")
+
+    import re
+    # Extract preset ids
+    preset_ids = re.findall(r"id:\s*['\"]([^'\"]+)['\"]", content)
+    unique_ids = set(preset_ids)
+    print(f"  Found {len(unique_ids)} distinct presets in creatorPresets80.ts")
+    assert len(unique_ids) >= 100, f"Expected at least 100 presets, found {len(unique_ids)}"
+
+    # Required 20 categories
+    req_cats = [
+        "viral", "podcast", "cinematic", "gaming", "education",
+        "motivational", "meme", "indian", "hindi", "hinglish",
+        "minimal", "luxury", "news", "storytelling", "business",
+        "fitness", "finance", "tech", "vlog", "dramatic"
+    ]
+    found_cats = set(re.findall(r"category:\s*['\"]([^'\"]+)['\"]", content))
+    missing_cats = [c for c in req_cats if c not in found_cats]
+    print(f"  Categories verified ({len(found_cats)} categories): {', '.join(sorted(list(found_cats))[:10])}...")
+    assert len(missing_cats) == 0, f"Missing required categories: {missing_cats}"
+    print(f"  -> PASS: All 20 categories present with {len(unique_ids)} unique presets.")
+
 if __name__ == "__main__":
     print("==================================================================")
     print("VIRAL STUDIO — PRESET CERTIFICATION SUITE")
@@ -98,4 +124,5 @@ if __name__ == "__main__":
     test_preset_count_and_categories()
     test_preset_data_model()
     test_visual_distinctness()
-    print("\nALL PRESET TESTS PASSED (3/3) ✅")
+    test_all_100_presets_in_frontend()
+    print("\nALL PRESET TESTS PASSED (4/4) ✅")

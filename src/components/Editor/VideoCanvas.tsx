@@ -97,9 +97,10 @@ export const LiveTemplatePreview: React.FC<LiveTemplatePreviewProps> = ({
 
   const sampleWords = useMemo(
     () => [
-      { word: 'VIRAL', text: 'VIRAL', start: 0.1, end: 0.8 },
-      { word: 'MOMENT', text: 'MOMENT', start: 0.85, end: 1.55 },
-      { word: 'CLIPPED', text: 'CLIPPED', start: 1.6, end: 2.3 },
+      { word: 'THIS', text: 'THIS', start: 0.05, end: 0.6 },
+      { word: 'IS', text: 'IS', start: 0.65, end: 1.2 },
+      { word: 'THE', text: 'THE', start: 1.25, end: 1.8 },
+      { word: 'WORD', text: 'WORD', start: 1.85, end: 2.38 },
     ],
     []
   );

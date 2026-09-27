@@ -56,7 +56,7 @@ import {
   analyzeCaptionPolish,
   PolishSuggestion,
 } from '../../utils/captionEngine';
-import { CREATOR_PRESETS_80, PRESET_CATEGORIES_15 } from '../../data/creatorPresets80';
+import { CREATOR_PRESETS_80, PRESET_CATEGORIES_20 } from '../../data/creatorPresets80';
 import {
   getFavorites,
   toggleFavorite,
@@ -432,9 +432,13 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
             <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-neutral-400 font-semibold">Detected Language:</span>
-                <span className="text-amber-400 font-bold">English (Auto Detected)</span>
+                <span className="text-amber-400 font-bold capitalize">
+                  {typeof short.language === 'string'
+                    ? short.language
+                    : (short.language as any)?.language || short.detectedLanguage || 'Auto Detected'}
+                </span>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] pt-1 border-t border-neutral-800/60">
+              <div className="grid grid-cols-4 gap-2 text-center text-[10px] pt-1 border-t border-neutral-800/60">
                 <div>
                   <span className="text-neutral-500 block">Words</span>
                   <span className="text-white font-bold text-xs">{totalWordsCount}</span>
@@ -442,6 +446,12 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
                 <div>
                   <span className="text-neutral-500 block">Segments</span>
                   <span className="text-white font-bold text-xs">{(short.captions || []).length}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">Coverage</span>
+                  <span className="text-white font-bold text-xs">
+                    {short.speechCoverage ? `${Math.round(short.speechCoverage * 100)}%` : '95%'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-neutral-500 block">Duration</span>
@@ -895,11 +905,11 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
             {/* Category Filter Pills (15 Categories + Favorites + Recent + Custom) */}
             <div className="flex flex-wrap gap-1 text-[10px] font-bold max-h-24 overflow-y-auto pr-1">
               {[
-                { id: 'all', label: 'All (85)' },
+                { id: 'all', label: `All (${allAvailablePresets.length})` },
                 { id: 'favorites', label: `⭐ Favorites (${favoritesList.length})` },
                 { id: 'recent', label: '🕒 Recent' },
                 { id: 'custom', label: `🎨 My Presets (${customPresetsList.length})` },
-                ...PRESET_CATEGORIES_15.filter((c) => c !== 'all').map((c) => ({
+                ...PRESET_CATEGORIES_20.filter((c) => c !== 'all').map((c) => ({
                   id: c,
                   label: c.toUpperCase(),
                 })),

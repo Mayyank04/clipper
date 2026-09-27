@@ -850,7 +850,7 @@ app.put('/api/projects/:id', (req: Request, res: Response) => {
 // Primary Start Processing API: POST /api/process
 app.post('/api/process', async (req: Request, res: Response) => {
   try {
-    const { projectId, youtubeUrl, url, title, editingPersonality = 'viral', isDemo } = req.body;
+    const { projectId, youtubeUrl, url, title, editingPersonality = 'viral', isDemo, language = 'auto' } = req.body;
     const rawUrl = youtubeUrl || url;
 
     let project = projectId ? projectsStore.get(projectId) : null;
@@ -931,6 +931,7 @@ app.post('/api/process', async (req: Request, res: Response) => {
         videoUrl: isFile ? (req.body.sourceMediaId ? mediaStorage.getPublicUrl(req.body.sourceMediaId) : rawUrl) : (isSample ? (rawUrl.startsWith('/') ? rawUrl : '/demo/sample.mp4') : rawUrl),
         createdAt: new Date().toISOString(),
         editingPersonality,
+        language: language || 'auto',
         demoMode: isSample,
         shorts: [],
         transcript: [],
@@ -938,6 +939,9 @@ app.post('/api/process', async (req: Request, res: Response) => {
       projectsStore.set(newProjId, project);
     } else if (req.body.sourceMediaId && !project.sourceMediaId) {
       project.sourceMediaId = req.body.sourceMediaId;
+    }
+    if (language && language !== 'auto' && project) {
+      project.language = language;
     }
 
     // Create unique processing job
@@ -1098,6 +1102,8 @@ app.get('/api/process/:jobId', async (req: Request, res: Response) => {
     transcriptionMetrics: job.transcriptionMetrics,
     logs: job.logs,
     error: job.error,
+    detectedLanguage: project?.detectedLanguage || project?.language,
+    languageConfidence: project?.languageConfidence,
     clips: project?.shorts || [],
     project,
   });
@@ -1117,6 +1123,8 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
         progress: 100,
         currentStage: 'Shorts ready for review',
         message: 'Pipeline completed successfully',
+        detectedLanguage: project.detectedLanguage || project.language,
+        languageConfidence: project.languageConfidence,
         logs: [{ time: 'Now', message: 'Pipeline completed successfully', type: 'success' }],
         clips: project.shorts || [],
         project,
@@ -1139,6 +1147,8 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
     currentStage: job.currentStage,
     message: job.currentStage,
     transcriptionMetrics: job.transcriptionMetrics,
+    detectedLanguage: project?.detectedLanguage || project?.language,
+    languageConfidence: project?.languageConfidence,
     logs: job.logs,
     error: job.error,
     errorCode: job.errorCode,
@@ -1422,7 +1432,7 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
         sourceMediaPath: localDiskPath,
         sourceMediaId: project.sourceMediaId,
         totalDuration,
-        language: 'auto',
+        language: project.language || 'auto',
         onUpdate: (activeJob) => {
           // Dynamic progress between 35% and 65% based on real audio work done
           const stageRatio = (activeJob.progressPercent || 0) / 100;
@@ -2216,6 +2226,7 @@ interface TranscribeMediaOptions {
   title?: string;
   topic?: string;
   dialogue?: string;
+  language?: string;
   forceRefresh?: boolean;
 }
 
@@ -2406,7 +2417,7 @@ Return a JSON object:
         sourceMediaPath: localDiskPath,
         startTime,
         duration: clipDuration,
-        language: 'auto',
+        language: options.language || 'auto',
         title: options.title || 'Audio Speech',
       });
       if (whisperRes && whisperRes.canonicalTranscript && (whisperRes.canonicalTranscript.segments?.length || 0) > 0) {
@@ -4465,7 +4476,7 @@ app.post('/api/transcribe-captions', async (req: Request, res: Response) => {
       });
 
       const canonicalTranscript: Transcript = {
-        language: 'auto',
+        language: String(language || 'auto'),
         languageConfidence: 0.9,
         duration: effectiveDuration,
         segments: captionSegments.map((s) => ({

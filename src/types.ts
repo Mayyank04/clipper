@@ -717,7 +717,14 @@ export interface CaptionCustomization {
     | 'word_pop'
     | 'lift'
     | 'blur_in'
+    | 'blur_out'
     | 'glow_in'
+    | 'glow_pulse'
+    | 'tracking_reveal'
+    | 'word_punch'
+    | 'letter_pop'
+    | 'zoom'
+    | 'kinetic'
     | 'marker'
     | 'underline'
     | 'spring'
@@ -743,12 +750,12 @@ export interface CaptionCustomization {
   wordAnimation?: string;
   entryAnimation?: string;
   exitAnimation?: string;
-  uppercase: boolean;
+  uppercase?: boolean;
   textColor?: string;
   wordsPerBeat?: number;
   activeWordAnimation?: string;
   entranceAnimation?: string;
-  emphasisBehavior?: 'scale' | 'color' | 'glow' | 'bounce' | 'box' | 'underline' | 'none';
+  emphasisBehavior?: 'scale' | 'color' | 'glow' | 'bounce' | 'box' | 'underline' | 'none' | 'highlight';
   safeZone?: boolean;
   textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
   glow?: boolean;

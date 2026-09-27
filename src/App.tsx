@@ -97,7 +97,7 @@ export default function App() {
   }, []);
 
   // Start AI analysis for a URL or Demo
-  const handleStartAnalysis = async (url: string, isDemo = false) => {
+  const handleStartAnalysis = async (url: string, isDemo = false, language = 'auto') => {
     setProcessingUrl(url);
     setIsNewShortModalOpen(false);
     setProcessingError(null);
@@ -115,6 +115,7 @@ export default function App() {
           title: isDemo ? 'DEMO: Viral Repurposing Showcase' : 'YouTube Video Processing Session',
           editingPersonality,
           isDemo,
+          language,
         }),
       });
 
@@ -137,7 +138,7 @@ export default function App() {
   };
 
   // Import local video file (MP4, MOV, WebM, M4V)
-  const handleImportVideoFile = (file: File) => {
+  const handleImportVideoFile = (file: File, language = 'auto') => {
     setIsNewShortModalOpen(false);
     const objectUrl = URL.createObjectURL(file);
     const fileName = file.name.replace(/\.[^/.]+$/, '');
@@ -192,6 +193,7 @@ export default function App() {
             duration: dur,
             editingPersonality,
             isDemo: false,
+            language,
           }),
         });
         const data = await res.json();
@@ -212,7 +214,7 @@ export default function App() {
   };
 
   // Import local audio file (MP3, WAV, M4A, AAC, FLAC, OGG) -> Audio to Video Pipeline
-  const handleImportAudioFile = async (file: File) => {
+  const handleImportAudioFile = async (file: File, language = 'auto') => {
     setIsNewShortModalOpen(false);
     const objectUrl = URL.createObjectURL(file);
     const rawName = file.name.replace(/\.[^/.]+$/, '');
@@ -278,6 +280,7 @@ export default function App() {
             audioUrl: sourceMediaId ? `/media/${sourceMediaId}/source.mp3` : serverUrl,
             sourceMediaId,
             filename: file.name,
+            language,
             duration: probedDuration,
             mimeType: file.type || 'audio/mp3',
             title,
@@ -747,10 +750,10 @@ export default function App() {
       <NewShortModal
         isOpen={isNewShortModalOpen}
         onClose={() => setIsNewShortModalOpen(false)}
-        onSubmit={handleStartAnalysis}
+        onSubmit={(url, lang) => handleStartAnalysis(url, false, lang)}
         onStartDemo={handleStartDemo}
-        onImportVideoFile={handleImportVideoFile}
-        onImportAudioFile={handleImportAudioFile}
+        onImportVideoFile={(file, lang) => handleImportVideoFile(file, lang)}
+        onImportAudioFile={(file, lang) => handleImportAudioFile(file, lang)}
         onSelectSample={(sample) => {
           setActiveProject(sample);
           if (sample.shorts && sample.shorts.length > 0) {

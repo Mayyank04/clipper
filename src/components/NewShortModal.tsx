@@ -1,16 +1,42 @@
 import React, { useState, useRef } from 'react';
-import { Sparkles, X, Film, Play, Upload, Music } from 'lucide-react';
+import { Sparkles, X, Film, Play, Upload, Music, Globe } from 'lucide-react';
 import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 import { VideoProject } from '../types';
+
+export const MULTILINGUAL_LANGUAGES = [
+  { code: 'auto', name: 'Auto-Detect Language (Recommended)' },
+  { code: 'en', name: 'English (EN)' },
+  { code: 'hi', name: 'Hindi (हिन्दी)' },
+  { code: 'hinglish', name: 'Hinglish (Conversational Hindi-English)' },
+  { code: 'bn', name: 'Bengali (বাংলা)' },
+  { code: 'as', name: 'Assamese (অসমীয়া)' },
+  { code: 'ta', name: 'Tamil (தமிழ்)' },
+  { code: 'te', name: 'Telugu (తెలుగు)' },
+  { code: 'kn', name: 'Kannada (ಕನ್ನಡ)' },
+  { code: 'ml', name: 'Malayalam (മലയാളം)' },
+  { code: 'mr', name: 'Marathi (मराठी)' },
+  { code: 'gu', name: 'Gujarati (ગુજરાતી)' },
+  { code: 'pa', name: 'Punjabi (ਪੰਜਾਬੀ)' },
+  { code: 'ur', name: 'Urdu (اردو)' },
+  { code: 'ne', name: 'Nepali (नेपाली)' },
+  { code: 'es', name: 'Spanish (Español)' },
+  { code: 'fr', name: 'French (Français)' },
+  { code: 'de', name: 'German (Deutsch)' },
+  { code: 'pt', name: 'Portuguese (Português)' },
+  { code: 'id', name: 'Indonesian (Bahasa)' },
+  { code: 'ja', name: 'Japanese (日本語)' },
+  { code: 'ko', name: 'Korean (한국어)' },
+  { code: 'zh', name: 'Chinese (中文)' },
+];
 
 interface NewShortModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (url: string) => void;
+  onSubmit: (url: string, language?: string) => void;
   onSelectSample: (project: VideoProject) => void;
   onStartDemo?: () => void;
-  onImportVideoFile?: (file: File) => void;
-  onImportAudioFile?: (file: File) => void;
+  onImportVideoFile?: (file: File, language?: string) => void;
+  onImportAudioFile?: (file: File, language?: string) => void;
 }
 
 export const NewShortModal: React.FC<NewShortModalProps> = ({
@@ -23,6 +49,7 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
   onImportAudioFile,
 }) => {
   const [url, setUrl] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('auto');
   const [error, setError] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -48,14 +75,14 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
 
     if (file.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(file.name)) {
       if (onImportAudioFile) {
-        onImportAudioFile(file);
+        onImportAudioFile(file, selectedLanguage);
         onClose();
         return;
       }
     }
 
     if (onImportVideoFile) {
-      onImportVideoFile(file);
+      onImportVideoFile(file, selectedLanguage);
       onClose();
     }
   };
@@ -63,7 +90,7 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && onImportVideoFile) {
-      onImportVideoFile(file);
+      onImportVideoFile(file, selectedLanguage);
       onClose();
     }
   };
@@ -71,7 +98,7 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
   const handleAudioFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && onImportAudioFile) {
-      onImportAudioFile(file);
+      onImportAudioFile(file, selectedLanguage);
       onClose();
     }
   };
@@ -89,7 +116,7 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
       return;
     }
     setError('');
-    onSubmit(trimmed);
+    onSubmit(trimmed, selectedLanguage);
   };
 
   return (
@@ -103,12 +130,12 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight">Create New Shorts</h2>
-              <p className="text-xs text-neutral-400">Enter any YouTube URL to begin AI analysis</p>
+              <p className="text-xs text-neutral-400">Multilingual AI analysis, captions, B-roll & render</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-neutral-800 transition-colors"
+            className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -116,6 +143,33 @@ export const NewShortModal: React.FC<NewShortModalProps> = ({
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Spoken Language / Multilingual Selector */}
+          <div className="space-y-1.5 p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-amber-400" />
+                <span>Spoken Language</span>
+              </label>
+              <span className="text-[10px] text-amber-400/90 font-mono font-bold">
+                {selectedLanguage === 'auto' ? 'AUTO-DETECT' : selectedLanguage.toUpperCase()}
+              </span>
+            </div>
+            <select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 text-xs text-white rounded-lg p-2 focus:border-amber-400 focus:outline-none cursor-pointer"
+            >
+              {MULTILINGUAL_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-neutral-500">
+              Auto analyzes speech & detects language with confidence scoring. Supports Hinglish mixed Latin script without corruption.
+            </p>
+          </div>
+
           {/* File Dropzone */}
           <div>
             <input

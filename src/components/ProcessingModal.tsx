@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Upload,
   X,
+  Globe,
 } from 'lucide-react';
 
 interface ProcessingModalProps {
@@ -117,6 +118,8 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  const [languageConfidence, setLanguageConfidence] = useState<number | null>(null);
   const [authConfigured, setAuthConfigured] = useState<boolean>(false);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(jobId || null);
@@ -159,6 +162,12 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
         }
         if (statusData.transcriptionMetrics) {
           setTranscriptionMetrics(statusData.transcriptionMetrics);
+        }
+        if (statusData.detectedLanguage) {
+          setDetectedLanguage(statusData.detectedLanguage);
+        }
+        if (statusData.languageConfidence !== undefined && statusData.languageConfidence !== null) {
+          setLanguageConfidence(statusData.languageConfidence);
         }
         if (Array.isArray(statusData.logs)) {
           setLogs(statusData.logs);
@@ -436,6 +445,23 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
             );
           })() : (
             <>
+            {/* Detected Language Notification Card */}
+            {detectedLanguage && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-400/10 border border-amber-400/30">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span className="text-xs text-neutral-300">
+                    Detected Language: <span className="text-amber-300 font-bold capitalize">{detectedLanguage}</span>
+                  </span>
+                </div>
+                {languageConfidence !== null && (
+                  <span className="text-xs font-mono text-amber-400 font-bold">
+                    {Math.round(languageConfidence * 100)}% Confidence
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Live Whisper ASR Engine Card */}
             {(transcriptionMetrics || status === 'transcribing' || status === 'analyzing') && (
               <div className="p-4 rounded-xl bg-neutral-950 border border-amber-500/20 shadow-lg space-y-3">
