@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Subtitles,
   Palette,
@@ -31,7 +31,9 @@ import {
   Upload,
   Bookmark,
   X,
+  FolderDown,
 } from 'lucide-react';
+import { CaptionPresetImporterModal } from './CaptionPresetImporterModal';
 import {
   ShortCandidate,
   CaptionSegment,
@@ -140,10 +142,60 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
     word: WordTiming;
   } | null>(null);
 
-  // All Available Presets (Builtin 85 + Custom)
+  // Google Drive & Imported Presets State (Phases 1, 16, 17)
+  const [importedPresetsList, setImportedPresetsList] = useState<CaptionStyleDefinition[]>([]);
+  const [showDriveImporterModal, setShowDriveImporterModal] = useState<boolean>(false);
+
+  const fetchImportedPresets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/caption-import/presets');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.presets)) {
+        const mapped: CaptionStyleDefinition[] = data.presets.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          desc: p.presetJson?.desc || `Imported ${p.category} preset`,
+          category: (p.category || 'imported').toLowerCase() as any,
+          config: p.presetJson?.config || {
+            style: p.id,
+            preset: p.id,
+            fontFamily: 'Montserrat, sans-serif',
+            fontSize: 34,
+            fontWeight: 800,
+            primaryColor: '#FFFFFF',
+            highlightColor: '#FACC15',
+            strokeColor: '#000000',
+            strokeWidth: 4.0,
+            hasShadow: true,
+            positionY: 72,
+            animationType: 'pop',
+            animationMode: 'POP_WORD',
+          },
+        }));
+        setImportedPresetsList(mapped);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchImportedPresets();
+  }, [fetchImportedPresets]);
+
+  const handleApplyImportedPreset = (presetRecord: any) => {
+    const styleDef: CaptionStyleDefinition = {
+      id: presetRecord.id,
+      name: presetRecord.name,
+      desc: presetRecord.presetJson?.desc || 'Imported Preset',
+      category: (presetRecord.category || 'imported').toLowerCase() as any,
+      config: presetRecord.presetJson?.config || captionConfig,
+    };
+    handleApplyStyle(styleDef);
+  };
+
+  // All Available Presets (Builtin 85 + Custom + Imported)
   const allAvailablePresets = useMemo(() => {
-    return [...customPresetsList, ...CREATOR_PRESETS_80];
-  }, [customPresetsList]);
+    return [...customPresetsList, ...importedPresetsList, ...CREATOR_PRESETS_80];
+  }, [customPresetsList, importedPresetsList]);
 
   // Filtered Styles
   const filteredStyles = useMemo(() => {
@@ -157,11 +209,13 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
       list.sort((a, b) => recentlyUsedList.indexOf(a.id) - recentlyUsedList.indexOf(b.id));
     } else if (cat === 'custom') {
       list = list.filter((p) => p.category === 'custom');
+    } else if (cat === 'imported') {
+      list = list.filter((p) => importedPresetsList.some((ip) => ip.id === p.id));
     } else if (cat !== 'all') {
       list = list.filter((p) => {
         const pCat = (p.category || '').toLowerCase();
         if (cat === 'indian') return pCat === 'indian' || pCat === 'hindi' || pCat === 'hinglish';
-        return pCat === cat;
+        return pCat === cat || pCat.includes(cat);
       });
     }
 
@@ -889,6 +943,18 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
                 )}
               </div>
 
+              {/* Google Drive Caption Preset Importer CTA Button */}
+              <button
+                onClick={() => setShowDriveImporterModal(true)}
+                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-neutral-950 font-black text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20"
+              >
+                <FolderDown className="w-4 h-4" />
+                <span>+ Import Preset Pack</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-neutral-950/20 font-mono">
+                  Drive & Local
+                </span>
+              </button>
+
               {/* Quick Actions (Save Current, Export, Import) */}
               <div className="flex items-center justify-between text-[11px]">
                 <div className="text-[10px] text-neutral-400 font-mono">
@@ -961,14 +1027,19 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
               </div>
             )}
 
-            {/* Category Filter Pills (15 Categories + Favorites + Recent + Custom) */}
+            {/* Category Filter Pills (Phase 16 Categories: ALL, BEGINNER, INTERMEDIATE, PRO, 3D, IMPORTED, MY STYLES) */}
             <div className="flex flex-wrap gap-1 text-[10px] font-bold max-h-24 overflow-y-auto pr-1">
               {[
                 { id: 'all', label: `All (${allAvailablePresets.length})` },
+                { id: 'imported', label: `📥 Imported (${importedPresetsList.length})` },
+                { id: 'custom', label: `🎨 My Presets (${customPresetsList.length})` },
+                { id: 'pro', label: 'PRO' },
+                { id: 'beginner', label: 'BEGINNER' },
+                { id: 'intermediate', label: 'INTERMEDIATE' },
+                { id: '3d', label: '3D' },
                 { id: 'favorites', label: `⭐ Favorites (${favoritesList.length})` },
                 { id: 'recent', label: '🕒 Recent' },
-                { id: 'custom', label: `🎨 My Presets (${customPresetsList.length})` },
-                ...PRESET_CATEGORIES_20.filter((c) => c !== 'all').map((c) => ({
+                ...PRESET_CATEGORIES_20.filter((c) => !['all', 'pro', 'beginner', 'intermediate', '3d'].includes(c)).map((c) => ({
                   id: c,
                   label: c.toUpperCase(),
                 })),
@@ -1621,6 +1692,16 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Caption Preset Importer Modal */}
+      <CaptionPresetImporterModal
+        isOpen={showDriveImporterModal}
+        onClose={() => {
+          setShowDriveImporterModal(false);
+          fetchImportedPresets();
+        }}
+        onApplyPreset={handleApplyImportedPreset}
+      />
     </div>
   );
 };

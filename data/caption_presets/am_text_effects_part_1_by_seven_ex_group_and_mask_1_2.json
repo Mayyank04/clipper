@@ -1,0 +1,59 @@
+{
+  "id": "am_text_effects_part_1_by_seven_ex_group_and_mask_1_2",
+  "name": "Text Effects Part 1 By Seven Ex - Group and Mask 1",
+  "slug": "am_text_effects_part_1_by_seven_ex_group_and_mask_1_2",
+  "category": "Preset Pack 1",
+  "presetJson": {
+    "id": "am_text_effects_part_1_by_seven_ex_group_and_mask_1_2",
+    "name": "Text Effects Part 1 By Seven Ex - Group and Mask 1",
+    "desc": "Imported from Preset Part 1 (Preset_Part_1)",
+    "category": "preset pack 1",
+    "config": {
+      "style": "am_text_effects_part_1_by_seven_ex_group_and_mask_1_2",
+      "preset": "am_text_effects_part_1_by_seven_ex_group_and_mask_1_2",
+      "fontFamily": "Rail Medium, Montserrat, sans-serif",
+      "fontSize": 32,
+      "fontWeight": 600,
+      "primaryColor": "#FFFFFF",
+      "highlightColor": "#FACC15",
+      "strokeColor": "#000000",
+      "strokeWidth": 4,
+      "hasShadow": true,
+      "shadowColor": "rgba(0,0,0,0.95)",
+      "shadowBlur": 8,
+      "backgroundColor": null,
+      "backgroundOpacity": 0,
+      "backgroundShape": "none",
+      "positionY": 50.6,
+      "wordsPerLine": 3,
+      "wordsPerGroup": 3,
+      "maxLines": 2,
+      "alignment": "center",
+      "animationType": "pop",
+      "animationMode": "POP_WORD",
+      "activeWordScale": 1.06,
+      "letterSpacing": 0,
+      "lineHeight": 1.2,
+      "uppercase": true,
+      "is3D": false
+    }
+  },
+  "previewUrl": "/assets/previews/preview_am_text_effects_part_1_by_seven_ex_group_and_mask_1_2.svg",
+  "sourceId": "src_preset_part_1",
+  "sourceFile": "Preset_Part_1",
+  "sourceType": "alight_motion_xml",
+  "sourceChecksum": "e51321aa04b719c13a4638583d7b500f40f200c9d1d416c9c3455778503cd8d0",
+  "is3D": false,
+  "conversionStatus": "PARTIAL",
+  "conversionVersion": "1.0.0",
+  "unsupportedReasons": [
+    "Proprietary Alight Motion effect 'fractalwarp4' not supported"
+  ],
+  "contentHash": "13edada2808050f8104bc01b713890b852eee5021da8789b91e5d6d688ffa725",
+  "metadata": {
+    "warnings": [],
+    "sourceUrl": "https://drive.google.com/file/d/1CeBQfh8i3_hGwNRzOw3wAlpEGfy4iHHN/view"
+  },
+  "updatedAt": "2026-09-28T04:45:10.544Z",
+  "createdAt": "2026-09-28T04:45:10.544Z"
+}

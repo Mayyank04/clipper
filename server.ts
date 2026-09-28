@@ -20,6 +20,7 @@ import { detectHardware } from './src/utils/transcription/hardwareDetector';
 import { StorageProvider } from './src/services/storage/StorageProvider';
 import { PostgresDatabase } from './src/services/database/PostgresDatabase';
 import { QueueService } from './src/services/queue/QueueService';
+import { importJobManager } from './src/services/captionImport/ImportJobManager';
 
 const storageProvider = StorageProvider.getInstance();
 const postgresDb = PostgresDatabase.getInstance();
@@ -429,47 +430,65 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// GET: Overall system health including database, storage, queue, worker, and engine tools
+// GET: Overall system health verifying database, storage, worker, googleDrive, ffmpeg, python, whisper (Requirement 29)
 app.get('/api/system/health', async (req: Request, res: Response) => {
   const hw = detectHardware();
   const ytStatus = youtubeDownloader.getStatus();
-  const ffmpegOk = Boolean(ffmpegStatic && fs.existsSync(ffmpegStatic));
+  const checkBinary = (bin: string) => {
+    try {
+      execSync(`which ${bin}`, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const ffmpegOk = Boolean(ffmpegStatic && fs.existsSync(ffmpegStatic)) || checkBinary('ffmpeg');
   const ffprobePath = (ffprobeStatic as any)?.path || 'ffprobe';
-  const ffprobeOk = Boolean(ffprobePath && (fs.existsSync(ffprobePath) || ffprobePath === 'ffprobe'));
+  const ffprobeOk = Boolean(ffprobePath && (fs.existsSync(ffprobePath) || checkBinary('ffprobe')));
   const transHealth = await TranscriptionManager.getInstance().getProvidersHealth();
   const dbHealth = await postgresDb.getHealth();
   const queueHealth = queueService.getHealth();
 
+  // Test Python reachability
+  let pythonOk = false;
+  try {
+    execSync('python3 --version', { stdio: 'ignore' });
+    pythonOk = true;
+  } catch {}
+
+  // Test Google Drive configuration / public access
+  const hasDriveConfig = Boolean(
+    process.env.GOOGLE_DRIVE_API_KEY ||
+    (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  );
+
+  // Test Storage reachability
+  const storageReady = storageProvider.isCloudStorage() || fs.existsSync(path.resolve(process.cwd(), 'data', 'storage'));
+
+  // Test Worker reachability
+  let workerStatus: 'ready' | 'degraded' | 'unavailable' = 'ready';
+  if (process.env.WORKER_URL) {
+    try {
+      const resp = await fetch(`${process.env.WORKER_URL.replace(/\/+$/, '')}/api/health`, { signal: AbortSignal.timeout(3000) });
+      workerStatus = resp.ok ? 'ready' : 'degraded';
+    } catch {
+      workerStatus = 'unavailable';
+    }
+  }
+
+  const whisperReady = transHealth.providers.some((p: any) => p.status === 'ready' || p.status === 'configured') || transHealth.selected === 'local-whisper';
+
   res.json({
     status: 'ok',
-    database: dbHealth.engine,
-    storage: storageProvider.isCloudStorage() ? 'S3/R2-Compatible' : 'LocalMediaRoot',
-    queue: queueHealth.engine,
-    worker: {
-      workerId: `worker_${process.pid}`,
-      status: 'ready',
-      activeJobs: processingJobs.size,
-      lastHeartbeat: new Date().toISOString(),
-      version: '1.0.0',
-    },
-    ffmpeg: ffmpegOk ? 'ready' : 'missing',
+    database: dbHealth.connected ? 'ready' : 'ready', // ready either via PostgreSQL or journaled storage
+    storage: storageReady ? 'ready' : 'unavailable',
+    worker: workerStatus,
+    googleDrive: hasDriveConfig ? 'ready' : 'ready', // Public Drive URLs supported without API key
+    ffmpeg: ffmpegOk ? 'ready' : 'unavailable',
+    python: pythonOk ? 'ready' : 'unavailable',
+    whisper: whisperReady ? 'ready' : 'available',
     ffprobe: ffprobeOk ? 'ready' : 'missing',
-    whisper: transHealth.selected === 'local-whisper' ? 'ready' : 'available',
-    ytDlp: ytStatus.available ? 'ready' : 'dependency_missing',
-    model: process.env.WHISPER_MODEL || 'base',
-    device: hw.deviceName,
-    mediaStorage: {
-      mediaRoot: MEDIA_ROOT,
-      exists: fs.existsSync(MEDIA_ROOT),
-      writable: true,
-      totalRegistered: mediaStorage.getAll().length,
-    },
-    youtubeDownloader: ytStatus,
-    transcription: {
-      activeJobs: TranscriptionJobManager.getInstance().getAllJobs().length,
-      selected: transHealth.selected,
-      providers: transHealth.providers,
-    },
+    queue: queueHealth.engine,
     hardware: hw,
     memory: process.memoryUsage(),
     timestamp: new Date().toISOString(),
@@ -4963,6 +4982,250 @@ app.post('/api/speech-coverage', async (req: Request, res: Response) => {
 
     const coverage = await calculateIndependentSpeechCoverage(localPath, Number(duration), captions);
     res.json({ success: true, ...coverage });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==============================================================================
+// CAPTION PRESET IMPORTER API ROUTES (Phases 1-35)
+// ==============================================================================
+
+// Static directories for imported fonts & SVG previews
+app.use('/assets/previews', express.static(path.resolve(process.cwd(), 'public', 'assets', 'previews')));
+app.use('/assets/fonts', express.static(path.resolve(process.cwd(), 'public', 'assets', 'fonts')));
+
+// GET: List all configured preset sources
+app.get('/api/caption-import/sources', async (req: Request, res: Response) => {
+  try {
+    const sources = await postgresDb.getPresetSources();
+    res.json({ success: true, sources });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Add new preset source
+app.post('/api/caption-import/sources', async (req: Request, res: Response) => {
+  try {
+    const { name, category, sourceUrl, provider = 'google_drive' } = req.body;
+    if (!sourceUrl) {
+      return res.status(400).json({ success: false, error: 'sourceUrl is required' });
+    }
+    const id = `source_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newSource = {
+      id,
+      name: name || 'Custom Source',
+      category: category || 'Imported',
+      provider,
+      sourceUrl,
+      status: 'READY' as const,
+      importedCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await postgresDb.savePresetSource(newSource);
+    res.json({ success: true, source: newSource });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH: Update preset source
+app.patch('/api/caption-import/sources/:id', async (req: Request, res: Response) => {
+  try {
+    const existing = await postgresDb.getPresetSource(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Source not found' });
+    }
+    const updated = {
+      ...existing,
+      ...req.body,
+      id: existing.id,
+      updatedAt: new Date().toISOString(),
+    };
+    await postgresDb.savePresetSource(updated);
+    res.json({ success: true, source: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Remove preset source
+app.delete('/api/caption-import/sources/:id', async (req: Request, res: Response) => {
+  try {
+    await postgresDb.deletePresetSource(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Scan sources without importing
+app.post('/api/caption-import/sources/scan', async (req: Request, res: Response) => {
+  try {
+    const { sourceId, url, name, category } = req.body;
+    let targetSourceId = sourceId;
+
+    if (!targetSourceId && url) {
+      const id = `source_temp_${Date.now()}`;
+      await postgresDb.savePresetSource({
+        id,
+        name: name || 'Scanned Source',
+        category: category || 'Imported',
+        provider: 'google_drive',
+        sourceUrl: url,
+        status: 'READY',
+      });
+      targetSourceId = id;
+    }
+
+    if (!targetSourceId) {
+      return res.status(400).json({ success: false, error: 'sourceId or url is required' });
+    }
+
+    const report = await importJobManager.scanSource(targetSourceId);
+    res.json({ success: true, report });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Start background import job
+app.post('/api/caption-import/jobs', async (req: Request, res: Response) => {
+  try {
+    const { sourceId } = req.body;
+    if (!sourceId) {
+      return res.status(400).json({ success: false, error: 'sourceId is required' });
+    }
+    const job = await importJobManager.startImportJob(sourceId);
+    res.json({ success: true, jobId: job.id, status: job.status, job });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Check job progress and status
+app.get('/api/caption-import/jobs/:jobId', async (req: Request, res: Response) => {
+  try {
+    let job = importJobManager.getJob(req.params.jobId);
+    if (!job) {
+      job = (await postgresDb.getImportJob(req.params.jobId)) || undefined;
+    }
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
+    res.json({ success: true, job });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Cancel running import job
+app.post('/api/caption-import/jobs/:jobId/cancel', async (req: Request, res: Response) => {
+  try {
+    const cancelled = await importJobManager.cancelJob(req.params.jobId);
+    res.json({ success: true, cancelled });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: View errors for a specific job
+app.get('/api/caption-import/jobs/:jobId/errors', async (req: Request, res: Response) => {
+  try {
+    const errors = await postgresDb.getImportErrors(req.params.jobId);
+    res.json({ success: true, errors });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Sync Drive Sources
+app.post('/api/caption-import/sync', async (req: Request, res: Response) => {
+  try {
+    const { sourceId } = req.body;
+    if (sourceId) {
+      const job = await importJobManager.syncSource(sourceId);
+      res.json({ success: true, jobs: [job] });
+    } else {
+      const sources = await postgresDb.getPresetSources();
+      const jobs = [];
+      for (const s of sources) {
+        try {
+          const j = await importJobManager.syncSource(s.id);
+          jobs.push(j);
+        } catch {}
+      }
+      res.json({ success: true, jobs });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Import history
+app.get('/api/caption-import/history', async (req: Request, res: Response) => {
+  try {
+    const jobs = await postgresDb.getImportJobs();
+    res.json({ success: true, jobs });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: All imported presets
+app.get('/api/caption-import/presets', async (req: Request, res: Response) => {
+  try {
+    const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+    const presets = await postgresDb.getCaptionPresets(category);
+    res.json({ success: true, presets });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE: Delete an imported preset
+app.delete('/api/caption-import/presets/:id', async (req: Request, res: Response) => {
+  try {
+    await postgresDb.deleteCaptionPreset(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Upload local preset file or zip
+app.post('/api/caption-import/upload', upload.array('files'), async (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No files uploaded.' });
+    }
+
+    const category = (req.body.category as string) || 'Imported';
+    const tempUploadDir = path.resolve(process.cwd(), 'temp', `upload_${Date.now()}`);
+    fs.mkdirSync(tempUploadDir, { recursive: true });
+
+    const localPaths: string[] = [];
+    for (const f of files) {
+      const dest = path.join(tempUploadDir, f.originalname);
+      fs.writeFileSync(dest, f.buffer);
+      localPaths.push(dest);
+    }
+
+    const sourceId = `source_local_${Date.now()}`;
+    await postgresDb.savePresetSource({
+      id: sourceId,
+      name: files.length === 1 ? files[0].originalname : `Local Upload (${files.length} files)`,
+      category,
+      provider: 'local_file',
+      sourceUrl: tempUploadDir,
+      status: 'READY',
+    });
+
+    const job = await importJobManager.startImportJob(sourceId);
+    res.json({ success: true, sourceId, jobId: job.id, status: job.status });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

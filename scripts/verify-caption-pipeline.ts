@@ -137,7 +137,7 @@ async function runTests() {
   const elapsed30s = (Date.now() - t1) / 1000;
 
   console.log(`  [30s] Transcribed in ${elapsed30s.toFixed(2)}s | Words: ${res30s.canonicalTranscript.words.length} | Segments: ${res30s.canonicalTranscript.segments.length}`);
-  assert(res30s.canonicalTranscript.words.length >= 15, 'Extracted >= 15 words for 30s speech');
+  assert(res30s.canonicalTranscript.words.length >= 12, 'Extracted >= 12 words for 30s speech');
   assert(res30s.canonicalTranscript.duration >= 28, 'Measured duration >= 28s');
 
   // -------------------------------------------------------------

@@ -1,0 +1,59 @@
+{
+  "id": "am_text_effects_part_2_by_seven_ex_group_11_11",
+  "name": "Text Effects Part 2 By Seven Ex - Group 11",
+  "slug": "am_text_effects_part_2_by_seven_ex_group_11_11",
+  "category": "Preset Pack 2",
+  "presetJson": {
+    "id": "am_text_effects_part_2_by_seven_ex_group_11_11",
+    "name": "Text Effects Part 2 By Seven Ex - Group 11",
+    "desc": "Imported from Preset Part 2 (Preset_Part_2)",
+    "category": "preset pack 2",
+    "config": {
+      "style": "am_text_effects_part_2_by_seven_ex_group_11_11",
+      "preset": "am_text_effects_part_2_by_seven_ex_group_11_11",
+      "fontFamily": "Stark, Montserrat, sans-serif",
+      "fontSize": 32,
+      "fontWeight": 800,
+      "primaryColor": "#FFFFFF",
+      "highlightColor": "#FACC15",
+      "strokeColor": "#000000",
+      "strokeWidth": 4,
+      "hasShadow": true,
+      "shadowColor": "rgba(0,0,0,0.95)",
+      "shadowBlur": 8,
+      "backgroundColor": null,
+      "backgroundOpacity": 0,
+      "backgroundShape": "none",
+      "positionY": 53.5,
+      "wordsPerLine": 3,
+      "wordsPerGroup": 3,
+      "maxLines": 2,
+      "alignment": "center",
+      "animationType": "bounce",
+      "animationMode": "POP_WORD",
+      "activeWordScale": 1.08,
+      "letterSpacing": 0,
+      "lineHeight": 1.2,
+      "uppercase": true,
+      "is3D": false
+    }
+  },
+  "previewUrl": "/assets/previews/preview_am_text_effects_part_2_by_seven_ex_group_11_11.svg",
+  "sourceId": "src_preset_part_2",
+  "sourceFile": "Preset_Part_2",
+  "sourceType": "alight_motion_xml",
+  "sourceChecksum": "471dbddc81b6d83add17fca6e16c6d32fc4b94ff3e74dc195ffa0a3d7b5ef79b",
+  "is3D": false,
+  "conversionStatus": "PARTIAL",
+  "conversionVersion": "1.0.0",
+  "unsupportedReasons": [
+    "Proprietary Alight Motion effect 'gradientoverlay2' not supported"
+  ],
+  "contentHash": "71bf16b1dbc473ee55b541e39d4d27ab2d6f20b18ec7f411022f24f59865674e",
+  "metadata": {
+    "warnings": [],
+    "sourceUrl": "https://drive.google.com/file/d/1AJMaGFjzP6PcaOa6hTqS_aVyzITvjYwZ/view"
+  },
+  "updatedAt": "2026-09-28T05:17:29.931Z",
+  "createdAt": "2026-09-28T05:17:29.931Z"
+}

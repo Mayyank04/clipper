@@ -1548,4 +1548,188 @@ export interface HeyGenAvatar {
   category: string;
 }
 
+// ==============================================================================
+// CAPTION PRESET IMPORTER TYPES (Phases 2, 4, 6, 7, 10, 18, 19, 22)
+// ==============================================================================
+
+export type PresetSourceProviderType = 'google_drive' | 'local_file' | 'zip' | (string & {});
+
+export interface CaptionPresetSourceRecord {
+  id: string;
+  name: string;
+  category: 'Beginner' | 'Intermediate' | 'Pro' | '3D' | 'Preset Pack 1' | 'Preset Pack 2' | 'Preset Pack 3' | 'Additional Pack' | 'Imported' | 'My Styles' | string;
+  provider: PresetSourceProviderType;
+  sourceUrl: string;
+  sourceId?: string;
+  lastScannedAt?: string;
+  lastSyncedAt?: string;
+  status: 'READY' | 'SCANNING' | 'IMPORTING' | 'ERROR' | 'UNAVAILABLE';
+  importedCount?: number;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CaptionPresetRecord {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  presetJson: any; // CaptionStyleDefinition
+  previewUrl?: string;
+  sourceId?: string;
+  sourceFileId?: string;
+  sourceFile?: string;
+  sourceType?: string;
+  sourceChecksum?: string;
+  is3D?: boolean;
+  conversionStatus: 'FULL' | 'PARTIAL' | 'UNSUPPORTED';
+  conversionVersion: string;
+  unsupportedReasons?: string[];
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CaptionFontRecord {
+  id: string;
+  family: string;
+  fileUrl: string;
+  format: 'ttf' | 'otf' | 'woff' | 'woff2' | string;
+  weight: number;
+  style: string;
+  checksum: string;
+  sourceId?: string;
+  licenseMetadata?: Record<string, any>;
+  createdAt?: string;
+}
+
+export interface CaptionImportJobRecord {
+  id: string;
+  sourceId?: string;
+  status:
+    | 'QUEUED'
+    | 'SCANNING'
+    | 'DISCOVERING'
+    | 'DOWNLOADING'
+    | 'ANALYZING'
+    | 'CONVERTING'
+    | 'VALIDATING'
+    | 'REGISTERING_FONTS'
+    | 'GENERATING_PREVIEWS'
+    | 'IMPORTING'
+    | 'COMPLETED'
+    | 'PARTIAL'
+    | 'FAILED'
+    | 'CANCELLED';
+  stage: string;
+  currentFile?: string;
+  totalFiles: number;
+  processedFiles: number;
+  successCount: number;
+  partialCount: number;
+  failureCount: number;
+  unsupportedCount: number;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+}
+
+export interface CaptionImportErrorRecord {
+  id: string;
+  jobId: string;
+  sourceFile: string;
+  stage: string;
+  errorCode: string;
+  message: string;
+  details?: any;
+  suggestedAction?: string;
+  createdAt?: string;
+}
+
+export interface ScanItem {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  sizeBytes: number;
+  extension: string;
+  detectedType: 'xml' | 'json' | 'font' | 'zip' | 'image' | 'video' | 'unknown';
+  compatibility: 'SUPPORTED' | 'PARTIAL' | 'UNSUPPORTED';
+  details?: string;
+}
+
+export interface ScanReport {
+  sourceId: string;
+  sourceName: string;
+  sourceUrl: string;
+  totalFiles: number;
+  categories: Record<string, number>;
+  supportedCount: number;
+  partiallySupportedCount: number;
+  unsupportedCount: number;
+  items: ScanItem[];
+  scannedAt: string;
+}
+
+// ==============================================================================
+// UNIVERSAL PROCESSING JOB TYPES (Requirement 4 & 5)
+// ==============================================================================
+
+export type ProcessingJobType =
+  | 'TRANSCRIBE'
+  | 'IMPORT_PRESETS'
+  | 'CONVERT_PRESETS'
+  | 'GENERATE_PREVIEW'
+  | 'GENERATE_SHORTS'
+  | 'RENDER_VIDEO'
+  | 'GENERATE_BROLL'
+  | 'GENERATE_SFX'
+  | 'GENERATE_VFX';
+
+export type UniversalJobStatus =
+  | 'QUEUED'
+  | 'SCANNING'
+  | 'DISCOVERING'
+  | 'DOWNLOADING'
+  | 'ANALYZING'
+  | 'CONVERTING'
+  | 'VALIDATING'
+  | 'REGISTERING_FONTS'
+  | 'GENERATING_PREVIEWS'
+  | 'IMPORTING'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'PARTIAL'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export interface ProcessingJobRecord {
+  id: string;
+  type: ProcessingJobType | string;
+  status: UniversalJobStatus | string;
+  progress: number;
+  stage: string;
+  input?: any;
+  output?: any;
+  error?: string;
+  sourceId?: string;
+  createdAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface ProcessingJobEventRecord {
+  id: string;
+  jobId: string;
+  stage: string;
+  progress: number;
+  message?: string;
+  metadata?: any;
+  createdAt?: string;
+}
+
+
 

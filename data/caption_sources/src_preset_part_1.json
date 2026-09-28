@@ -1,0 +1,16 @@
+{
+  "id": "src_preset_part_1",
+  "name": "Preset Part 1",
+  "category": "Preset Pack 1",
+  "provider": "google_drive",
+  "sourceUrl": "https://drive.google.com/file/d/1CeBQfh8i3_hGwNRzOw3wAlpEGfy4iHHN/view",
+  "status": "READY",
+  "metadata": {
+    "isSeed": true
+  },
+  "updatedAt": "2026-09-28T05:38:05.540Z",
+  "createdAt": "2026-09-28T04:33:25.301Z",
+  "lastScannedAt": "2026-09-28T05:38:05.540Z",
+  "importedCount": 8,
+  "lastSyncedAt": "2026-09-28T05:17:30.080Z"
+}

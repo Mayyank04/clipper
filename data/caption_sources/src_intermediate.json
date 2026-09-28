@@ -1,0 +1,15 @@
+{
+  "id": "src_intermediate",
+  "name": "Intermediate Texts",
+  "category": "Intermediate",
+  "provider": "google_drive",
+  "sourceUrl": "https://drive.google.com/drive/folders/1SjmV9Mwc1RJB-HR7aFWh_zyLB96S6uJc",
+  "status": "READY",
+  "metadata": {
+    "isSeed": true
+  },
+  "updatedAt": "2026-09-28T05:17:28.839Z",
+  "createdAt": "2026-09-28T04:33:25.300Z",
+  "importedCount": 0,
+  "lastSyncedAt": "2026-09-28T05:17:28.839Z"
+}

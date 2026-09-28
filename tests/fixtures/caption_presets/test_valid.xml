@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<preset name="Viral Glow Pop">
+    <font>Lemon Milk</font>
+    <size>36</size>
+    <color>#FFFFFF</color>
+    <highlight>#FACC15</highlight>
+    <stroke>4.5</stroke>
+    <animation>pop</animation>
+</preset>

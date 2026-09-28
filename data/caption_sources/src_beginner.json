@@ -1,0 +1,15 @@
+{
+  "id": "src_beginner",
+  "name": "Beginner Texts",
+  "category": "Beginner",
+  "provider": "google_drive",
+  "sourceUrl": "https://drive.google.com/drive/folders/1ABExOyiUzOAdIEzWhcLjGxSuBaIUJGhF",
+  "status": "READY",
+  "metadata": {
+    "isSeed": true
+  },
+  "updatedAt": "2026-09-28T05:17:28.678Z",
+  "createdAt": "2026-09-28T04:33:25.300Z",
+  "importedCount": 0,
+  "lastSyncedAt": "2026-09-28T05:17:28.678Z"
+}

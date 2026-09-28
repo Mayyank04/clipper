@@ -1,0 +1,62 @@
+{
+  "id": "am_text_effects_part_2_by_seven_ex_style_18_18",
+  "name": "Text Effects Part 2 By Seven Ex Style 18",
+  "slug": "am_text_effects_part_2_by_seven_ex_style_18_18",
+  "category": "Preset Pack 2",
+  "presetJson": {
+    "id": "am_text_effects_part_2_by_seven_ex_style_18_18",
+    "name": "Text Effects Part 2 By Seven Ex Style 18",
+    "desc": "Imported from Preset Part 2 (Preset_Part_2)",
+    "category": "preset pack 2",
+    "config": {
+      "style": "am_text_effects_part_2_by_seven_ex_style_18_18",
+      "preset": "am_text_effects_part_2_by_seven_ex_style_18_18",
+      "fontFamily": "Letterpress aurora, Montserrat, sans-serif",
+      "fontSize": 32,
+      "fontWeight": 800,
+      "primaryColor": "#FFFFFF",
+      "highlightColor": "#FFA800",
+      "strokeColor": "#000000",
+      "strokeWidth": 4,
+      "hasShadow": true,
+      "shadowColor": "rgba(0,0,0,0.95)",
+      "shadowBlur": 8,
+      "backgroundColor": null,
+      "backgroundOpacity": 0,
+      "backgroundShape": "none",
+      "positionY": 50,
+      "wordsPerLine": 3,
+      "wordsPerGroup": 3,
+      "maxLines": 2,
+      "alignment": "center",
+      "animationType": "pop",
+      "animationMode": "POP_WORD",
+      "activeWordScale": 1.05,
+      "letterSpacing": 0,
+      "lineHeight": 1.2,
+      "uppercase": true,
+      "is3D": false
+    }
+  },
+  "previewUrl": "/assets/previews/preview_am_text_effects_part_2_by_seven_ex_style_18_18.svg",
+  "sourceId": "src_preset_part_2",
+  "sourceFile": "Preset_Part_2",
+  "sourceType": "alight_motion_xml",
+  "sourceChecksum": "471dbddc81b6d83add17fca6e16c6d32fc4b94ff3e74dc195ffa0a3d7b5ef79b",
+  "is3D": false,
+  "conversionStatus": "PARTIAL",
+  "conversionVersion": "1.0.0",
+  "unsupportedReasons": [
+    "Proprietary Alight Motion effect 'wipe2' not supported",
+    "Proprietary Alight Motion effect 'stripes' not supported",
+    "Proprietary Alight Motion effect 'stripes' not supported",
+    "Proprietary Alight Motion effect 'dropshadow' not supported"
+  ],
+  "contentHash": "49aca7c014a3f51f760891d644a2f60441ebd1e97b643169ebaea53b7964730e",
+  "metadata": {
+    "warnings": [],
+    "sourceUrl": "https://drive.google.com/file/d/1AJMaGFjzP6PcaOa6hTqS_aVyzITvjYwZ/view"
+  },
+  "updatedAt": "2026-09-28T05:17:29.931Z",
+  "createdAt": "2026-09-28T05:17:29.931Z"
+}

@@ -505,6 +505,215 @@ app.post('/api/worker/inspect', requireWorkerAuth, async (req: Request, res: Res
   }
 });
 
+// Helper for Python preset batch invocation
+function runPythonPresetBatch(manifestPath: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const py = spawn('python3', [
+      '-m',
+      'python_engine.preset_importer.cli',
+      'convert',
+      '--manifest',
+      manifestPath,
+    ]);
+    let stdout = '';
+    let stderr = '';
+    py.stdout.on('data', (d) => { stdout += d.toString(); });
+    py.stderr.on('data', (d) => { stderr += d.toString(); });
+    py.on('close', (code) => {
+      if (code === 0) {
+        try {
+          resolve(JSON.parse(stdout));
+        } catch (e) {
+          reject(new Error(`Failed to parse Python converter output: ${stdout}`));
+        }
+      } else {
+        reject(new Error(`Python converter exited with code ${code}: ${stderr || stdout}`));
+      }
+    });
+  });
+}
+
+// POST: Batch Preset Import & Conversion (Requirement 4, 10, 24)
+app.post('/api/worker/import-presets', requireWorkerAuth, async (req: Request, res: Response) => {
+  const workspace = createJobWorkspace(`import_${Date.now()}`);
+  try {
+    const { files = [], category = 'Imported', sourceId, sourceName = '', sourceUrl = '', existingPresets = {} } = req.body;
+    const manifestPath = path.join(workspace, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        files,
+        category,
+        sourceId,
+        sourceName,
+        sourceUrl,
+        existingPresets,
+      }, null, 2),
+      'utf8'
+    );
+
+    const pyResult = await runPythonPresetBatch(manifestPath);
+
+    // Upload fonts to Object Storage
+    if (pyResult.fonts && Array.isArray(pyResult.fonts)) {
+      for (const f of pyResult.fonts) {
+        if (f.file_path && fs.existsSync(f.file_path)) {
+          try {
+            const ext = path.extname(f.file_path) || `.${f.format || 'ttf'}`;
+            const fontKey = `fonts/${f.checksum}${ext}`;
+            const fontUrl = await storage.upload(fontKey, fs.readFileSync(f.file_path), `font/${f.format || 'ttf'}`);
+            f.file_path = fontUrl;
+
+            await db.saveCaptionFont({
+              id: `font_${f.checksum.slice(0, 10)}`,
+              family: f.family,
+              fileUrl: fontUrl,
+              format: f.format,
+              weight: f.weight,
+              style: f.style,
+              checksum: f.checksum,
+              sourceId,
+            });
+          } catch (fontErr) {
+            console.warn('[Worker] Font upload warning:', fontErr);
+          }
+        }
+      }
+    }
+
+    // Upload preview SVGs to Object Storage
+    if (pyResult.presets && Array.isArray(pyResult.presets)) {
+      for (const p of pyResult.presets) {
+        if (p.previewUrl) {
+          try {
+            const localSvg = path.resolve(process.cwd(), 'public', p.previewUrl.replace(/^\//, ''));
+            if (fs.existsSync(localSvg)) {
+              const svgKey = `previews/${p.id}.svg`;
+              const previewUrl = await storage.upload(svgKey, fs.readFileSync(localSvg), 'image/svg+xml');
+              p.previewUrl = previewUrl;
+            }
+            await db.saveCaptionPreset(p);
+          } catch (presetErr) {
+            console.warn('[Worker] Preset upload warning:', presetErr);
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, ...pyResult });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    cleanJobWorkspace(workspace);
+  }
+});
+
+// POST: Single Preset Conversion
+app.post('/api/worker/convert-presets', requireWorkerAuth, async (req: Request, res: Response) => {
+  const workspace = createJobWorkspace(`convert_${Date.now()}`);
+  try {
+    const { files = [], fileContent, fileName = 'preset.xml', category = 'Imported' } = req.body;
+    let targetFiles = files;
+
+    if (fileContent) {
+      const tempFile = path.join(workspace, fileName);
+      fs.writeFileSync(tempFile, fileContent, 'utf8');
+      targetFiles = [tempFile];
+    }
+
+    const manifestPath = path.join(workspace, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({ files: targetFiles, category }, null, 2),
+      'utf8'
+    );
+
+    const pyResult = await runPythonPresetBatch(manifestPath);
+    res.json({ success: true, ...pyResult });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    cleanJobWorkspace(workspace);
+  }
+});
+
+// POST: Universal Job Dispatcher
+app.post('/api/worker/dispatch', requireWorkerAuth, async (req: Request, res: Response) => {
+  try {
+    const { type, input, jobId: requestedId, sourceId } = req.body;
+    const jobId = requestedId || `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    // Update job record in PostgreSQL
+    await db.saveProcessingJob({
+      id: jobId,
+      type,
+      status: 'PROCESSING',
+      progress: 5,
+      stage: 'PROCESSING',
+      input: input || {},
+      sourceId,
+      startedAt: new Date().toISOString(),
+    });
+
+    // Execute asynchronously on worker
+    setImmediate(async () => {
+      try {
+        let result: any;
+        if (type === 'TRANSCRIBE') {
+          const qJob = await queue.addJob('transcription', input, { jobId });
+          result = await processTranscriptionJob(qJob);
+        } else if (type === 'RENDER_VIDEO' || type === 'render') {
+          const qJob = await queue.addJob('render', input, { jobId });
+          result = await processRenderJob(qJob);
+        } else if (type === 'YOUTUBE_DOWNLOAD' || type === 'youtube-download') {
+          const qJob = await queue.addJob('youtube-download', input, { jobId });
+          result = await processYouTubeJob(qJob);
+        }
+
+        await db.updateProcessingJobProgress(jobId, 100, 'COMPLETED', result, 'COMPLETED');
+      } catch (err: any) {
+        console.error(`[Worker] Job ${jobId} failed:`, err);
+        await db.saveProcessingJob({
+          id: jobId,
+          type,
+          status: 'FAILED',
+          progress: 0,
+          stage: 'FAILED',
+          error: err.message,
+          completedAt: new Date().toISOString(),
+        });
+      }
+    });
+
+    res.json({ success: true, jobId, status: 'QUEUED' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET: Job Status
+app.get('/api/worker/jobs/:jobId', requireWorkerAuth, async (req: Request, res: Response) => {
+  try {
+    const job = await db.getProcessingJob(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
+    res.json({ success: true, job });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST: Cancel Job
+app.post('/api/worker/jobs/:jobId/cancel', requireWorkerAuth, async (req: Request, res: Response) => {
+  try {
+    await db.updateProcessingJobProgress(req.params.jobId, 0, 'CANCELLED', undefined, 'CANCELLED');
+    res.json({ success: true, cancelled: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Start Worker Server
 if (require.main === module) {
   app.listen(WORKER_PORT, '0.0.0.0', () => {

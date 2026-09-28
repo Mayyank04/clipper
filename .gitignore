@@ -35,4 +35,12 @@ data/storage/*
 !data/storage/.gitkeep
 data/tmp/*
 !data/tmp/.gitkeep
+data/caption_import_jobs/*
+!data/caption_import_jobs/.gitkeep
+data/caption_import_errors/*
+!data/caption_import_errors/.gitkeep
+data/processing_jobs/*
+!data/processing_jobs/.gitkeep
+data/processing_job_events/*
+!data/processing_job_events/.gitkeep
 

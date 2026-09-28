@@ -358,6 +358,20 @@ export class StorageProvider {
   }
 
   /**
+   * Unified signed URL generator conforming to StorageProvider contract.
+   */
+  public async getSignedUrl(
+    key: string,
+    operation: 'get' | 'put' = 'get',
+    expiresInSeconds: number = 3600
+  ): Promise<string> {
+    if (operation === 'put') {
+      return this.getSignedUploadUrl(key, 'application/octet-stream', expiresInSeconds);
+    }
+    return this.getSignedDownloadUrl(key, expiresInSeconds);
+  }
+
+  /**
    * Retrieve validated object metadata (size, mime type, last modified).
    */
   public async getObjectMetadata(key: string): Promise<ObjectMetadata | null> {

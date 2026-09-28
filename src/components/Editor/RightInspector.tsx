@@ -38,9 +38,11 @@ import {
   UserCheck,
   Type,
   X,
+  FolderDown,
 } from 'lucide-react';
 import { FontPickerModal } from './FontPickerModal';
 import { AIChatEditor } from './AIChatEditor';
+import { CaptionPresetImporterModal } from './CaptionPresetImporterModal';
 import {
   ShortCandidate,
   CaptionCustomization,
@@ -267,6 +269,43 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   const [newPresetName, setNewPresetName] = useState<string>('');
   const [customPresetsList, setCustomPresetsList] = useState<any[]>(() => getCustomCaptionPresets());
   const [showFontPickerModal, setShowFontPickerModal] = useState<boolean>(false);
+  const [showDriveImporterModal, setShowDriveImporterModal] = useState<boolean>(false);
+  const [importedPresetsList, setImportedPresetsList] = useState<any[]>([]);
+
+  const fetchImportedPresets = async () => {
+    try {
+      const res = await fetch('/api/caption-import/presets');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.presets)) {
+        const mapped = data.presets.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          desc: p.presetJson?.desc || `Imported ${p.category} preset`,
+          category: (p.category || 'imported').toLowerCase(),
+          config: p.presetJson?.config || {
+            style: p.id,
+            preset: p.id,
+            fontFamily: 'Montserrat, sans-serif',
+            fontSize: 34,
+            fontWeight: 800,
+            primaryColor: '#FFFFFF',
+            highlightColor: '#FACC15',
+            strokeColor: '#000000',
+            strokeWidth: 4.0,
+            hasShadow: true,
+            positionY: 72,
+            animationType: 'pop',
+            animationMode: 'POP_WORD',
+          },
+        }));
+        setImportedPresetsList(mapped);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchImportedPresets();
+  }, []);
 
   // B-Roll Studio State (Professional AI Semantic Engine)
   const [brollSubTab, setBrollSubTab] = useState<'timeline' | 'search' | 'upload'>('timeline');
@@ -687,8 +726,8 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   };
 
   const allStyles = useMemo(() => {
-    return [...customPresetsList, ...ALL_CAPTION_STYLES];
-  }, [customPresetsList]);
+    return [...customPresetsList, ...importedPresetsList, ...ALL_CAPTION_STYLES];
+  }, [customPresetsList, importedPresetsList]);
 
   const filteredPresets = useMemo(() => {
     return allStyles.filter((p) => {
@@ -706,10 +745,13 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
       if (presetFilterCategory === 'my_presets') {
         return customPresetsList.some((cp) => cp.id === p.id);
       }
+      if (presetFilterCategory === 'imported') {
+        return importedPresetsList.some((ip) => ip.id === p.id);
+      }
       if (presetFilterCategory === 'all') return true;
       return p.category === presetFilterCategory;
     });
-  }, [allStyles, templateSearchQuery, presetFilterCategory, favoritePresets, customPresetsList]);
+  }, [allStyles, templateSearchQuery, presetFilterCategory, favoritePresets, customPresetsList, importedPresetsList]);
 
   return (
     <div className="w-full lg:w-96 bg-neutral-900 border-l border-neutral-800 flex flex-col h-full overflow-hidden">
@@ -1021,6 +1063,14 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>Save Style</span>
                   </button>
+                  <button
+                    onClick={() => setShowDriveImporterModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-black transition cursor-pointer shrink-0 shadow-md shadow-amber-400/20"
+                    title="Import Caption Presets from Google Drive"
+                  >
+                    <FolderDown className="w-3.5 h-3.5" />
+                    <span>+ Import Pack</span>
+                  </button>
                 </div>
 
                 {/* Save Preset Modal Dialog */}
@@ -1079,8 +1129,13 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                   {[
                     { id: 'all', label: `All (${allStyles.length})` },
+                    { id: 'imported', label: `📥 Imported (${importedPresetsList.length})` },
                     { id: 'favorites', label: `★ Favorites (${favoritePresets.length})` },
                     { id: 'my_presets', label: `My Presets (${customPresetsList.length})` },
+                    { id: 'pro', label: 'Pro' },
+                    { id: 'beginner', label: 'Beginner' },
+                    { id: 'intermediate', label: 'Intermediate' },
+                    { id: '3d', label: '3D' },
                     { id: 'creator', label: 'Creator' },
                     { id: 'viral', label: 'Viral' },
                     { id: 'minimal', label: 'Minimal' },
@@ -3384,6 +3439,18 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
           });
         }}
         onClose={() => setShowFontPickerModal(false)}
+      />
+
+      {/* Google Drive Caption Preset Importer Modal */}
+      <CaptionPresetImporterModal
+        isOpen={showDriveImporterModal}
+        onClose={() => {
+          setShowDriveImporterModal(false);
+          fetchImportedPresets();
+        }}
+        onApplyPreset={(presetRecord) => {
+          applyPreset(presetRecord.id);
+        }}
       />
     </div>
   );
