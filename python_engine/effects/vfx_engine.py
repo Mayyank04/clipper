@@ -30,8 +30,13 @@ def build_vfx_filter_chain(vfx_segments: List[Dict[str, Any]]) -> str:
             filters.append(f"gblur=sigma={int(intensity)}:enable='{enable_expr}'")
         elif vtype == "vignette":
             filters.append(f"vignette=PI/4:enable='{enable_expr}'")
-        elif vtype == "shake":
+        elif vtype in ("shake", "screen_shake", "micro_shake", "impact_shake"):
             shift = int(intensity * 2)
             filters.append(f"crop=1080:1920:{shift}*sin(t*50):enable='{enable_expr}'")
+        elif vtype in ("glitch", "digital_glitch", "rgb_split"):
+            filters.append(f"hue=h=90*sin(2*PI*t):enable='{enable_expr}'")
 
     return ",".join(filters)
+
+build_vfx_filtergraph_chain = build_vfx_filter_chain
+

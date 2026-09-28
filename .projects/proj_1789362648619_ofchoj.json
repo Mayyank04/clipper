@@ -42,29 +42,60 @@
       ],
       "sfxMarkers": [
         {
-          "id": "sfx_regen_0",
-          "timestamp": 0.5,
-          "category": "impact",
-          "soundName": "Sub-bass Boom",
-          "volume": 0.75,
-          "reason": "Emphasis detected on high-impact statement",
-          "triggerText": "Everything changed when AI started writing code.",
-          "confidence": 0.94,
-          "audioUrl": "/assets/sfx/impact.wav"
+          "id": "sfx_ai_1",
+          "timestamp": 0.2,
+          "category": "whoosh",
+          "soundName": "Opener Whoosh",
+          "volume": 0.85
         },
         {
-          "id": "sfx_regen_1",
+          "id": "sfx_ai_2",
+          "timestamp": 3.5,
+          "category": "pop",
+          "soundName": "Bubble Pop",
+          "volume": 0.7
+        },
+        {
+          "id": "sfx_ai_3",
           "timestamp": 6,
-          "category": "glitch",
-          "soundName": "Digital Glitch",
-          "volume": 0.75,
-          "reason": "Pattern interrupt or myth-busting statement",
-          "triggerText": "Number one stop posting random content.",
-          "confidence": 0.89,
-          "audioUrl": "/assets/sfx/glitch.wav"
+          "category": "impact",
+          "soundName": "Dramatic Impact",
+          "volume": 0.9
+        },
+        {
+          "id": "sfx_ai_4",
+          "timestamp": 12.5,
+          "category": "chime",
+          "soundName": "Resolution Chime",
+          "volume": 0.75
         }
       ],
-      "vfxMarkers": [],
+      "vfxMarkers": [
+        {
+          "id": "vfx_ai_1",
+          "timestamp": 0.2,
+          "duration": 1.8,
+          "type": "zoom_punch",
+          "label": "1.2x Dynamic Zoom",
+          "intensity": 8
+        },
+        {
+          "id": "vfx_ai_2",
+          "timestamp": 6,
+          "duration": 1.5,
+          "type": "glow",
+          "label": "Key Moment Glow",
+          "intensity": 6
+        },
+        {
+          "id": "vfx_ai_3",
+          "timestamp": 10.5,
+          "duration": 1.2,
+          "type": "shake",
+          "label": "Punch Impact",
+          "intensity": 7
+        }
+      ],
       "brollSuggestions": [
         {
           "id": "broll_regen_0",

@@ -248,6 +248,10 @@ def clean_and_normalize_word(raw_word: str) -> str:
         return ""
     if re.search(r'(_AUDIO|BLANK_AUDIO|APPLAUSE|CHEERING|LAUGHTER|MUSIC|SILENCE)', cleaned, re.IGNORECASE):
         return ""
+    # Suppress internal repeating hallucination loops (e.g. 'ciamociamociamo...' or 'fightingfighting...')
+    cleaned = re.sub(r'(.{2,12})\1{3,}', r'\1', cleaned)
+    if len(cleaned) > 35 and not ' ' in cleaned:
+        return ""
     return cleaned
 
 def clean_words_stream(raw_words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -265,9 +269,10 @@ def clean_words_stream(raw_words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not word_text:
             continue
 
-        normalized = re.sub(r'[^a-zA-Z0-9\u0900-\u097F]', '', word_text.lower())
+        # Match all Unicode alphanumeric characters across all Indian, Urdu, Arabic, and Latin languages
+        normalized = re.sub(r'[^\w]', '', word_text.lower(), flags=re.UNICODE)
         if not normalized:
-            continue
+            normalized = word_text.lower()
 
         start = float(w.get("start", 0.0))
         end = float(w.get("end", start + 0.25))
@@ -409,8 +414,8 @@ def transcribe_audio_adaptive(
     # On Apple Silicon Metal GPU, MLX handles 60s in ~1-2s.
     CHUNK_SIZE = 60.0
     
-    # If audio is short (<= 75s), process in single pass
-    if total_duration <= 75.0:
+    # If audio is <= 300s (5 minutes), process in single pass on Apple Silicon GPU
+    if total_duration <= 300.0:
         chunk_ranges = [(0.0, total_duration)]
     else:
         chunk_ranges = []

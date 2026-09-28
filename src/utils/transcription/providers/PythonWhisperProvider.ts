@@ -258,13 +258,17 @@ export class PythonWhisperProvider implements TranscriptionProvider {
                 cleanup();
 
                 const tData = msg.transcript || {};
+                const rawSegments = Array.isArray(tData.segments) ? tData.segments : [];
+                const rawWords = Array.isArray(tData.words) && tData.words.length > 0
+                  ? tData.words
+                  : rawSegments.flatMap((s: any) => s.words || []);
                 const transcript: Transcript = {
                   language: tData.language || msg.detectedLanguage || 'en',
                   languageConfidence: tData.languageConfidence ?? msg.languageConfidence ?? 0.95,
                   duration: tData.duration || msg.duration || duration,
                   speechCoverage: tData.speechCoverage ?? 0.95,
-                  segments: tData.segments || [],
-                  words: tData.words || [],
+                  segments: rawSegments,
+                  words: rawWords,
                 };
 
                 resolve({

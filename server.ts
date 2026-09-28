@@ -57,6 +57,7 @@ import {
   buildSmartSFXPrompt,
   searchSFXCatalog,
 } from './src/utils/sfxCatalog';
+import { findTopHookCandidates } from './src/utils/hookFinder';
 import { sfxGenerator, localProceduralProvider, optionalCloudAIProvider } from './src/utils/sfxGenerationProvider';
 import {
   SFXAsset,
@@ -1708,43 +1709,22 @@ Requirements:
       : (project.normalizedTranscript?.segments || []);
     
     if (transcriptSegs.length > 0) {
-      // Detect natural dialogue boundaries from actual transcript
-      let curStart = transcriptSegs[0].start;
-      let curSegs: any[] = [];
-      for (const seg of transcriptSegs) {
-        curSegs.push(seg);
-        const curDur = seg.end - curStart;
-        if (curDur >= 20 || seg === transcriptSegs[transcriptSegs.length - 1]) {
-          if (curDur >= 10) {
-            const hookCandidate = curSegs[0]?.text || '';
-            const hookText = hookCandidate.length > 60 ? hookCandidate.slice(0, 57) + '...' : hookCandidate;
-            const wordsCount = curSegs.reduce((sum, s) => sum + (s.words?.length || s.text.split(' ').length), 0);
-            const wordsPerSec = curDur > 0 ? wordsCount / curDur : 0;
-            const pacing = Math.min(95, Math.max(70, Math.round(75 + wordsPerSec * 8)));
-            const score = Math.round(pacing * 0.5 + (hookText ? 45 : 35));
-
-            aiClips.push({
-              title: `${project.originalTitle} — Segment ${aiClips.length + 1} (${Math.floor(curStart)}s-${Math.floor(seg.end)}s)`,
-              description: curSegs.map((s: any) => s.text).join(' ').slice(0, 120),
-              topic: curSegs[0]?.topic || `Speech Segment ${aiClips.length + 1}`,
-              hookText: hookText || `Key dialogue from ${project.originalTitle}`,
-              hookCategory: ['bold', 'educational', 'curiosity', 'shock', 'question'][aiClips.length % 5],
-              startTime: curStart,
-              endTime: seg.end,
-              duration: Number((seg.end - curStart).toFixed(2)),
-              viralScoreOverall: score,
-              whySelected: [
-                `Natural speech boundary from ${Math.floor(curStart)}s to ${Math.floor(seg.end)}s`,
-                'High word cadence and clear dialogue delivery',
-                'Optimized for 9:16 vertical short format',
-              ],
-              sentences: curSegs,
-            });
-            if (aiClips.length >= dynamicTargetCount) break;
-            curStart = seg.end;
-            curSegs = [];
-          }
-        }
+      console.log(`[PROCESS] Running Real AI Hook Finder across entire media (${transcriptSegs.length} segments, ${totalDuration}s)...`);
+      const candidates = findTopHookCandidates(transcriptSegs, totalDuration, dynamicTargetCount);
+      if (candidates.length > 0) {
+        aiClips = candidates.map((c, idx) => ({
+          title: `${project.originalTitle} — Hook #${idx + 1} (Score: ${c.viralScoreOverall})`,
+          description: c.description,
+          topic: c.topic,
+          hookText: c.hookText,
+          hookCategory: c.hookCategory,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          duration: c.duration,
+          viralScoreOverall: c.viralScoreOverall,
+          whySelected: c.whySelected,
+          sentences: c.sentences,
+        }));
       }
     }
 

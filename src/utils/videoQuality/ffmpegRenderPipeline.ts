@@ -281,18 +281,26 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     const vEnd = vStart + vDur;
     const vType = vfx.type || 'punch_in';
 
-    if (vType === 'glow') {
+    if (vType === 'glow' || vType === 'neon_glow' || vType === 'edge_glow' || vType === 'bloom') {
       filterChain += `;${curVPad}eq=brightness=0.15:contrast=1.25:saturation=1.2:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
-    } else if (vType === 'glitch') {
+    } else if (vType === 'glitch' || vType === 'digital_glitch' || vType === 'rgb_split' || vType === 'chromatic_aberration' || vType === 'pixel_glitch' || vType === 'vhs') {
       filterChain += `;${curVPad}hue=h=90*sin(2*PI*t):enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
-    } else if (vType === 'shake') {
-      filterChain += `;${curVPad}eq=contrast=1.2:brightness=0.04:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
-    } else if (vType === 'motion_blur') {
+    } else if (vType === 'shake' || vType === 'screen_shake' || vType === 'impact_shake' || vType === 'micro_shake' || vType === 'bass_punch' || vType === 'camera_punch') {
+      filterChain += `;${curVPad}eq=contrast=1.25:brightness=0.06:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'motion_blur' || vType === 'radial_blur' || vType === 'focus_rack' || vType === 'bokeh_blur') {
       filterChain += `;${curVPad}tblend=all_mode=average:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
-    } else if (vType === 'particles') {
+    } else if (vType === 'particles' || vType === 'spark_burst' || vType === 'film_grain' || vType === 'dust') {
       filterChain += `;${curVPad}noise=c0s=12:allf=t+u:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'flash' || vType === 'white_flash' || vType === 'lens_flash' || vType === 'camera_flash') {
+      filterChain += `;${curVPad}eq=brightness=0.35:contrast=1.4:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'black_flash' || vType === 'dramatic_fade') {
+      filterChain += `;${curVPad}eq=brightness=-0.4:contrast=1.3:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'color_punch' || vType === 'contrast_punch') {
+      filterChain += `;${curVPad}eq=contrast=1.35:saturation=1.4:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
+    } else if (vType === 'vignette') {
+      filterChain += `;${curVPad}vignette=PI/4:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
     } else {
-      // Default: punch_in / reaction_punch / contrast punch
+      // Default: punch_zoom / punch_in / reaction_punch / highlight_pulse
       filterChain += `;${curVPad}eq=brightness=0.08:contrast=1.12:enable='between(t,${vStart},${vEnd})'[vvfx_${vfxIdx}]`;
     }
     curVPad = `[vvfx_${vfxIdx}]`;

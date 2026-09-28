@@ -1,43 +1,44 @@
-// SFX Catalog & Semantic Search Engine
-// Provides full 34-category sound registry, semantic search, library-first scoring, and prompt building
-
 import { SFXAsset, SFXCategory } from '../types';
+import { SFX_LIBRARY } from '../data/sfxLibrary';
 
 export const SFX_CATEGORIES: { id: SFXCategory; label: string; icon: string; description: string }[] = [
   { id: 'impact', label: 'Impact', icon: '💥', description: 'Heavy hits, cinematic drops, slams' },
   { id: 'whoosh', label: 'Whoosh', icon: '💨', description: 'Fast transitions, air swipes, whips' },
+  { id: 'hit', label: 'Hit', icon: '🥊', description: 'Punchy strikes, snare accents, beats' },
+  { id: 'swoosh', label: 'Swoosh', icon: '🌪️', description: 'Smooth air sweeps, glides, rushes' },
   { id: 'transition', label: 'Transition', icon: '🔄', description: 'Scene switchers, swooshes, passes' },
   { id: 'riser', label: 'Riser', icon: '📈', description: 'Tension builders, pitch sweeps, swells' },
-  { id: 'hit', label: 'Hit', icon: '🥊', description: 'Punchy strikes, snare accents, beats' },
-  { id: 'bass', label: 'Bass', icon: '🔊', description: 'Deep 808 drops, sub thumps, low rumbles' },
-  { id: 'pop', label: 'Pop', icon: '🫧', description: 'Bubble pops, cork clicks, light accents' },
+  { id: 'drop', label: 'Drop', icon: '📉', description: 'Pitch falls, gravity drops, bass thuds' },
+  { id: 'boom', label: 'Boom', icon: '💣', description: 'Deep explosions, sub rumbles, shocks' },
   { id: 'click', label: 'Click', icon: '🖱️', description: 'Mouse clicks, button taps, switches' },
-  { id: 'ui', label: 'UI', icon: '📱', description: 'Interface beeps, toggles, interactions' },
-  { id: 'notification', label: 'Notification', icon: '🔔', description: 'Pleasant bells, message chimes' },
-  { id: 'cinematic', label: 'Cinematic', icon: '🎬', description: 'Trailer braams, orchestral hits, atmospheric drops' },
-  { id: 'comedy', label: 'Comedy', icon: '🤡', description: 'Boings, slide whistles, goofy pops, bonks' },
-  { id: 'meme', label: 'Meme', icon: '🤪', description: 'Airhorn, record scratch, sad violin, vine booms' },
-  { id: 'gaming', label: 'Gaming', icon: '🎮', description: '8-bit jumps, power-ups, coin rings, level up' },
-  { id: 'nature', label: 'Nature', icon: '🍃', description: 'Wind gusts, thunder claps, water splashes' },
-  { id: 'ambient', label: 'Ambient', icon: '🌌', description: 'Room tone, eerie drone, cosmic hum' },
-  { id: 'human', label: 'Human', icon: '🗣️', description: 'Gasp, sigh, whisper, throat clear' },
-  { id: 'animal', label: 'Animal', icon: '🦁', description: 'Growl, chirp, roar, bark' },
-  { id: 'vehicle', label: 'Vehicle', icon: '🏎️', description: 'Engine rev, tire screech, car pass' },
-  { id: 'mechanical', label: 'Mechanical', icon: '⚙️', description: 'Gears, clock ticks, metal latch, servo' },
-  { id: 'footsteps', label: 'Footsteps', icon: '👣', description: 'Shoe scuffs, concrete strides, wood creaks' },
-  { id: 'applause', label: 'Applause', icon: '👏', description: 'Hand claps, standing ovation, cheering' },
-  { id: 'laugh', label: 'Laugh', icon: '😂', description: 'Chuckle, belly laugh, crowd laughter' },
-  { id: 'crowd', label: 'Crowd', icon: '👥', description: 'Audience gasp, stadium cheer, murmured chatter' },
-  { id: 'music', label: 'Music', icon: '🎵', description: 'Short melodic stabs, guitar sting, harp glissando' },
-  { id: 'glitch', label: 'Glitch', icon: '⚡', description: 'Digital stutter, pixel distortion, data corruption' },
+  { id: 'pop', label: 'Pop', icon: '🫧', description: 'Bubble pops, cork clicks, light accents' },
   { id: 'digital', label: 'Digital', icon: '💾', description: 'Computer telemetry, modem handshake, synth beep' },
-  { id: 'horror', label: 'Horror', icon: '👻', description: 'Violin screech, creepy whisper, door slam' },
-  { id: 'suspense', label: 'Suspense', icon: '⏳', description: 'Heartbeat thump, ticking clock, drone tension' },
-  { id: 'magic', label: 'Magic', icon: '✨', description: 'Sparkle glitter, fairy wand, chime shimmer' },
+  { id: 'glitch', label: 'Glitch', icon: '⚡', description: 'Digital stutter, pixel distortion, data corruption' },
+  { id: 'ui', label: 'UI', icon: '📱', description: 'Interface beeps, toggles, interactions' },
+  { id: 'chime', label: 'Chime', icon: '🎐', description: 'Crystal bells, glass dings, insights' },
+  { id: 'notification', label: 'Notification', icon: '🔔', description: 'Pleasant bells, message chimes' },
+  { id: 'laugh', label: 'Laugh', icon: '😂', description: 'Chuckle, snicker, comedic reaction' },
+  { id: 'reaction', label: 'Reaction', icon: '😲', description: 'Wow rise, huh dips, surprise vocal accents' },
+  { id: 'tension', label: 'Tension', icon: '⏳', description: 'Heartbeat thumps, ticking clocks, drones' },
+  { id: 'dramatic', label: 'Dramatic', icon: '🎭', description: 'Orchestral stings, ominous brass, twists' },
+  { id: 'comedy', label: 'Comedy', icon: '🤡', description: 'Boings, slide whistles, goofy pops, bonks' },
+  { id: 'meme', label: 'Meme', icon: '🤪', description: 'Airhorn, record scratch, vine booms' },
+  { id: 'sports', label: 'Sports', icon: '⚽', description: 'Whistles, buzzers, crowd cheers' },
+  { id: 'gaming', label: 'Gaming', icon: '🎮', description: '8-bit coins, level ups, power ups' },
+  { id: 'cinematic', label: 'Cinematic', icon: '🎬', description: 'Trailer braams, orchestral hits, atmospheric drops' },
   { id: 'success', label: 'Success', icon: '✅', description: 'Victory fanfare, chime ding, affirmative chord' },
   { id: 'failure', label: 'Failure', icon: '❌', description: 'Womp womp, error buzz, descending slide' },
   { id: 'alert', label: 'Alert', icon: '🚨', description: 'Warning siren, klaxon, caution pulse' },
-  { id: 'reveal', label: 'Reveal', icon: '🪄', description: 'Subtle shimmer, curtain whoosh, spotlight chord' },
+  { id: 'camera', label: 'Camera', icon: '📷', description: 'DSLR shutter, flash strobe, film advance' },
+  { id: 'typewriter', label: 'Typewriter', icon: '⌨️', description: 'Mechanical keys, carriage bell, clacks' },
+  { id: 'mouse', label: 'Mouse', icon: '🖱️', description: 'Precision mouse clicks and scroll wheels' },
+  { id: 'keyboard', label: 'Keyboard', icon: '💻', description: 'Mechanical typing bursts and enter clicks' },
+  { id: 'record_scratch', label: 'Record Scratch', icon: '💿', description: 'Vinyl stops, rewind rewinds, freeze frames' },
+  { id: 'heartbeat', label: 'Heartbeat', icon: '💓', description: 'Deep visceral pulses and adrenaline thuds' },
+  { id: 'bass', label: 'Bass', icon: '🔊', description: 'Deep 808 drops, sub thumps, low rumbles' },
+  { id: 'sub_drop', label: 'Sub Drop', icon: '🔉', description: 'Deep downward sweeps and sub thumps' },
+  { id: 'air', label: 'Air', icon: '🌬️', description: 'Hydraulic releases, wind rushes, air puffs' },
+  { id: 'foley', label: 'Foley', icon: '📦', description: 'Fabric movement, paper slides, wood thumps' },
 ];
 
 // Helper to generate a realistic waveform array (values 0.1 to 1.0)
@@ -58,7 +59,7 @@ function generateSyntheticWaveform(seed: string, length = 32): number[] {
 }
 
 // Built-in verified SFX Library catalog (each mapped to a real audio asset)
-export const BUILTIN_SFX_CATALOG: SFXAsset[] = [
+const LEGACY_SFX_CATALOG: SFXAsset[] = [
   // 1. IMPACT
   {
     id: 'sfx_impact_sub_bass',
@@ -406,6 +407,24 @@ export const BUILTIN_SFX_CATALOG: SFXAsset[] = [
     channels: 2,
   },
 ];
+ 
+// Built-in verified SFX Library catalog (111 verified procedural and curated assets)
+export const BUILTIN_SFX_CATALOG: SFXAsset[] = SFX_LIBRARY.map((item) => ({
+  id: item.id,
+  name: item.name,
+  file: item.file,
+  duration: item.duration,
+  category: item.category.toLowerCase() as SFXCategory,
+  tags: item.tags,
+  description: `${item.name} (${item.category}): optimized for ${item.recommendedTriggers.join(', ')}.`,
+  source: 'bundled' as const,
+  license: 'Royalty-free' as const,
+  hash: `hash_${item.id}`,
+  waveform: generateSyntheticWaveform(item.id),
+  loudness: -14.5,
+  sampleRate: 44100,
+  channels: 2,
+}));
 
 // Semantic Synonym Map for Search
 const SYNONYM_MAP: Record<string, string[]> = {

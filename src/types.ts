@@ -193,18 +193,41 @@ export type HookCategory = 'curiosity' | 'bold' | 'question' | 'shock' | 'educat
 export type SFXCategory =
   | 'impact'
   | 'whoosh'
+  | 'hit'
+  | 'swoosh'
   | 'transition'
   | 'riser'
-  | 'hit'
-  | 'bass'
-  | 'pop'
+  | 'drop'
+  | 'boom'
   | 'click'
+  | 'pop'
+  | 'digital'
+  | 'glitch'
   | 'ui'
+  | 'chime'
   | 'notification'
-  | 'cinematic'
+  | 'laugh'
+  | 'reaction'
+  | 'tension'
+  | 'dramatic'
   | 'comedy'
   | 'meme'
+  | 'sports'
   | 'gaming'
+  | 'cinematic'
+  | 'success'
+  | 'failure'
+  | 'alert'
+  | 'camera'
+  | 'typewriter'
+  | 'mouse'
+  | 'keyboard'
+  | 'record_scratch'
+  | 'heartbeat'
+  | 'bass'
+  | 'sub_drop'
+  | 'air'
+  | 'foley'
   | 'nature'
   | 'ambient'
   | 'human'
@@ -213,22 +236,15 @@ export type SFXCategory =
   | 'mechanical'
   | 'footsteps'
   | 'applause'
-  | 'laugh'
   | 'crowd'
   | 'music'
-  | 'glitch'
-  | 'digital'
   | 'horror'
   | 'suspense'
   | 'magic'
-  | 'success'
-  | 'failure'
-  | 'alert'
   | 'rise'
-  | 'drop'
-  | 'chime'
   | 'reveal'
-  | 'sci-fi';
+  | 'sci-fi'
+  | (string & {});
 
 export type SFXApprovalMode = 'auto_apply' | 'balanced' | 'suggest_only';
 
@@ -276,7 +292,69 @@ export type VFXType =
   | 'callout'
   | 'progress_bar'
   | 'emoji'
-  | 'glitch';
+  | 'glitch'
+  | 'subtle_zoom_in'
+  | 'subtle_zoom_out'
+  | 'punch_zoom'
+  | 'micro_zoom'
+  | 'dynamic_push'
+  | 'dynamic_pull'
+  | 'beat_zoom'
+  | 'meme_zoom'
+  | 'screen_shake'
+  | 'micro_shake'
+  | 'impact_shake'
+  | 'handheld'
+  | 'bass_punch'
+  | 'camera_punch'
+  | 'digital_glitch'
+  | 'rgb_split'
+  | 'chromatic_aberration'
+  | 'scanlines'
+  | 'pixel_glitch'
+  | 'vhs'
+  | 'film_burn'
+  | 'bloom'
+  | 'neon_glow'
+  | 'edge_glow'
+  | 'flash'
+  | 'white_flash'
+  | 'black_flash'
+  | 'lens_flash'
+  | 'directional_blur'
+  | 'radial_blur'
+  | 'focus_rack'
+  | 'bokeh_blur'
+  | 'tilt_shift'
+  | 'vignette'
+  | 'color_punch'
+  | 'contrast_punch'
+  | 'film_grain'
+  | 'light_leak'
+  | 'cinematic_fade'
+  | 'dramatic_fade'
+  | 'sharpen_punch'
+  | 'spark_burst'
+  | 'highlight_pulse'
+  | 'shockwave'
+  | 'speed_lines'
+  | 'fire_aura'
+  | 'whip_pan'
+  | 'spin_transition'
+  | 'bounce'
+  | 'elastic_pop'
+  | 'speed_ramp'
+  | 'freeze_frame'
+  | 'reaction_zoom'
+  | 'gaming_hit'
+  | 'critical_hit'
+  | 'combo_flash'
+  | 'achievement_pop'
+  | 'podcast_speaker_focus'
+  | 'podcast_warmth'
+  | 'social_hook_pulse'
+  | 'social_cta_glow'
+  | (string & {});
 
 export type MusicCategory =
   | 'cinematic'
@@ -495,6 +573,8 @@ export interface VFXMarker {
   type: VFXType;
   label?: string;
   intensity?: number; // 1 to 10
+  reason?: string;
+  confidence?: number;
 }
 
 export interface BRollSuggestion {
@@ -677,6 +757,7 @@ export interface CaptionCustomization {
   hasShadow: boolean;
   shadowColor?: string;
   shadowBlur?: number;
+  shadowOffset?: number;
   shadowOffsetX?: number;
   shadowOffsetY?: number;
   glowEnabled?: boolean;
@@ -762,8 +843,10 @@ export interface CaptionCustomization {
   scale?: number;
   tracking?: number;
   shadow?: boolean;
-  shadowOffset?: number;
   background?: string;
+  hasBackground?: boolean;
+  displayMode?: 'word' | 'line' | 'block' | string;
+  wordMode?: 'word' | '2-word' | '3-word' | '4-word' | '5-word' | 'line' | 'block' | string;
   enableSpeechHold?: boolean;
   holdThresholdSeconds?: number;
   finalHoldSeconds?: number;

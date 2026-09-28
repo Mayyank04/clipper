@@ -70,6 +70,9 @@ import {
 } from '../../utils/customPresetsManager';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { BUILTIN_SFX_CATALOG, searchSFXCatalog } from '../../utils/sfxCatalog';
+import { SFX_LIBRARY, SFXDefinition } from '../../data/sfxLibrary';
+import { VFX_LIBRARY, VFXDefinition } from '../../data/vfxLibrary';
+import { generateAutoEditPlan, EditIntensity } from '../../utils/autoEditEngine';
 import { LiveTemplatePreview } from './VideoCanvas';
 import { formatTimeWithTenths } from '../../utils/timeFormat';
 
@@ -120,6 +123,17 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
   const [showSavePresetModal, setShowSavePresetModal] = useState<boolean>(false);
   const [newPresetName, setNewPresetName] = useState<string>('');
   const [sfxSearchQuery, setSfxSearchQuery] = useState<string>('');
+  const [sfxCategoryFilter, setSfxCategoryFilter] = useState<string>('all');
+  const [vfxCategoryFilter, setVfxCategoryFilter] = useState<string>('ALL');
+  const [vfxSearchTerm, setVfxSearchTerm] = useState<string>('');
+  const [editIntensity, setEditIntensity] = useState<EditIntensity>('balanced');
+  const [autoCaptionsEnabled, setAutoCaptionsEnabled] = useState<boolean>(true);
+  const [autoBRollEnabled, setAutoBRollEnabled] = useState<boolean>(true);
+  const [autoSFXEnabled, setAutoSFXEnabled] = useState<boolean>(true);
+  const [autoVFXEnabled, setAutoVFXEnabled] = useState<boolean>(true);
+  const [autoReframeEnabled, setAutoReframeEnabled] = useState<boolean>(true);
+  const [autoAudioEnabled, setAutoAudioEnabled] = useState<boolean>(true);
+  const [autoEditMessage, setAutoEditMessage] = useState<string | null>(null);
   const [selectedWordState, setSelectedWordState] = useState<{
     captionId: string;
     wordIndex: number;
@@ -356,17 +370,33 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
     onUpdateShort({ ...short, captions: updated });
   };
 
+  const handlePlaySfxPreview = (file: string) => {
+    try {
+      const audio = new Audio(file);
+      audio.volume = 0.8;
+      audio.play().catch((e) => console.warn('[SFX Preview] Play error:', e));
+    } catch (e) {
+      console.warn('[SFX Preview] Exception:', e);
+    }
+  };
+
   // Add SFX Marker
-  const handleAddSfx = (category: string, name: string) => {
+  const handleAddSfx = (category: string, name: string, file?: string, reason?: string) => {
+    const sfxAsset = SFX_LIBRARY.find((s) => s.name === name || s.id === name);
+    const audioUrl = file || sfxAsset?.file || `/assets/sfx/${category}.wav`;
     const newMarker: SFXMarker = {
       id: `sfx_${Date.now()}`,
       category: category as any,
       soundName: name,
       timestamp: Number(currentTime.toFixed(2)),
-      duration: 0.8,
+      duration: sfxAsset?.duration || 0.8,
       volume: 0.8,
+      audioUrl,
+      reason: reason || 'Manually placed sound effect',
+      confidence: 1.0,
+      source: 'library',
     };
-    sfxEngine.playSound(category as any, 0.8);
+    handlePlaySfxPreview(audioUrl);
     onUpdateShort({
       ...short,
       sfxMarkers: [...(short.sfxMarkers || []), newMarker].sort((a, b) => a.timestamp - b.timestamp),
@@ -374,18 +404,47 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
   };
 
   // Add VFX Marker
-  const handleAddVfx = (type: VFXMarker['type']) => {
+  const handleAddVfx = (type: VFXMarker['type'], label?: string, reason?: string) => {
+    const vfxDef = VFX_LIBRARY.find((v) => v.type === type || v.id === type);
     const newMarker: VFXMarker = {
       id: `vfx_${Date.now()}`,
       type,
       timestamp: Number(currentTime.toFixed(2)),
-      duration: 1.2,
-      label: `${type.toUpperCase()} Effect`,
+      duration: vfxDef?.duration || 1.2,
+      label: label || vfxDef?.name || `${type.toUpperCase()} Effect`,
+      intensity: vfxDef?.intensity || 6,
+      reason: reason || 'Manually placed visual effect',
+      confidence: 1.0,
     };
     onUpdateShort({
       ...short,
       vfxMarkers: [...(short.vfxMarkers || []), newMarker].sort((a, b) => a.timestamp - b.timestamp),
     });
+  };
+
+  // Master Auto Edit Handler
+  const handleMasterAutoEdit = () => {
+    const transcriptSegs = short.captions || (short as any).sentences || [];
+    const plan = generateAutoEditPlan(short, transcriptSegs, {
+      intensity: editIntensity,
+      enableSFX: autoSFXEnabled,
+      enableVFX: autoVFXEnabled,
+      enableBRoll: autoBRollEnabled,
+      enableAutoReframe: autoReframeEnabled,
+      enableAudioEnhance: autoAudioEnabled,
+    });
+    onUpdateShort(plan.short);
+    setAutoEditMessage(plan.summary);
+  };
+
+  const handleResetAutoEdit = () => {
+    onUpdateShort({
+      ...short,
+      sfxMarkers: [],
+      vfxMarkers: [],
+      brollSuggestions: [],
+    });
+    setAutoEditMessage('Reset: Cleared all AI-generated SFX, VFX, and B-Roll markers.');
   };
 
   const navTabs = [
@@ -1082,27 +1141,111 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
         {/* ===================== TAB 5: SFX ===================== */}
         {activeTab === 'sfx' && (
           <div className="space-y-4">
-            <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider block">
-              Sound Effects Catalog (Click to Insert at Playhead: {currentTime.toFixed(1)}s)
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
+                Sound Effects Library ({SFX_LIBRARY.length} Assets)
+              </span>
+              <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                At {currentTime.toFixed(1)}s
+              </span>
+            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { cat: 'whoosh', name: 'Quick Whoosh' },
-                { cat: 'impact', name: 'Heavy Impact' },
-                { cat: 'swoosh', name: 'Air Swoosh' },
-                { cat: 'chime', name: 'Notification Chime' },
-                { cat: 'hit', name: 'Punchline Hit' },
-                { cat: 'riser', name: 'Tension Riser' },
-              ].map((sfx) => (
-                <button
-                  key={sfx.name}
-                  onClick={() => handleAddSfx(sfx.cat, sfx.name)}
-                  className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-amber-400/50 text-left font-bold text-xs text-neutral-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
+            {/* AI Recommended SFX */}
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/20 rounded-xl space-y-2">
+              <div className="flex items-center gap-1.5 text-amber-400 text-[10px] font-black uppercase tracking-wider">
+                <Sparkles className="w-3 h-3" />
+                <span>AI Recommended SFX</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { id: 'whoosh_fast_01', name: 'Fast Whoosh', cat: 'whoosh', reason: 'Transition swipe' },
+                  { id: 'impact_punch_02', name: 'Punchy Impact', cat: 'impact', reason: 'Statement punch' },
+                  { id: 'riser_tension_01', name: 'Tension Riser', cat: 'riser', reason: 'Question open-loop' },
+                  { id: 'notification_ding_01', name: 'App Ding', cat: 'notification', reason: 'CTA chime' },
+                ].map((rec) => {
+                  const asset = SFX_LIBRARY.find((s) => s.id === rec.id) || SFX_LIBRARY[0];
+                  return (
+                    <button
+                      key={rec.id}
+                      onClick={() => handleAddSfx(rec.cat, asset.name, asset.file, rec.reason)}
+                      className="p-2 rounded-lg bg-neutral-950/80 border border-amber-500/30 hover:border-amber-400 text-left transition-all flex flex-col justify-between group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-bold text-[11px] text-white truncate">{asset.name}</span>
+                        <Plus className="w-3 h-3 text-amber-400 shrink-0 group-hover:scale-125 transition-transform" />
+                      </div>
+                      <span className="text-[9px] text-amber-400/80 truncate mt-0.5">{rec.reason}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Search & Category Filter */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                <input
+                  type="text"
+                  placeholder="Search 111+ SFX sounds or tags..."
+                  value={sfxSearchQuery}
+                  onChange={(e) => setSfxSearchQuery(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                {['all', 'WHOOSH', 'IMPACT', 'HIT', 'SWOOSH', 'TRANSITION', 'RISER', 'DROP', 'BOOM', 'CLICK', 'POP', 'DIGITAL', 'GLITCH', 'UI', 'CHIME', 'NOTIFICATION', 'LAUGH', 'REACTION', 'MEME', 'GAMING', 'CINEMATIC', 'SUCCESS', 'FAILURE', 'ALERT', 'CAMERA', 'KEYBOARD', 'RECORD_SCRATCH', 'HEARTBEAT', 'BASS', 'AIR', 'FOLEY'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSfxCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                      sfxCategoryFilter.toLowerCase() === cat.toLowerCase()
+                        ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                        : 'bg-neutral-950 text-neutral-400 border border-neutral-800 hover:text-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filtered SFX Catalog Grid */}
+            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+              {SFX_LIBRARY.filter((s) => {
+                const matchCat = sfxCategoryFilter === 'all' || s.category.toLowerCase() === sfxCategoryFilter.toLowerCase();
+                const q = sfxSearchQuery.toLowerCase();
+                const matchQ = !q || s.name.toLowerCase().includes(q) || s.tags.some((t) => t.toLowerCase().includes(q));
+                return matchCat && matchQ;
+              }).map((item) => (
+                <div
+                  key={item.id}
+                  className="p-2 rounded-xl bg-neutral-950/70 border border-neutral-800/80 hover:border-neutral-700 flex items-center justify-between transition-all"
                 >
-                  <span className="truncate">{sfx.name}</span>
-                  <Plus className="w-3.5 h-3.5 text-amber-400" />
-                </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={() => handlePlaySfxPreview(item.file)}
+                      title="Play Preview"
+                      className="w-6 h-6 rounded-lg bg-neutral-900 border border-neutral-700 hover:border-amber-400 text-amber-400 flex items-center justify-center shrink-0 cursor-pointer"
+                    >
+                      <Play className="w-2.5 h-2.5 ml-0.5" />
+                    </button>
+                    <div className="min-w-0">
+                      <div className="font-bold text-xs text-neutral-200 truncate">{item.name}</div>
+                      <div className="text-[9px] text-neutral-500 font-mono">
+                        {item.category} • {item.duration}s
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAddSfx(item.category.toLowerCase(), item.name, item.file)}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-amber-400 hover:text-neutral-950 text-neutral-300 font-bold text-[10px] border border-neutral-800 transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Insert</span>
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -1117,15 +1260,20 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
                     key={m.id}
                     className="p-2 bg-neutral-950/60 rounded-lg border border-neutral-800/80 flex items-center justify-between text-[11px]"
                   >
-                    <span className="font-semibold text-neutral-300">{m.soundName}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-neutral-300 truncate block">{m.soundName}</span>
+                      {m.reason && (
+                        <span className="text-[9px] text-amber-400/80 truncate block">{m.reason}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="font-mono text-[10px] text-neutral-500">{m.timestamp.toFixed(2)}s</span>
                       <button
                         onClick={() => {
                           const updated = (short.sfxMarkers || []).filter((s) => s.id !== m.id);
                           onUpdateShort({ ...short, sfxMarkers: updated });
                         }}
-                        className="text-neutral-500 hover:text-rose-400"
+                        className="text-neutral-500 hover:text-rose-400 cursor-pointer"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -1140,27 +1288,99 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
         {/* ===================== TAB 6: VFX ===================== */}
         {activeTab === 'vfx' && (
           <div className="space-y-4">
-            <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider block">
-              Visual Effects Markers (Add at {currentTime.toFixed(1)}s)
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">
+                Visual Effects Library ({VFX_LIBRARY.length} Presets)
+              </span>
+              <span className="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                At {currentTime.toFixed(1)}s
+              </span>
+            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { type: 'glow' as const, label: 'Energy Glow' },
-                { type: 'shake' as const, label: 'Screen Shake' },
-                { type: 'zoom_punch' as const, label: 'Zoom Punch' },
-                { type: 'motion_blur' as const, label: 'Motion Blur' },
-                { type: 'glitch' as const, label: 'Glitch Distortion' },
-                { type: 'particles' as const, label: 'Particles Flare' },
-              ].map((vfx) => (
-                <button
-                  key={vfx.type}
-                  onClick={() => handleAddVfx(vfx.type)}
-                  className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-purple-400/50 text-left font-bold text-xs text-neutral-200 hover:text-white transition-all flex items-center justify-between cursor-pointer"
+            {/* AI Recommended VFX */}
+            <div className="p-3 bg-gradient-to-r from-purple-500/10 via-pink-500/5 to-transparent border border-purple-500/20 rounded-xl space-y-2">
+              <div className="flex items-center gap-1.5 text-purple-400 text-[10px] font-black uppercase tracking-wider">
+                <Sparkles className="w-3 h-3" />
+                <span>AI Recommended VFX</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { type: 'punch_zoom', name: 'Punch Zoom', reason: 'High vocal emphasis' },
+                  { type: 'subtle_zoom_in', name: 'Subtle Zoom In', reason: 'Curiosity opening' },
+                  { type: 'screen_shake', name: 'Screen Shake', reason: 'Impact accent' },
+                  { type: 'glow', name: 'Neon Glow', reason: 'Key revelation' },
+                ].map((rec) => (
+                  <button
+                    key={rec.type}
+                    onClick={() => handleAddVfx(rec.type as any, rec.name, rec.reason)}
+                    className="p-2 rounded-lg bg-neutral-950/80 border border-purple-500/30 hover:border-purple-400 text-left transition-all flex flex-col justify-between group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="font-bold text-[11px] text-white truncate">{rec.name}</span>
+                      <Plus className="w-3 h-3 text-purple-400 shrink-0 group-hover:scale-125 transition-transform" />
+                    </div>
+                    <span className="text-[9px] text-purple-400/80 truncate mt-0.5">{rec.reason}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search & Category Filter */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                <input
+                  type="text"
+                  placeholder="Search 64 VFX presets..."
+                  value={vfxSearchTerm}
+                  onChange={(e) => setVfxSearchTerm(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                {['ALL', 'ZOOM', 'SHAKE', 'GLITCH', 'LIGHT', 'GLOW', 'BLUR', 'COLOR', 'TRANSITION', 'PARTICLES', 'ENERGY', 'MEME', 'GAMING', 'PODCAST', 'SOCIAL'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setVfxCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                      vfxCategoryFilter === cat
+                        ? 'bg-purple-500 text-white shadow-sm'
+                        : 'bg-neutral-950 text-neutral-400 border border-neutral-800 hover:text-white'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filtered VFX Catalog Grid */}
+            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+              {VFX_LIBRARY.filter((v) => {
+                const matchCat = vfxCategoryFilter === 'ALL' || v.category === vfxCategoryFilter;
+                const q = vfxSearchTerm.toLowerCase();
+                const matchQ = !q || v.name.toLowerCase().includes(q) || v.description.toLowerCase().includes(q);
+                return matchCat && matchQ;
+              }).map((item) => (
+                <div
+                  key={item.id}
+                  className="p-2 rounded-xl bg-neutral-950/70 border border-neutral-800/80 hover:border-neutral-700 flex items-center justify-between transition-all"
                 >
-                  <span>{vfx.label}</span>
-                  <Plus className="w-3.5 h-3.5 text-purple-400" />
-                </button>
+                  <div className="min-w-0 pr-2">
+                    <div className="font-bold text-xs text-neutral-200 truncate">{item.name}</div>
+                    <div className="text-[9px] text-neutral-500 font-mono">
+                      {item.category} • {item.duration}s • Level {item.intensity}/10
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleAddVfx(item.type as any, item.name)}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-purple-500 hover:text-white text-neutral-300 font-bold text-[10px] border border-neutral-800 transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Insert</span>
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -1175,15 +1395,20 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
                     key={v.id}
                     className="p-2 bg-neutral-950/60 rounded-lg border border-neutral-800/80 flex items-center justify-between text-[11px]"
                   >
-                    <span className="font-semibold text-neutral-300">{v.label || v.type}</span>
-                    <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-neutral-300 truncate block">{v.label || v.type}</span>
+                      {v.reason && (
+                        <span className="text-[9px] text-purple-400/80 truncate block">{v.reason}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="font-mono text-[10px] text-neutral-500">{v.timestamp.toFixed(2)}s</span>
                       <button
                         onClick={() => {
                           const updated = (short.vfxMarkers || []).filter((s) => s.id !== v.id);
                           onUpdateShort({ ...short, vfxMarkers: updated });
                         }}
-                        className="text-neutral-500 hover:text-rose-400"
+                        className="text-neutral-500 hover:text-rose-400 cursor-pointer"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -1238,9 +1463,105 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
         {/* ===================== TAB 8: AI TOOLS ===================== */}
         {activeTab === 'aitools' && (
           <div className="space-y-4">
-            <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider block">
-              ViralClip AI Intelligence
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider block">
+                ViralClip AI Edit Engine
+              </span>
+              <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                PRO LEVEL
+              </span>
+            </div>
+
+            {/* Master Auto Edit Panel */}
+            <div className="p-4 bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-neutral-950 border border-amber-500/30 rounded-2xl space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-sm text-white flex items-center gap-1.5">
+                    <Wand2 className="w-4 h-4 text-amber-400" />
+                    <span>SMART AUTO EDIT</span>
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 mt-0.5">
+                    Multi-signal AI analysis for hooks, captions, SFX & VFX.
+                  </p>
+                </div>
+              </div>
+
+              {/* Edit Intensity Selector */}
+              <div>
+                <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider block mb-1.5">
+                  Edit Intensity
+                </span>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['minimal', 'balanced', 'viral', 'maximum'] as EditIntensity[]).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setEditIntensity(level)}
+                      className={`py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all cursor-pointer ${
+                        editIntensity === level
+                          ? 'bg-amber-400 text-neutral-950 shadow-md scale-102'
+                          : 'bg-neutral-950/80 text-neutral-400 border border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modular Toggles */}
+              <div className="space-y-1.5 pt-1 text-[11px]">
+                {[
+                  { label: 'Auto Captions & Typography', state: autoCaptionsEnabled, set: setAutoCaptionsEnabled },
+                  { label: 'Auto B-Roll Cutaways', state: autoBRollEnabled, set: setAutoBRollEnabled },
+                  { label: 'Auto SFX Sound Design', state: autoSFXEnabled, set: setAutoSFXEnabled },
+                  { label: 'Auto VFX & Dynamic Zooms', state: autoVFXEnabled, set: setAutoVFXEnabled },
+                  { label: 'Auto Portrait Reframe (9:16)', state: autoReframeEnabled, set: setAutoReframeEnabled },
+                  { label: 'Auto Dialogue Loudness & Ducking', state: autoAudioEnabled, set: setAutoAudioEnabled },
+                ].map((item, idx) => (
+                  <label key={idx} className="flex items-center justify-between p-2 rounded-lg bg-neutral-950/60 border border-neutral-800/80 cursor-pointer hover:border-neutral-700 transition-colors">
+                    <span className="text-neutral-300 text-[10px] font-semibold">{item.label}</span>
+                    <input
+                      type="checkbox"
+                      checked={item.state}
+                      onChange={(e) => item.set(e.target.checked)}
+                      className="accent-amber-400 cursor-pointer"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              {/* Master Run Button */}
+              <button
+                onClick={handleMasterAutoEdit}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 text-neutral-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+              >
+                <Sparkles className="w-4 h-4 fill-neutral-950" />
+                <span>GENERATE FULL AUTO EDIT</span>
+              </button>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  onClick={handleMasterAutoEdit}
+                  className="text-[10px] text-amber-400/80 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" />
+                  <span>Regenerate AI Edit</span>
+                </button>
+                <button
+                  onClick={handleResetAutoEdit}
+                  className="text-[10px] text-neutral-500 hover:text-rose-400 font-semibold cursor-pointer"
+                >
+                  Reset AI Edit
+                </button>
+              </div>
+
+              {/* Summary message */}
+              {autoEditMessage && (
+                <div className="p-2.5 bg-neutral-950 border border-amber-500/40 rounded-xl text-[10px] text-amber-300 leading-relaxed animate-fade-in">
+                  ✓ {autoEditMessage}
+                </div>
+              )}
+            </div>
 
             {/* Viral Score Breakdown */}
             <div className="p-4 bg-neutral-950/80 border border-neutral-800 rounded-xl space-y-3">
@@ -1279,7 +1600,7 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
               </div>
             </div>
 
-            {/* AI Actions */}
+            {/* Micro AI Actions */}
             <div className="space-y-2">
               <button
                 onClick={handleRunAiEmphasis}

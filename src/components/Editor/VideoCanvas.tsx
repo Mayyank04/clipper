@@ -35,6 +35,7 @@ import {
 } from '../../utils/captionEngine';
 import { sfxEngine } from '../../utils/sfxAudio';
 import { getColorGradingProfile } from '../../utils/creatorStudio/videoEffectsEngine';
+import { VFX_LIBRARY } from '../../data/vfxLibrary';
 
 interface VideoCanvasProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -489,11 +490,14 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   };
 
   // Dynamic VFX transforms
-  const isPunchZoom = zoomPunchEnabled && activeVfx?.type === 'zoom_punch';
-  const isShake = activeVfx?.type === 'shake';
-  const isFlash = activeVfx?.type === 'glow';
-  const isBlur = activeVfx?.type === 'motion_blur';
-  const isGlitch = activeVfx?.type === 'glitch';
+  const vfxDef = activeVfx
+    ? VFX_LIBRARY.find((v) => v.type === activeVfx.type || v.id === activeVfx.type)
+    : undefined;
+  const isPunchZoom = (zoomPunchEnabled && activeVfx?.type === 'zoom_punch') || vfxDef?.category === 'ZOOM';
+  const isShake = activeVfx?.type === 'shake' || vfxDef?.category === 'SHAKE';
+  const isFlash = activeVfx?.type === 'glow' || vfxDef?.category === 'GLOW' || vfxDef?.category === 'LIGHT';
+  const isBlur = activeVfx?.type === 'motion_blur' || vfxDef?.category === 'BLUR';
+  const isGlitch = activeVfx?.type === 'glitch' || vfxDef?.category === 'GLITCH';
 
   // Pro Creator Color Grading Profile (CSS Preview Parity)
   const colorTreatmentId = (short as any).colorTreatment || 'cinematic_red';
@@ -508,7 +512,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
       <div
         ref={monitorRef}
         className={`relative ${getAspectRatioClasses()} bg-neutral-950 rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl flex items-center justify-center select-none transition-all duration-300 ${
-          isShake ? 'translate-x-1 translate-y-1' : ''
+          isShake ? 'translate-x-1.5 -translate-y-1' : ''
         }`}
       >
         {/* Clean dark cinematic backdrop */}
@@ -574,13 +578,14 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           onClick={onPlayPause}
           style={{
             imageRendering: 'auto' as any,
-            filter: colorGrade.cssFilter,
+            filter: `${colorGrade.cssFilter} ${vfxDef?.canvasFilter || ''}`.trim(),
+            transform: vfxDef?.canvasTransform || (isPunchZoom ? 'scale(1.22)' : undefined),
           }}
           className={`relative z-10 w-full h-full object-cover cursor-pointer transition-all duration-300 ${
             isAudioMode ? 'opacity-0 pointer-events-auto' : ''
           } ${getSpeakerReframeStyle()} ${
-            isPunchZoom ? 'scale-125' : 'scale-100'
-          } ${isBlur ? 'blur-sm' : ''} ${isGlitch ? 'hue-rotate-90 saturate-200' : ''}`}
+            isBlur ? 'blur-sm' : ''
+          } ${isGlitch ? 'hue-rotate-90 saturate-200' : ''}`}
         />
 
         {/* Video Loading Indicator */}
