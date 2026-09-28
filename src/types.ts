@@ -1680,31 +1680,58 @@ export interface ScanReport {
 
 export type ProcessingJobType =
   | 'TRANSCRIBE'
+  | 'ANALYZE_VIDEO'
+  | 'GENERATE_SHORTS'
   | 'IMPORT_PRESETS'
   | 'CONVERT_PRESETS'
   | 'GENERATE_PREVIEW'
-  | 'GENERATE_SHORTS'
-  | 'RENDER_VIDEO'
   | 'GENERATE_BROLL'
   | 'GENERATE_SFX'
-  | 'GENERATE_VFX';
+  | 'GENERATE_VFX'
+  | 'RENDER_VIDEO'
+  | 'GENERATE_THUMBNAIL'
+  | 'YOUTUBE_DOWNLOAD';
 
 export type UniversalJobStatus =
   | 'QUEUED'
-  | 'SCANNING'
-  | 'DISCOVERING'
+  | 'CLAIMED'
   | 'DOWNLOADING'
   | 'ANALYZING'
+  | 'TRANSCRIBING'
+  | 'GENERATING'
+  | 'RENDERING'
+  | 'UPLOADING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCEL_REQUESTED'
+  | 'CANCELLED'
+  // Caption import states for backwards compatibility:
+  | 'SCANNING'
+  | 'DISCOVERING'
   | 'CONVERTING'
   | 'VALIDATING'
   | 'REGISTERING_FONTS'
   | 'GENERATING_PREVIEWS'
   | 'IMPORTING'
   | 'PROCESSING'
-  | 'COMPLETED'
-  | 'PARTIAL'
-  | 'FAILED'
-  | 'CANCELLED';
+  | 'PARTIAL';
+
+export type ProcessingJobEventType =
+  | 'job_created'
+  | 'job_claimed'
+  | 'download_started'
+  | 'download_completed'
+  | 'transcription_started'
+  | 'transcription_completed'
+  | 'caption_generation'
+  | 'broll_generation'
+  | 'sfx_generation'
+  | 'vfx_generation'
+  | 'render_started'
+  | 'render_completed'
+  | 'upload_started'
+  | 'upload_completed'
+  | 'job_failed';
 
 export interface ProcessingJobRecord {
   id: string;
@@ -1716,6 +1743,8 @@ export interface ProcessingJobRecord {
   output?: any;
   error?: string;
   sourceId?: string;
+  retryCount?: number;
+  retry_count?: number;
   createdAt?: string;
   startedAt?: string;
   completedAt?: string;
@@ -1724,6 +1753,7 @@ export interface ProcessingJobRecord {
 export interface ProcessingJobEventRecord {
   id: string;
   jobId: string;
+  eventType?: ProcessingJobEventType | string;
   stage: string;
   progress: number;
   message?: string;

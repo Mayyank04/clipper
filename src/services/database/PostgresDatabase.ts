@@ -1191,13 +1191,14 @@ export class PostgresDatabase {
   public async saveProcessingJob(job: ProcessingJobRecord): Promise<void> {
     const now = new Date().toISOString();
     const createdAt = job.createdAt || now;
+    const retryCount = job.retryCount ?? job.retry_count ?? 0;
 
     if (await this.isPostgresActive()) {
       try {
         const q = `
           INSERT INTO processing_jobs (
-            id, type, status, progress, stage, input, output, error, source_id, created_at, started_at, completed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            id, type, status, progress, stage, input, output, error, source_id, retry_count, created_at, started_at, completed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           ON CONFLICT (id) DO UPDATE SET
             type = EXCLUDED.type,
             status = EXCLUDED.status,
@@ -1207,6 +1208,7 @@ export class PostgresDatabase {
             output = EXCLUDED.output,
             error = EXCLUDED.error,
             source_id = EXCLUDED.source_id,
+            retry_count = EXCLUDED.retry_count,
             started_at = COALESCE(EXCLUDED.started_at, processing_jobs.started_at),
             completed_at = COALESCE(EXCLUDED.completed_at, processing_jobs.completed_at);
         `;
@@ -1220,6 +1222,7 @@ export class PostgresDatabase {
           JSON.stringify(job.output || {}),
           job.error || null,
           job.sourceId || null,
+          retryCount,
           createdAt,
           job.startedAt || null,
           job.completedAt || null,
@@ -1232,7 +1235,7 @@ export class PostgresDatabase {
 
     try {
       const file = path.join(this.processingJobsDir, `${job.id}.json`);
-      fs.writeFileSync(file, JSON.stringify(job, null, 2), 'utf8');
+      fs.writeFileSync(file, JSON.stringify({ ...job, retryCount }, null, 2), 'utf8');
     } catch (err) {
       console.error('[PostgresDatabase] Failed to save processing job on disk:', err);
     }
@@ -1254,6 +1257,8 @@ export class PostgresDatabase {
             output: row.output,
             error: row.error,
             sourceId: row.source_id,
+            retryCount: row.retry_count ?? 0,
+            retry_count: row.retry_count ?? 0,
             createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
             startedAt: row.started_at ? new Date(row.started_at).toISOString() : undefined,
             completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : undefined,
@@ -1267,7 +1272,11 @@ export class PostgresDatabase {
     try {
       const file = path.join(this.processingJobsDir, `${id}.json`);
       if (fs.existsSync(file)) {
-        return JSON.parse(fs.readFileSync(file, 'utf8'));
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return {
+          ...parsed,
+          retryCount: parsed.retryCount ?? parsed.retry_count ?? 0,
+        };
       }
     } catch {}
     return null;
@@ -1307,6 +1316,8 @@ export class PostgresDatabase {
           output: row.output,
           error: row.error,
           sourceId: row.source_id,
+          retryCount: row.retry_count ?? 0,
+          retry_count: row.retry_count ?? 0,
           createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
           startedAt: row.started_at ? new Date(row.started_at).toISOString() : undefined,
           completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : undefined,
@@ -1326,7 +1337,10 @@ export class PostgresDatabase {
             if (filter?.type && j.type !== filter.type) continue;
             if (filter?.status && j.status !== filter.status) continue;
             if (filter?.sourceId && j.sourceId !== filter.sourceId) continue;
-            list.push(j);
+            list.push({
+              ...j,
+              retryCount: j.retryCount ?? j.retry_count ?? 0,
+            });
           } catch {}
         }
         return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -1361,17 +1375,19 @@ export class PostgresDatabase {
   public async saveProcessingJobEvent(event: ProcessingJobEventRecord): Promise<void> {
     const now = new Date().toISOString();
     const createdAt = event.createdAt || now;
+    const eventType = event.eventType || (event as any).event_type || 'job_event';
 
     if (await this.isPostgresActive()) {
       try {
         const q = `
-          INSERT INTO processing_job_events (id, job_id, stage, progress, message, metadata, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO processing_job_events (id, job_id, event_type, stage, progress, message, metadata, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           ON CONFLICT (id) DO NOTHING;
         `;
         await this.pool!.query(q, [
           event.id,
           event.jobId,
+          eventType,
           event.stage,
           event.progress || 0,
           event.message || null,
@@ -1390,7 +1406,7 @@ export class PostgresDatabase {
       if (fs.existsSync(file)) {
         list = JSON.parse(fs.readFileSync(file, 'utf8'));
       }
-      list.push({ ...event, createdAt });
+      list.push({ ...event, eventType, createdAt });
       fs.writeFileSync(file, JSON.stringify(list, null, 2), 'utf8');
     } catch (err) {
       console.error('[PostgresDatabase] Failed to save processing job event on disk:', err);
@@ -1407,6 +1423,7 @@ export class PostgresDatabase {
         return res.rows.map((row) => ({
           id: row.id,
           jobId: row.job_id,
+          eventType: row.event_type || undefined,
           stage: row.stage,
           progress: row.progress,
           message: row.message,

@@ -136,7 +136,7 @@ export class WorkerClient {
 
   public async cancelJob(jobId: string): Promise<boolean> {
     try {
-      const res = await this.request<{ success: boolean }>(`/api/worker/jobs/${jobId}/cancel`, {
+      const res = await this.request<{ success: boolean }>(`/jobs/${jobId}/cancel`, {
         method: 'POST',
       });
       return Boolean(res.success);
@@ -145,8 +145,14 @@ export class WorkerClient {
     }
   }
 
+  public async retryJob(jobId: string): Promise<{ success: boolean; status: string; retryCount: number }> {
+    return this.request<{ success: boolean; status: string; retryCount: number }>(`/jobs/${jobId}/retry`, {
+      method: 'POST',
+    });
+  }
+
   public async importPresets(data: any): Promise<any> {
-    return this.request<any>('/api/worker/import-presets', {
+    return this.request<any>('/jobs/import-presets', {
       method: 'POST',
       body: data,
       timeoutMs: 120000, // 2 min per batch chunk
@@ -168,7 +174,7 @@ export class WorkerClient {
   }
 
   public async transcribe(data: any): Promise<any> {
-    return this.request<any>('/api/worker/transcribe', {
+    return this.request<any>('/jobs/transcribe', {
       method: 'POST',
       body: data,
       timeoutMs: 180000,
@@ -176,10 +182,51 @@ export class WorkerClient {
   }
 
   public async render(data: any): Promise<any> {
-    return this.request<any>('/api/worker/render', {
+    return this.request<any>('/jobs/render', {
       method: 'POST',
       body: data,
       timeoutMs: 300000,
     });
   }
+
+  public async generateShorts(data: any): Promise<any> {
+    return this.request<any>('/jobs/generate-shorts', {
+      method: 'POST',
+      body: data,
+      timeoutMs: 60000,
+    });
+  }
+
+  public async generateBroll(data: any): Promise<any> {
+    return this.request<any>('/jobs/generate-broll', {
+      method: 'POST',
+      body: data,
+      timeoutMs: 60000,
+    });
+  }
+
+  public async generateSfx(data: any): Promise<any> {
+    return this.request<any>('/jobs/generate-sfx', {
+      method: 'POST',
+      body: data,
+      timeoutMs: 60000,
+    });
+  }
+
+  public async generateVfx(data: any): Promise<any> {
+    return this.request<any>('/jobs/generate-vfx', {
+      method: 'POST',
+      body: data,
+      timeoutMs: 60000,
+    });
+  }
+
+  public async analyzeVideo(data: { mediaPathOrUrl: string }): Promise<any> {
+    return this.request<any>('/jobs/analyze-video', {
+      method: 'POST',
+      body: data,
+      timeoutMs: 60000,
+    });
+  }
 }
+
