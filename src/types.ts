@@ -1,4 +1,4 @@
-export type AspectRatio = '9:16' | '1:1' | '16:9';
+export type AspectRatio = '9:16' | '1:1' | '16:9' | '4:5';
 
 export type ProjectType = 'video-editor' | 'audio-to-video';
 

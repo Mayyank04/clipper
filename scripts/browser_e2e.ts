@@ -41,16 +41,16 @@ async function runBrowserE2E() {
 
     // 2. Access Project & Editor View
     console.log('2. Accessing project in Editor view...');
-    // If on landing or dashboard, open the editor
+    // Click "Captions" in AppShell sidebar navigation to open the Editor directly
     await page.evaluate(() => {
-      // Find sample project card or edit button
-      const buttons = Array.from(document.querySelectorAll('button, a'));
-      const editBtn = buttons.find(b =>
-        b.textContent?.toLowerCase().includes('open project') ||
-        b.textContent?.toLowerCase().includes('edit') ||
-        b.getAttribute('title')?.toLowerCase().includes('edit')
-      ) as HTMLElement;
-      if (editBtn) editBtn.click();
+      const allButtons = Array.from(document.querySelectorAll('button, a, div'));
+      const captionsBtn = allButtons.find((b) => b.textContent?.trim().toLowerCase() === 'captions') as HTMLElement;
+      if (captionsBtn) {
+        captionsBtn.click();
+      } else {
+        const editBtn = allButtons.find((b) => b.textContent?.toLowerCase().includes('edit in studio')) as HTMLElement;
+        if (editBtn) editBtn.click();
+      }
     });
 
     // Wait for Video Element in Editor with loaded metadata

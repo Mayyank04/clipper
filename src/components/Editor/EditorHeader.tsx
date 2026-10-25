@@ -16,8 +16,13 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
+  Smartphone,
+  Square,
+  Tv,
+  Layout,
+  Maximize2,
 } from 'lucide-react';
-import { BrandKit } from '../../types';
+import { BrandKit, AspectRatio } from '../../types';
 
 export type AutosaveStatus = 'saving' | 'saved' | 'offline' | 'unsaved';
 
@@ -30,11 +35,14 @@ interface EditorHeaderProps {
   onUndo: () => void;
   onRedo: () => void;
   autosaveStatus: AutosaveStatus;
+  aspectRatio?: AspectRatio;
+  onChangeAspectRatio?: (ratio: AspectRatio) => void;
   safeAreaEnabled: boolean;
   onToggleSafeArea: () => void;
   onOpenBrandKit: () => void;
   onOpenDiagnostics: () => void;
   onOpenAiTools: () => void;
+  onTogglePreview?: () => void;
   onExport: () => void;
 }
 
@@ -47,11 +55,14 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onUndo,
   onRedo,
   autosaveStatus,
+  aspectRatio = '9:16',
+  onChangeAspectRatio,
   safeAreaEnabled,
   onToggleSafeArea,
   onOpenBrandKit,
   onOpenDiagnostics,
   onOpenAiTools,
+  onTogglePreview,
   onExport,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
@@ -177,8 +188,62 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         </div>
       </div>
 
-      {/* RIGHT: Safe Zones, AI Tools, Brand Kit, Settings, Export */}
+      {/* RIGHT: Aspect Ratio, Safe Zones, AI Tools, Brand Kit, Settings, Preview, Export */}
       <div className="flex items-center gap-2">
+        {/* Aspect Ratio Selector */}
+        {onChangeAspectRatio && (
+          <div className="hidden sm:flex items-center bg-neutral-900 border border-neutral-800 p-0.5 rounded-xl text-xs">
+            <button
+              onClick={() => onChangeAspectRatio('9:16')}
+              className={`px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                aspectRatio === '9:16'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="9:16 Portrait (TikTok, Shorts, Reels)"
+            >
+              <Smartphone className="w-3 h-3" />
+              <span>9:16</span>
+            </button>
+            <button
+              onClick={() => onChangeAspectRatio('1:1')}
+              className={`px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                aspectRatio === '1:1'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="1:1 Square (Instagram / LinkedIn Feed)"
+            >
+              <Square className="w-3 h-3" />
+              <span>1:1</span>
+            </button>
+            <button
+              onClick={() => onChangeAspectRatio('4:5')}
+              className={`px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                aspectRatio === '4:5'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="4:5 Social Portrait"
+            >
+              <Layout className="w-3 h-3" />
+              <span>4:5</span>
+            </button>
+            <button
+              onClick={() => onChangeAspectRatio('16:9')}
+              className={`px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                aspectRatio === '16:9'
+                  ? 'bg-amber-400 text-neutral-950 shadow-sm'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="16:9 Landscape (YouTube / Desktop)"
+            >
+              <Tv className="w-3 h-3" />
+              <span>16:9</span>
+            </button>
+          </div>
+        )}
+
         {/* Safe Zones Toggle */}
         <button
           onClick={onToggleSafeArea}
@@ -221,6 +286,18 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         >
           <Activity className="w-4 h-4 text-emerald-400" />
         </button>
+
+        {/* Preview Button */}
+        {onTogglePreview && (
+          <button
+            onClick={onTogglePreview}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+            title="Preview Canvas Fullscreen"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden xl:inline">Preview</span>
+          </button>
+        )}
 
         {/* Prominent Export Button */}
         <button

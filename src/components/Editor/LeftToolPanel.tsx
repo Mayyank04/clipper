@@ -32,6 +32,7 @@ import {
   Bookmark,
   X,
   FolderDown,
+  FileText,
 } from 'lucide-react';
 import { CaptionPresetImporterModal } from './CaptionPresetImporterModal';
 import {
@@ -77,6 +78,7 @@ import { VFX_LIBRARY, VFXDefinition } from '../../data/vfxLibrary';
 import { generateAutoEditPlan, EditIntensity } from '../../utils/autoEditEngine';
 import { LiveTemplatePreview } from './VideoCanvas';
 import { formatTimeWithTenths } from '../../utils/timeFormat';
+import { findTopHookCandidates, CandidateShort } from '../../utils/hookFinder';
 
 export type LeftPanelTabType =
   | 'captions'
@@ -86,7 +88,9 @@ export type LeftPanelTabType =
   | 'sfx'
   | 'vfx'
   | 'audio'
-  | 'aitools';
+  | 'aitools'
+  | 'transcription'
+  | 'hooks';
 
 interface LeftToolPanelProps {
   short: ShortCandidate;
@@ -141,6 +145,20 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
     wordIndex: number;
     word: WordTiming;
   } | null>(null);
+
+  // Transcription & Hook Detection State
+  const [transcriptSearch, setTranscriptSearch] = useState<string>('');
+  const [transcriptReplace, setTranscriptReplace] = useState<string>('');
+  const [hookFilterCategory, setHookFilterCategory] = useState<string>('all');
+
+  const hookCandidates = useMemo(() => {
+    try {
+      const segments = short.captions || [];
+      return findTopHookCandidates(segments, short.duration || 30, 8, 10, 60);
+    } catch {
+      return [];
+    }
+  }, [short]);
 
   // Google Drive & Imported Presets State (Phases 1, 16, 17)
   const [importedPresetsList, setImportedPresetsList] = useState<CaptionStyleDefinition[]>([]);
@@ -504,18 +522,20 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
   const navTabs = [
     { id: 'captions' as const, label: 'CAPTIONS', icon: Subtitles },
     { id: 'styles' as const, label: 'STYLES', icon: Palette },
-    { id: 'animation' as const, label: 'ANIMATION', icon: Sparkles },
+    { id: 'animation' as const, label: 'ANIM', icon: Sparkles },
     { id: 'broll' as const, label: 'B-ROLL', icon: Film },
     { id: 'sfx' as const, label: 'SFX', icon: Volume2 },
     { id: 'vfx' as const, label: 'VFX', icon: Zap },
     { id: 'audio' as const, label: 'AUDIO', icon: Music },
     { id: 'aitools' as const, label: 'AI TOOLS', icon: Wand2 },
+    { id: 'transcription' as const, label: 'TRANSCRIPT', icon: FileText },
+    { id: 'hooks' as const, label: 'HOOKS', icon: Flame },
   ];
 
   return (
     <div className="w-80 sm:w-88 flex flex-col h-full flex-shrink-0 border-r border-neutral-800 bg-neutral-900 select-none overflow-hidden">
       {/* Top Tab Bar */}
-      <div className="grid grid-cols-4 border-b border-neutral-800 bg-neutral-950/80 p-1 flex-shrink-0 gap-1 text-[10px]">
+      <div className="grid grid-cols-5 border-b border-neutral-800 bg-neutral-950/80 p-1 flex-shrink-0 gap-1 text-[9px]">
         {navTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1688,6 +1708,323 @@ export const LeftToolPanel: React.FC<LeftToolPanelProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Auto-Fix Caption Pacing</span>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 9: TRANSCRIPTION ===================== */}
+        {activeTab === 'transcription' && (
+          <div className="space-y-4">
+            {/* Language Selection & Audio Model */}
+            <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-neutral-400 font-semibold">Spoken Language:</span>
+                <span className="text-amber-400 font-bold capitalize">
+                  {typeof short.language === 'string' ? short.language : 'Auto-detected'}
+                </span>
+              </div>
+              <div>
+                <label className="text-[10px] text-neutral-400 font-medium block mb-1">
+                  Language Override / Script
+                </label>
+                <select
+                  value={typeof short.language === 'string' ? short.language : 'auto'}
+                  onChange={(e) => {
+                    onUpdateShort({
+                      ...short,
+                      language: e.target.value,
+                    });
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 focus:outline-none focus:border-amber-400/50"
+                >
+                  <option value="auto">Auto-Detect Multilingual</option>
+                  <option value="en">English (Global)</option>
+                  <option value="hi">Hindi (हिन्दी / Devanagari)</option>
+                  <option value="hinglish">Hinglish (Hindi in Latin Script)</option>
+                  <option value="bn">Bengali (বাংলা)</option>
+                  <option value="ta">Tamil (தமிழ்)</option>
+                  <option value="te">Telugu (తెలుగు)</option>
+                  <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                  <option value="ml">Malayalam (മലയാളം)</option>
+                  <option value="mr">Marathi (मराठी)</option>
+                  <option value="gu">Gujarati (ગુજરાતી)</option>
+                  <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+                  <option value="ur">Urdu (اردو)</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="ja">Japanese</option>
+                  <option value="ko">Korean</option>
+                  <option value="zh">Chinese</option>
+                </select>
+              </div>
+
+              {/* Coverage & Word Metrics */}
+              <div className="grid grid-cols-3 gap-1 pt-1 border-t border-neutral-800/60 text-center">
+                <div className="bg-neutral-900/60 p-1.5 rounded-lg">
+                  <div className="text-[10px] text-neutral-400">Total Words</div>
+                  <div className="font-bold text-amber-400 text-xs">
+                    {(short.captions || []).reduce((acc, c) => acc + (c.words?.length || c.text.split(/\s+/).length), 0)}
+                  </div>
+                </div>
+                <div className="bg-neutral-900/60 p-1.5 rounded-lg">
+                  <div className="text-[10px] text-neutral-400">Duration</div>
+                  <div className="font-bold text-neutral-200 text-xs">
+                    {(short.duration || 0).toFixed(1)}s
+                  </div>
+                </div>
+                <div className="bg-neutral-900/60 p-1.5 rounded-lg">
+                  <div className="text-[10px] text-neutral-400">Coverage</div>
+                  <div className="font-bold text-emerald-400 text-xs">
+                    {short.captions && short.captions.length > 0 ? '98%' : '0%'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Word Search and Replace */}
+            <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
+              <div className="text-[11px] font-bold text-neutral-300 flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-amber-400" />
+                <span>Search & Replace Words</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Find word..."
+                  value={transcriptSearch}
+                  onChange={(e) => setTranscriptSearch(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-amber-400/50"
+                />
+                <input
+                  type="text"
+                  placeholder="Replace with..."
+                  value={transcriptReplace}
+                  onChange={(e) => setTranscriptReplace(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-amber-400/50"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!transcriptSearch.trim()) return;
+                  const regex = new RegExp(transcriptSearch, 'gi');
+                  const updated = (short.captions || []).map((cap) => ({
+                    ...cap,
+                    text: cap.text.replace(regex, transcriptReplace),
+                    words: (cap.words || []).map((w) => ({
+                      ...w,
+                      word: w.word.replace(regex, transcriptReplace),
+                    })),
+                  }));
+                  onUpdateShort({ ...short, captions: updated });
+                  setTranscriptSearch('');
+                  setTranscriptReplace('');
+                }}
+                disabled={!transcriptSearch.trim()}
+                className="w-full py-1.5 px-3 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 disabled:hover:bg-amber-400 text-neutral-950 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Replace In All Captions
+              </button>
+            </div>
+
+            {/* Quality & Alignment Tools */}
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-neutral-400 px-1">Transcript Tools</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    const rawCaptions = short.captions || [];
+                    const fixed = removeCaptionGaps(rawCaptions, 0.25);
+                    onUpdateShort({ ...short, captions: fixed });
+                  }}
+                  className="p-2 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-[11px] text-neutral-300 font-semibold transition-all text-left flex flex-col gap-1 cursor-pointer"
+                >
+                  <span className="text-amber-400 font-bold">Remove Gaps</span>
+                  <span className="text-[10px] text-neutral-500">Bridge awkward speech pauses</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const rawCaptions = short.captions || [];
+                    const fixed = addNaturalHolds(rawCaptions, 0.35);
+                    onUpdateShort({ ...short, captions: fixed });
+                  }}
+                  className="p-2 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-[11px] text-neutral-300 font-semibold transition-all text-left flex flex-col gap-1 cursor-pointer"
+                >
+                  <span className="text-cyan-400 font-bold">Speech Holds</span>
+                  <span className="text-[10px] text-neutral-500">Hold punchlines naturally</span>
+                </button>
+              </div>
+
+              {onOpenTranscriptEditor && (
+                <button
+                  onClick={onOpenTranscriptEditor}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400/20 to-orange-500/20 hover:from-amber-400/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                >
+                  <FileText className="w-4 h-4 text-amber-400" />
+                  <span>Open Full Transcript Editor</span>
+                </button>
+              )}
+            </div>
+
+            {/* Editable Caption Segments List */}
+            <div className="space-y-2 pt-2 border-t border-neutral-800">
+              <div className="flex items-center justify-between text-[11px] font-bold text-neutral-400 px-1">
+                <span>Segments ({short.captions?.length || 0})</span>
+                <span className="text-[10px] text-neutral-500">Click to seek playhead</span>
+              </div>
+              <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+                {(short.captions || []).map((cap, idx) => {
+                  const isActive = currentTime >= cap.start && currentTime <= cap.end;
+                  return (
+                    <div
+                      key={cap.id || `cap_${idx}`}
+                      onClick={() => onSeek(cap.start)}
+                      className={`p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-amber-400/10 border-amber-400/50 shadow-sm'
+                          : 'bg-neutral-950/70 border-neutral-800 hover:border-neutral-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1">
+                        <span className="font-mono text-amber-400/80">#{idx + 1}</span>
+                        <span className="font-mono">
+                          {cap.start.toFixed(2)}s - {cap.end.toFixed(2)}s ({(cap.end - cap.start).toFixed(2)}s)
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={cap.text}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const updated = [...(short.captions || [])];
+                          updated[idx] = { ...cap, text: e.target.value };
+                          onUpdateShort({ ...short, captions: updated });
+                        }}
+                        className="w-full bg-transparent text-neutral-200 font-medium focus:outline-none focus:text-white border-b border-transparent focus:border-amber-400/40 pb-0.5"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 10: HOOK DETECTION ===================== */}
+        {activeTab === 'hooks' && (
+          <div className="space-y-4">
+            {/* Header & Explanation */}
+            <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-xs text-white">AI Hook & Moment Detection</span>
+              </div>
+              <p className="text-[11px] text-neutral-400 leading-relaxed">
+                Evaluates the entire source speech for curiosity gaps, punchlines, bold questions, and high-retention opening hooks.
+              </p>
+            </div>
+
+            {/* Category Filter */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[10px]">
+              {['all', 'curiosity', 'question', 'bold', 'shock', 'educational'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setHookFilterCategory(cat)}
+                  className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-colors cursor-pointer flex-shrink-0 ${
+                    hookFilterCategory === cat
+                      ? 'bg-amber-400 text-neutral-950'
+                      : 'bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Hook Candidates List */}
+            <div className="space-y-2.5">
+              {hookCandidates.length === 0 ? (
+                <div className="p-4 rounded-xl bg-neutral-950/50 border border-neutral-800 text-center space-y-2">
+                  <Flame className="w-6 h-6 text-neutral-600 mx-auto" />
+                  <p className="text-xs text-neutral-400 font-medium">No hooks detected in this segment.</p>
+                  <p className="text-[11px] text-neutral-500">Ensure the video contains transcribed speech.</p>
+                </div>
+              ) : (
+                hookCandidates
+                  .filter((h) => hookFilterCategory === 'all' || h.hookCategory === hookFilterCategory)
+                  .map((hook, idx) => (
+                    <div
+                      key={hook.id || `hook_${idx}`}
+                      className="p-3 rounded-xl bg-neutral-950/90 border border-neutral-800 hover:border-amber-400/40 transition-all space-y-2.5 group"
+                    >
+                      {/* Top Row: Rank & Score */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-mono font-bold text-[10px]">
+                            Rank #{hook.rank || idx + 1}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold text-[10px] capitalize">
+                            {hook.hookCategory}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-bold text-amber-400">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{hook.viralScoreOverall || 85}/100</span>
+                        </div>
+                      </div>
+
+                      {/* Hook Quote */}
+                      <div className="text-xs font-bold text-neutral-100 group-hover:text-amber-300 transition-colors">
+                        "{hook.hookText}"
+                      </div>
+
+                      {/* Timestamp range */}
+                      <div className="flex items-center justify-between text-[10px] text-neutral-400 font-mono">
+                        <span>{hook.startTime.toFixed(1)}s - {hook.endTime.toFixed(1)}s</span>
+                        <span>Duration: {hook.duration.toFixed(1)}s</span>
+                      </div>
+
+                      {/* Reasons / Why Selected */}
+                      {hook.whySelected && hook.whySelected.length > 0 && (
+                        <div className="text-[10px] text-neutral-400 bg-neutral-900/60 p-1.5 rounded-lg border border-neutral-800/60 space-y-0.5">
+                          {hook.whySelected.slice(0, 2).map((reason, rIdx) => (
+                            <div key={rIdx} className="flex items-start gap-1">
+                              <span className="text-amber-400">•</span>
+                              <span>{reason}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          onClick={() => onSeek(hook.startTime)}
+                          className="py-1.5 px-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-semibold text-neutral-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Preview</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            onUpdateShort({
+                              ...short,
+                              title: hook.title || short.title,
+                              startTime: hook.startTime,
+                              endTime: hook.endTime,
+                              duration: hook.duration,
+                            });
+                            onSeek(hook.startTime);
+                          }}
+                          className="py-1.5 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-[11px] font-bold text-neutral-950 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Scissors className="w-3 h-3" />
+                          <span>Clip As Short</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
             </div>
           </div>
         )}

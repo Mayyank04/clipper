@@ -415,7 +415,7 @@ export const BUILTIN_SFX_CATALOG: SFXAsset[] = SFX_LIBRARY.map((item) => ({
   file: item.file,
   duration: item.duration,
   category: item.category.toLowerCase() as SFXCategory,
-  tags: item.tags,
+  tags: Array.from(new Set([...item.tags, ...(item.recommendedTriggers || [])])),
   description: `${item.name} (${item.category}): optimized for ${item.recommendedTriggers.join(', ')}.`,
   source: 'bundled' as const,
   license: 'Royalty-free' as const,
@@ -536,10 +536,16 @@ export function findBestLibraryMatch(
       score += 0.45;
     }
 
-    // Direct tag match (0.35 weight)
+    // Direct tag & synonym match (0.35 weight)
     let tagMatches = 0;
     for (const tag of asset.tags) {
       if (cleanText.includes(tag.toLowerCase())) {
+        tagMatches++;
+      }
+    }
+    const catSynonyms = SYNONYM_MAP[asset.category] || [];
+    for (const syn of catSynonyms) {
+      if (cleanText.includes(syn)) {
         tagMatches++;
       }
     }

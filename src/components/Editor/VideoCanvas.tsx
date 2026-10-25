@@ -468,6 +468,8 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         return 'w-[300px] sm:w-[340px] md:w-[360px] h-[533px] sm:h-[604px] md:h-[640px]';
       case '1:1':
         return 'w-[340px] sm:w-[440px] h-[340px] sm:h-[440px]';
+      case '4:5':
+        return 'w-[320px] sm:w-[380px] md:w-[420px] h-[400px] sm:h-[475px] md:h-[525px]';
       case '16:9':
         return 'w-[480px] sm:w-[620px] h-[270px] sm:h-[348px]';
       default:

@@ -404,6 +404,13 @@ export function resolveMediaFilesystemPath(sourceMediaOrId: any): string {
       if (fs.existsSync(candidate)) return candidate;
     }
 
+    // Public directory relative paths (e.g. /public/demo/test.mp4 or public/uploads/...)
+    if (trimmed.startsWith('/public/') || trimmed.startsWith('public/')) {
+      const rel = trimmed.replace(/^\/?public\//, '');
+      const candidate = path.join(process.cwd(), 'public', rel);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+
     // Generic public relative path
     const candidateGeneric = path.join(process.cwd(), 'public', trimmed.replace(/^\//, ''));
     if (fs.existsSync(candidateGeneric)) return candidateGeneric;

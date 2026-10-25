@@ -2419,13 +2419,17 @@ Return a JSON object:
         language: options.language || 'auto',
         title: options.title || 'Audio Speech',
       });
-      if (whisperRes && whisperRes.canonicalTranscript && (whisperRes.canonicalTranscript.segments?.length || 0) > 0) {
+      const whisperWords = whisperRes?.canonicalTranscript?.words || [];
+      const whisperSegments = whisperRes?.canonicalTranscript?.segments || [];
+      const hasActualSpeech = whisperWords.length > 0 || whisperSegments.some((s: any) => s.text && s.text.trim().length > 0 && (s.words?.length || 0) > 0);
+
+      if (whisperRes && whisperRes.canonicalTranscript && hasActualSpeech) {
         rawTranscriptionData = {
           language: whisperRes.language || 'English',
           languageConfidence: whisperRes.languageConfidence || 0.9,
           detectedLanguages: whisperRes.detectedLanguages || [],
           duration: clipDuration,
-          segments: (whisperRes.canonicalTranscript.segments || []).map((seg: any) => ({
+          segments: whisperSegments.map((seg: any) => ({
             id: seg.id || `seg_${Math.random().toString(36).slice(2, 6)}`,
             text: seg.text,
             start: seg.start,
@@ -2439,7 +2443,7 @@ Return a JSON object:
             })),
           })),
         };
-        console.log(`[Auto-Transcribe] Transcribed audio via Local Whisper ASR: ${whisperRes.canonicalTranscript.segments?.length || 0} segments.`);
+        console.log(`[Auto-Transcribe] Transcribed audio via Local Whisper ASR: ${whisperSegments.length} segments.`);
       }
     } catch (whisperErr: any) {
       console.warn('[Auto-Transcribe] Local Whisper attempt notice:', whisperErr?.message);
@@ -2447,7 +2451,10 @@ Return a JSON object:
   }
 
   // 5. Fallback to existing companion subtitle files on disk if Gemini and Whisper failed
-  if (!rawTranscriptionData) {
+  const hasValidRawData = rawTranscriptionData && 
+    ((rawTranscriptionData.segments || []).some((s: any) => s.text && s.text.trim().length > 0));
+
+  if (!hasValidRawData) {
     try {
       const dirName = path.dirname(localDiskPath);
       const parsed = path.parse(localDiskPath);

@@ -1686,11 +1686,20 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         onUndo={handleUndo}
         onRedo={handleRedo}
         autosaveStatus={autosaveStatus}
+        aspectRatio={aspectRatio}
+        onChangeAspectRatio={(newRatio) => {
+          setAspectRatio(newRatio);
+          pushState({
+            ...currentShort,
+            aspectRatio: newRatio,
+          });
+        }}
         safeAreaEnabled={safeAreaEnabled}
         onToggleSafeArea={() => setSafeAreaEnabled((p) => !p)}
         onOpenBrandKit={() => setIsBrandKitModalOpen(true)}
         onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
         onOpenAiTools={handleOneClickAIEdit}
+        onTogglePreview={handlePlayPause}
         onExport={() => {
           onExport({
             ...currentShort,

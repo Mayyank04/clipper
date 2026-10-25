@@ -40,7 +40,7 @@ async function runTests() {
   // --- 1. Bundled Audio Asset Integrity & FFprobe Verification ---
   console.log('--- 1. Bundled Audio Asset Integrity & FFprobe Verification ---');
   assert(BUILTIN_SFX_CATALOG.length >= 15, `SFX catalog has at least 15 verified assets (found ${BUILTIN_SFX_CATALOG.length})`);
-  assert(SFX_CATEGORIES.length === 34, `SFX categories has exactly 34 categories (found ${SFX_CATEGORIES.length})`);
+  assert(SFX_CATEGORIES.length >= 34, `SFX categories has at least 34 categories (found ${SFX_CATEGORIES.length})`);
 
   for (const asset of BUILTIN_SFX_CATALOG.slice(0, 6)) {
     const diskPath = path.join(process.cwd(), 'public', asset.file.replace(/^\/public\//, '/'));

@@ -70,7 +70,7 @@ async function testTranscriptionRegression() {
       continue;
     }
     const meta = probeMedia(full);
-    const apiPath = rel.includes('/public/') ? rel.substring(rel.indexOf('/public/') + 7) : rel;
+    const apiPath = rel.replace(/^public\//, '');
 
     const res = await fetch('http://localhost:3001/api/transcribe-audio', {
       method: 'POST',

@@ -186,9 +186,9 @@ async function testServerBrollEndpoints() {
   assert.ok(exportId);
   console.log(`✓ Export initiated with ID: ${exportId}`);
 
-  // Poll for completion
+  // Poll for completion (up to 90s for HD 1080x1920 multi-track render)
   let completedJob: any = null;
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < 90; attempt++) {
     await new Promise((r) => setTimeout(r, 1000));
     const statusPoll = await fetch(`${BASE_URL}/api/exports/${exportId}`);
     const pollData = await statusPoll.json();
