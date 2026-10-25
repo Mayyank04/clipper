@@ -444,6 +444,7 @@ export async function processRenderJob(job: PersistentJobData): Promise<any> {
 
     const targetRes = renderPlan.exportSettings?.resolution ||
       renderPlan.targetResolution ||
+      renderPlan.resolution ||
       (renderPlan.aspectRatio === '1:1' ? '1080x1080' : renderPlan.aspectRatio === '16:9' ? '1920x1080' : renderPlan.aspectRatio === '4:5' ? '1080x1350' : '1080x1920');
 
     const renderOpts = {
@@ -454,7 +455,7 @@ export async function processRenderJob(job: PersistentJobData): Promise<any> {
       duration: renderDuration,
       qualityMode: options?.qualityMode || renderPlan.qualityMode || 'HIGH',
       targetResolution: targetRes,
-      requestedFPS: Number(renderPlan.exportSettings?.fps || renderPlan.fps || options?.fps) || undefined,
+      requestedFPS: Number(renderPlan.exportSettings?.fps || renderPlan.frameRate || renderPlan.fps || options?.fps) || undefined,
       speakerPosition: renderPlan.speakerPosition || 'center',
       subtitlePath: prepared.subtitleAssPath,
       watermarkText: undefined, // Explicit clean unwatermarked export!

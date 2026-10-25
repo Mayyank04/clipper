@@ -329,6 +329,7 @@ export async function prepareRenderAssets(
 
   // 5. Generate ASS Subtitles file
   let subtitleAssPath: string | undefined = undefined;
+  let assContent = '';
   const captions = Array.isArray(rawRenderPlan.captions)
     ? rawRenderPlan.captions
     : Array.isArray(rawRenderPlan.captionEvents)
@@ -336,21 +337,45 @@ export async function prepareRenderAssets(
     : [];
 
   if (captions.length > 0) {
-    const assContent = formatAssSubtitle(captions, rawRenderPlan.captionConfig);
+    assContent = formatAssSubtitle(captions, rawRenderPlan.captionConfig);
     subtitleAssPath = path.join(baseTmp, 'captions.ass');
     fs.writeFileSync(subtitleAssPath, assContent, 'utf8');
   }
 
-  // 6. Compute canonical SHA-256 RenderPlan hash
+  // 6. Compute canonical SHA-256 RenderPlan hash (F18 fix: includes full edit content & ASS script)
   const canonicalObject = {
     sourceUrl: rawSourceUrl,
     startTime: rawRenderPlan.startTime || 0,
     duration: rawRenderPlan.duration || sourceInfo.sourceDuration,
-    captionsCount: captions.length,
-    brollsCount: validatedBrolls.length,
-    sfxCount: validatedSfx.length,
+    targetResolution: rawRenderPlan.exportSettings?.resolution || rawRenderPlan.targetResolution || '1080x1920',
+    requestedFPS: rawRenderPlan.exportSettings?.fps || rawRenderPlan.requestedFPS || 30,
     qualityMode: rawRenderPlan.qualityMode || 'HIGH',
     colorTreatment: rawRenderPlan.colorTreatment || 'natural_pro',
+    speakerPosition: rawRenderPlan.speakerPosition || 'center',
+    captions: captions.map((c) => ({
+      start: c.start,
+      end: c.end,
+      text: c.text,
+      words: (c.words || []).map((w) => ({ text: (w as any).text || (w as any).word, start: w.start, end: w.end })),
+      customization: c.customization || rawRenderPlan.captionConfig || null,
+    })),
+    brolls: validatedBrolls.map((b) => ({
+      path: b.path,
+      start: b.start,
+      duration: b.duration,
+      opacity: b.opacity,
+      isPIP: b.isPIP,
+    })),
+    sfx: validatedSfx.map((s) => ({
+      path: s.path,
+      delayMs: s.delayMs,
+      volume: s.volume,
+      fadeIn: s.fadeIn,
+      fadeOut: s.fadeOut,
+    })),
+    subtitlesAssHash: assContent
+      ? crypto.createHash('sha256').update(assContent).digest('hex')
+      : null,
   };
   const renderPlanHash = crypto
     .createHash('sha256')

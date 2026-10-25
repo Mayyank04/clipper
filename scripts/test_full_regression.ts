@@ -432,6 +432,108 @@ async function runTests() {
     );
   }
 
+  // ------------------------------------------------------------
+  // TEST SET 8: Multi-Aspect Ratio & FPS Verification (1:1 & 16:9)
+  // ------------------------------------------------------------
+  console.log('\n--- 8. MULTI-ASPECT RATIO & FPS RENDERING (1:1 @ 60 FPS, 16:9 @ 30 FPS) ---');
+
+  const squareShort: any = {
+    id: `short_square_${Date.now()}`,
+    startTime: 0,
+    duration: 3,
+    endTime: 3,
+    title: '1:1 Square 60FPS Test',
+    captions: [{ id: 'sq1', text: 'Square format testing', start: 0.5, end: 2.5, words: [] }],
+  };
+
+  const squareExportReq = await fetch(`${BASE_URL}/api/projects/${localProjData.project.id}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      shortId: squareShort.id,
+      short: squareShort,
+      format: 'mp4',
+      resolution: '1080x1080',
+      fps: 60,
+    }),
+  });
+  const squareExportData = await squareExportReq.json();
+  assert(squareExportReq.ok && squareExportData.success, '1:1 Square export job enqueued');
+
+  let completedSquareJob: any = null;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const pollRes = await fetch(`${BASE_URL}/api/exports/${squareExportData.exportId}`);
+    const pollData = await pollRes.json();
+    if (pollData.status === 'completed') {
+      completedSquareJob = pollData;
+      break;
+    }
+  }
+  assert(Boolean(completedSquareJob), '1:1 Square 60FPS export completed successfully');
+
+  if (completedSquareJob?.downloadUrl) {
+    const cleanUrl = completedSquareJob.downloadUrl.replace(/^\//, '');
+    const diskPath = path.join(process.cwd(), 'public', cleanUrl);
+    const probeSquare = await probe(diskPath);
+    assert(
+      probeSquare.width === 1080 && probeSquare.height === 1080,
+      'Exported 1:1 Square resolution is exactly 1080x1080',
+      `${probeSquare.width}x${probeSquare.height}`
+    );
+    assert(
+      probeSquare.fps >= 59 && probeSquare.fps <= 61,
+      'Exported 1:1 Square frame rate is 60 FPS',
+      `${probeSquare.fps} FPS`
+    );
+  }
+
+  const landscapeShort: any = {
+    id: `short_land_${Date.now()}`,
+    startTime: 0,
+    duration: 3,
+    endTime: 3,
+    title: '16:9 Landscape 30FPS Test',
+    captions: [{ id: 'ls1', text: 'Landscape format testing', start: 0.5, end: 2.5, words: [] }],
+  };
+
+  const landExportReq = await fetch(`${BASE_URL}/api/projects/${localProjData.project.id}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      shortId: landscapeShort.id,
+      short: landscapeShort,
+      format: 'mp4',
+      resolution: '1920x1080',
+      fps: 30,
+    }),
+  });
+  const landExportData = await landExportReq.json();
+  assert(landExportReq.ok && landExportData.success, '16:9 Landscape export job enqueued');
+
+  let completedLandJob: any = null;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const pollRes = await fetch(`${BASE_URL}/api/exports/${landExportData.exportId}`);
+    const pollData = await pollRes.json();
+    if (pollData.status === 'completed') {
+      completedLandJob = pollData;
+      break;
+    }
+  }
+  assert(Boolean(completedLandJob), '16:9 Landscape export completed successfully');
+
+  if (completedLandJob?.downloadUrl) {
+    const cleanUrl = completedLandJob.downloadUrl.replace(/^\//, '');
+    const diskPath = path.join(process.cwd(), 'public', cleanUrl);
+    const probeLand = await probe(diskPath);
+    assert(
+      probeLand.width === 1920 && probeLand.height === 1080,
+      'Exported 16:9 Landscape resolution is exactly 1920x1080',
+      `${probeLand.width}x${probeLand.height}`
+    );
+  }
+
   // Summary
   console.log('\n============================================================');
   console.log(`REGRESSION SUITE COMPLETED: ${passed} PASSED, ${failed} FAILED`);

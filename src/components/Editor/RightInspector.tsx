@@ -138,6 +138,7 @@ interface RightInspectorProps {
   onRegenerateElements?: (type: 'all' | 'captions' | 'broll' | 'sfx' | 'vfx') => void;
   isRegeneratingElements?: boolean;
   onUpdateBRoll?: (id: string, updates: Partial<BRollSuggestion>) => void;
+  onTrimChange?: (bounds: { startTime: number; endTime: number }) => void;
 }
 
 const VERIFIED_SFX_CATALOG: { category: SFXCategory; name: string; desc: string }[] = [
@@ -240,6 +241,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   isRegeneratingElements = false,
   onUpdateShort,
   onUpdateBRoll,
+  onTrimChange,
 }) => {
   const [copiedTitle, setCopiedTitle] = useState<boolean>(false);
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
@@ -938,6 +940,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               onAddCaptionAtCurrentTime={onAddCaptionAtCurrentTime}
               onTranscribeCaptions={onTranscribeCaptions}
               isTranscribing={isTranscribing}
+              onTrimChange={onTrimChange}
             />
           </div>
         )}

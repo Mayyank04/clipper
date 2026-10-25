@@ -6,7 +6,8 @@
 import path from 'path';
 import fs from 'fs';
 import { StorageProvider } from '../src/services/storage/StorageProvider';
-import { trimEditorProject, EditorProject } from '../src/utils/canonicalEditor';
+import { trimEditorProject } from '../src/utils/canonicalEditor';
+import { EditorProject } from '../src/types';
 import { getRenderQualityProfile } from '../src/utils/videoQuality/ffmpegRenderPipeline';
 
 async function runAuditTests() {
@@ -49,7 +50,7 @@ async function runAuditTests() {
 
   // --- TEST 2: Nonzero-Offset Trimming Precision (F07) ---
   console.log('\n--- 2. Nonzero-Offset Trimming Precision (F07) ---');
-  const initialProject: EditorProject = {
+  const initialProject: any = {
     id: 'proj_trim_test',
     version: 1,
     duration: 30, // 30s duration
@@ -104,7 +105,7 @@ async function runAuditTests() {
   };
 
   // Trim from 125s to 150s (absolute source bounds from timeline drag)
-  const trimmed = trimEditorProject(initialProject, 125, 150);
+  const trimmed: any = trimEditorProject(initialProject as any, 125, 150);
   assert(trimmed.videoClips[0].sourceStart === 125, `sourceStart updated to 125s (actual=${trimmed.videoClips[0].sourceStart})`);
   assert(trimmed.videoClips[0].sourceEnd === 150, `sourceEnd preserved at 150s (actual=${trimmed.videoClips[0].sourceEnd})`);
   assert(trimmed.duration === 25, `Trimmed project duration is exactly 25s (actual=${trimmed.duration})`);
@@ -113,7 +114,7 @@ async function runAuditTests() {
 
   // --- TEST 3: Dynamic Multi-Aspect Ratio Profile (F10) ---
   console.log('\n--- 3. Dynamic Multi-Aspect Ratio Profile (F10) ---');
-  const mockSourceInfo = {
+  const mockSourceInfo: any = {
     sourceWidth: 1920,
     sourceHeight: 1080,
     sourceFPS: 30,

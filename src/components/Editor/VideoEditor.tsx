@@ -1889,6 +1889,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
               isRegeneratingElements={isRegeneratingElements}
               onUpdateShort={handleUpdateShort}
               onUpdateBRoll={handleUpdateBRoll}
+              onTrimChange={handleTrimChange}
             />
           )}
         </div>

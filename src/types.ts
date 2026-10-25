@@ -688,6 +688,8 @@ export interface ShortCandidate {
   captionConfig?: CaptionCustomization;
   sfxTrack?: any[];
   vfxTrack?: any[];
+  isBookmarked?: boolean;
+  alternateTitles?: string[];
 }
 
 export interface AnalysisStats {
@@ -1153,6 +1155,125 @@ export interface EditorProject {
   history?: HistoryState;
   projectAnalysis?: ProjectAnalysis;
   language?: string | LanguageDetectionResult;
+  compositionV1?: CompositionV1;
+}
+
+// ============================================================================
+// COMPOSITION V1 RUNTIME CONTRACT (Master Plan Section 6)
+// ============================================================================
+
+export interface RationalNumber {
+  numerator: number;
+  denominator: number;
+}
+
+export interface CompositionSegmentV1 {
+  id: string;
+  sourceAssetId: string;
+  sourceInUs: number; // microseconds
+  sourceOutUs: number; // microseconds
+  timelineStartUs: number; // microseconds
+  speed: RationalNumber; // e.g. { numerator: 1, denominator: 1 }
+  crop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  speakerPosition?: 'center' | 'left' | 'right' | 'split';
+}
+
+export interface CompositionCaptionWordV1 {
+  word: string;
+  startUs: number;
+  endUs: number;
+  originalStartUs?: number;
+  originalEndUs?: number;
+  confidence?: number;
+}
+
+export interface CompositionCaptionV1 {
+  id: string;
+  startUs: number;
+  endUs: number;
+  text: string;
+  words: CompositionCaptionWordV1[];
+  stylePresetId?: string;
+  customization?: CaptionCustomization;
+}
+
+export interface CompositionAudioV1 {
+  id: string;
+  assetId: string;
+  sourceInUs: number;
+  sourceOutUs: number;
+  timelineStartUs: number;
+  gain: number;
+  fadeInUs?: number;
+  fadeOutUs?: number;
+  duckingDb?: number;
+}
+
+export interface CompositionBrollV1 {
+  id: string;
+  assetId: string;
+  sourceInUs: number;
+  sourceOutUs: number;
+  timelineStartUs: number;
+  timelineEndUs: number;
+  crop?: { x: number; y: number; width: number; height: number };
+  opacity?: number;
+}
+
+export interface CompositionEffectV1 {
+  id: string;
+  effectType: string;
+  timelineStartUs: number;
+  timelineEndUs: number;
+  intensity: number;
+}
+
+export interface CompositionBrandV1 {
+  logoAssetId?: string;
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  opacity?: number;
+  scale?: number;
+}
+
+export interface CompositionOutputProfileV1 {
+  width: number;
+  height: number;
+  fps: RationalNumber;
+  aspectRatio: '9:16' | '1:1' | '16:9' | '4:5';
+  qualityMode: 'MASTER' | 'HIGH' | 'BALANCED' | 'FAST';
+}
+
+export interface CompositionV1 {
+  schemaVersion: 'v1';
+  revisionId: string;
+  projectId: string;
+  workspaceId: string;
+  clipId: string;
+  sources: {
+    assetId: string;
+    url: string;
+    contentHash?: string;
+    durationUs: number;
+    width: number;
+    height: number;
+    fps: RationalNumber;
+    hasAudio: boolean;
+    hasVideo: boolean;
+  }[];
+  output: CompositionOutputProfileV1;
+  segments: CompositionSegmentV1[];
+  captions: CompositionCaptionV1[];
+  audio: CompositionAudioV1[];
+  broll: CompositionBrollV1[];
+  effects: CompositionEffectV1[];
+  brand?: CompositionBrandV1;
+  compositionHash: string;
+  createdAt: string;
 }
 
 // ============================================================================

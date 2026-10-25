@@ -41,6 +41,7 @@ interface TranscriptEditorProps {
   onUpdateCaptions?: (captions: CaptionSegment[]) => void;
   onSplitCaption?: (captionId: string, splitTime: number) => void;
   onMergeCaptions?: (captionId: string) => void;
+  onTrimChange?: (bounds: { startTime: number; endTime: number }) => void;
 }
 
 const COMMON_FILLER_WORDS = new Set([
@@ -59,6 +60,7 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
   onUpdateCaptions,
   onSplitCaption,
   onMergeCaptions,
+  onTrimChange,
 }) => {
   const [subTab, setSubTab] = useState<'dialogue' | 'autoscript' | 'cleanup'>('dialogue');
   const [viewMode, setViewMode] = useState<'word' | 'line'>('word');
@@ -938,6 +940,44 @@ export const TranscriptEditor: React.FC<TranscriptEditorProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Transcript Trimming Controls */}
+            {onTrimChange && (
+              <div className="space-y-1.5 pt-2 border-t border-neutral-800">
+                <label className="text-[10px] text-amber-400 uppercase font-mono font-bold flex items-center gap-1">
+                  <Scissors className="w-3 h-3" />
+                  <span>Transcript-First Trimming</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      onTrimChange({
+                        startTime: short.startTime + selectedWordInfo.start,
+                        endTime: short.endTime,
+                      });
+                      setSelectedWordInfo(null);
+                    }}
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-neutral-950 hover:bg-neutral-800 border border-amber-400/40 text-[11px] text-amber-300 font-semibold transition cursor-pointer"
+                    title="Set clip start to this word"
+                  >
+                    <span>Set Clip Start</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      onTrimChange({
+                        startTime: short.startTime,
+                        endTime: short.startTime + selectedWordInfo.end,
+                      });
+                      setSelectedWordInfo(null);
+                    }}
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-neutral-950 hover:bg-neutral-800 border border-amber-400/40 text-[11px] text-amber-300 font-semibold transition cursor-pointer"
+                    title="Set clip end to this word"
+                  >
+                    <span>Set Clip End</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Word Action Row: Split line at word, Delete word */}
             <div className="flex items-center justify-between pt-2 border-t border-neutral-800">

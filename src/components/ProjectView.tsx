@@ -13,7 +13,10 @@ import {
   ArrowLeft,
   ExternalLink,
   Sliders,
-  Check
+  Check,
+  Pause,
+  Star,
+  RefreshCw,
 } from 'lucide-react';
 import { VideoProject, ShortCandidate } from '../types';
 
@@ -36,22 +39,93 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 }) => {
   const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('all');
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
+  const [durationFilter, setDurationFilter] = useState<string>('all');
+  const [showBookmarkedOnly, setShowBookmarkedOnly] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [playingShortId, setPlayingShortId] = useState<string | null>(null);
   const [isGeneratingMore, setIsGeneratingMore] = useState<boolean>(false);
   const [isRegeneratingStyle, setIsRegeneratingStyle] = useState<boolean>(false);
   const [activePersonality, setActivePersonality] = useState<string>(project.editingPersonality || 'viral');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [activeAngleIndex, setActiveAngleIndex] = useState<{ [shortId: string]: number }>({});
 
   const topics = Array.from(new Set(project.shorts.map((s) => s.topic)));
 
   const filteredShorts = project.shorts.filter((s) => {
+    if (showBookmarkedOnly && !s.isBookmarked) return false;
     if (selectedTopicFilter !== 'all' && s.topic !== selectedTopicFilter) return false;
     if (s.viralScore.overall < minScoreFilter) return false;
+    if (durationFilter === 'short' && s.duration > 30) return false;
+    if (durationFilter === 'medium' && (s.duration <= 30 || s.duration > 60)) return false;
+    if (durationFilter === 'long' && s.duration <= 60) return false;
     return true;
   });
 
+  const handleToggleBookmark = (shortId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedShorts = project.shorts.map((s) =>
+      s.id === shortId ? { ...s, isBookmarked: !s.isBookmarked } : s
+    );
+    const updatedProj = { ...project, shorts: updatedShorts };
+    onUpdateProject?.(updatedProj);
+    fetch(`/api/projects/${project.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: updatedProj }),
+    }).catch(() => {});
+  };
+
+  const getCandidateAngles = (short: ShortCandidate) => {
+    if (short.availableHooks && short.availableHooks.length > 0) {
+      return short.availableHooks;
+    }
+    if (short.hookOptions && short.hookOptions.length > 0) {
+      return short.hookOptions;
+    }
+    return [
+      {
+        category: (short.hookCategory || 'curiosity') as any,
+        title: short.title,
+        text: short.hookText,
+      },
+      {
+        category: 'controversy' as any,
+        title: `The Unfiltered Truth About ${short.topic}`,
+        text: `Nobody wants to admit this about ${short.topic}, but watch what happens next...`,
+      },
+      {
+        category: 'question' as any,
+        title: `Why Is Everyone Wrong About ${short.topic}?`,
+        text: `Have you ever wondered what really drives ${short.topic}? Here is the breakdown.`,
+      },
+    ];
+  };
+
+  const handleCycleAngle = (short: ShortCandidate, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const angles = getCandidateAngles(short);
+    const curIdx = activeAngleIndex[short.id] ?? 0;
+    const nextIdx = (curIdx + 1) % angles.length;
+    setActiveAngleIndex((prev) => ({ ...prev, [short.id]: nextIdx }));
+
+    const selectedAngle = angles[nextIdx];
+    const updatedShorts = project.shorts.map((s) => {
+      if (s.id === short.id) {
+        return {
+          ...s,
+          title: selectedAngle.title,
+          hookText: selectedAngle.text,
+          hookCategory: selectedAngle.category,
+        };
+      }
+      return s;
+    });
+    onUpdateProject?.({ ...project, shorts: updatedShorts });
+  };
+
   const handleCopyLink = (short: ShortCandidate) => {
-    navigator.clipboard?.writeText?.(project.youtubeUrl);
+    const clipUrl = `${window.location.origin}?project=${project.id}&clip=${short.id}`;
+    navigator.clipboard?.writeText?.(clipUrl);
     setCopiedId(short.id);
     setTimeout(() => setCopiedId(null), 1500);
   };
@@ -256,6 +330,34 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             {isRegeneratingStyle && <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />}
           </div>
 
+          {/* Starred / Bookmarked Filter */}
+          <button
+            onClick={() => setShowBookmarkedOnly(!showBookmarkedOnly)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+              showBookmarkedOnly
+                ? 'bg-amber-400 text-neutral-950 border-amber-400'
+                : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Star className={`w-3.5 h-3.5 ${showBookmarkedOnly ? 'fill-neutral-950' : ''}`} />
+            <span>Starred</span>
+          </button>
+
+          {/* Duration filter */}
+          <div className="flex items-center gap-1.5 bg-neutral-950 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs text-neutral-300">
+            <Clock className="w-3.5 h-3.5 text-neutral-400" />
+            <select
+              value={durationFilter}
+              onChange={(e) => setDurationFilter(e.target.value)}
+              className="bg-transparent text-white focus:outline-none cursor-pointer"
+            >
+              <option value="all" className="bg-neutral-900 text-white">All Durations</option>
+              <option value="short" className="bg-neutral-900 text-white">&lt; 30s</option>
+              <option value="medium" className="bg-neutral-900 text-white">30s - 60s</option>
+              <option value="long" className="bg-neutral-900 text-white">&gt; 60s</option>
+            </select>
+          </div>
+
           {/* Topic filter */}
           <div className="flex items-center gap-1.5 bg-neutral-950 border border-neutral-800 px-3 py-1.5 rounded-xl text-xs text-neutral-300">
             <Filter className="w-3.5 h-3.5 text-neutral-400" />
@@ -337,9 +439,22 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
               key={short.id}
               className="rounded-2xl bg-neutral-900 border border-neutral-800 hover:border-amber-400/50 transition-all overflow-hidden flex flex-col justify-between hover:shadow-2xl hover:shadow-amber-500/10 group"
             >
-              {/* Top Banner: Index & Duration & Score */}
+              {/* Top Banner: Index & Duration & Score & Bookmark */}
               <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => handleToggleBookmark(short.id, e)}
+                    className="p-1 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-amber-400 transition"
+                    title={short.isBookmarked ? 'Remove from favorites' : 'Bookmark this clip'}
+                  >
+                    <Star
+                      className={`w-4 h-4 ${
+                        short.isBookmarked
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'text-neutral-500'
+                      }`}
+                    />
+                  </button>
                   <span className="text-xs font-black px-2 py-0.5 rounded bg-neutral-800 text-amber-400">
                     Short #{String(index + 1).padStart(2, '0')}
                   </span>
@@ -357,38 +472,101 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 </div>
               </div>
 
-              {/* 9:16 Portrait Preview Container */}
-              <div
-                onClick={() => onOpenEditor(short)}
-                className="relative aspect-[9/13] bg-neutral-950 cursor-pointer overflow-hidden group/thumb"
-              >
-                <img
-                  src={short.thumbnail}
-                  alt={short.title}
-                  className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-500"
-                />
+              {/* 9:16 Portrait Preview Container (Playable Candidate Card) */}
+              <div className="relative aspect-[9/13] bg-neutral-950 overflow-hidden group/thumb">
+                {playingShortId === short.id ? (
+                  <div className="relative w-full h-full">
+                    <video
+                      src={
+                        short.videoProxyUrl ||
+                        project.videoUrl ||
+                        project.sourceMedia?.publicUrl ||
+                        '/demo/test_60s.mp4'
+                      }
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      playsInline
+                      onLoadedMetadata={(e) => {
+                        const vid = e.currentTarget;
+                        vid.currentTime = short.startTime;
+                      }}
+                      onTimeUpdate={(e) => {
+                        const vid = e.currentTarget;
+                        if (vid.currentTime >= short.endTime || vid.currentTime < short.startTime) {
+                          vid.currentTime = short.startTime;
+                        }
+                      }}
+                    />
 
-                {/* Gradient vignette */}
-                <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-neutral-950/40" />
+                    {/* Gradient vignette */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-black/40 pointer-events-none" />
 
-                {/* Play Button Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-14 h-14 rounded-full bg-amber-400/90 text-neutral-950 flex items-center justify-center shadow-xl shadow-amber-400/30 transform group-hover/thumb:scale-110 transition-transform">
-                    <Play className="w-6 h-6 fill-neutral-950 ml-1" />
+                    {/* Top Playing Badge */}
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-amber-400 text-neutral-950 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider shadow">
+                      <span className="w-2 h-2 rounded-full bg-neutral-950 animate-pulse" />
+                      <span>Playing Clip ({Math.round(short.duration)}s)</span>
+                    </div>
+
+                    {/* Pause control button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPlayingShortId(null);
+                      }}
+                      className="absolute top-3 right-3 p-2 rounded-xl bg-black/70 hover:bg-black/90 text-white backdrop-blur-md border border-neutral-700 transition"
+                      title="Pause preview"
+                    >
+                      <Pause className="w-4 h-4 fill-white" />
+                    </button>
+
+                    {/* Captions Preview Bar */}
+                    <div className="absolute bottom-4 inset-x-3 bg-black/85 backdrop-blur-md p-2.5 rounded-xl border border-amber-400/30 shadow-lg text-center">
+                      <p className="font-display font-extrabold text-sm text-white line-clamp-2 leading-snug">
+                        "{short.hookText}"
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    onClick={() => onOpenEditor(short)}
+                    className="relative w-full h-full cursor-pointer"
+                  >
+                    <img
+                      src={short.thumbnail}
+                      alt={short.title}
+                      className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-500"
+                    />
 
-                {/* Hook Tag */}
-                <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-neutral-700 text-[11px] text-amber-300 font-bold uppercase tracking-wider">
-                  Hook: {short.hookCategory}
-                </div>
+                    {/* Gradient vignette */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-neutral-950/40" />
 
-                {/* Captions Preview Bar */}
-                <div className="absolute bottom-4 inset-x-3 bg-black/85 backdrop-blur-md p-2.5 rounded-xl border border-amber-400/30 shadow-lg text-center">
-                  <p className="font-display font-extrabold text-sm text-white line-clamp-2 leading-snug">
-                    "{short.hookText}"
-                  </p>
-                </div>
+                    {/* Play Button Overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPlayingShortId(short.id);
+                        }}
+                        className="w-14 h-14 rounded-full bg-amber-400/90 hover:bg-amber-400 text-neutral-950 flex items-center justify-center shadow-xl shadow-amber-400/30 transform group-hover/thumb:scale-110 transition-transform cursor-pointer"
+                        title="Preview clip inline"
+                      >
+                        <Play className="w-6 h-6 fill-neutral-950 ml-1" />
+                      </button>
+                    </div>
+
+                    {/* Hook Tag */}
+                    <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg border border-neutral-700 text-[11px] text-amber-300 font-bold uppercase tracking-wider">
+                      Hook: {short.hookCategory}
+                    </div>
+
+                    {/* Captions Preview Bar */}
+                    <div className="absolute bottom-4 inset-x-3 bg-black/85 backdrop-blur-md p-2.5 rounded-xl border border-amber-400/30 shadow-lg text-center">
+                      <p className="font-display font-extrabold text-sm text-white line-clamp-2 leading-snug">
+                        "{short.hookText}"
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Card Meta & Breakdown */}
@@ -398,9 +576,19 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                     <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">
                       {short.topic}
                     </span>
-                    <span className="text-[10px] text-neutral-400">
-                      {short.sfxTrack?.length || 0} SFX &bull; {short.vfxTrack?.length || 0} VFX
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleCycleAngle(short, e)}
+                        className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-amber-300 border border-amber-400/30 font-semibold transition"
+                        title="Cycle alternative hook angle and title"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        <span>Angle #{(activeAngleIndex[short.id] ?? 0) + 1}</span>
+                      </button>
+                      <span className="text-[10px] text-neutral-400">
+                        {short.sfxTrack?.length || 0} SFX &bull; {short.vfxTrack?.length || 0} VFX
+                      </span>
+                    </div>
                   </div>
                   <h3 className="text-sm font-bold text-white mt-1 line-clamp-2">
                     {short.title}

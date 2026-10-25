@@ -182,11 +182,14 @@ class RenderWorkerManager {
       job.stage = 'building_filtergraph';
       job.progress = 12;
 
+      const targetRes = rawPlan.resolution || rawPlan.targetResolution || '1080x1920';
+      const requestedFPS = Number(rawPlan.frameRate || rawPlan.fps) || undefined;
+
       const profile = getRenderQualityProfile(
         prepared.sourceInfo,
-        rawPlan.resolution || '1080x1920',
+        targetRes,
         rawPlan.qualityMode || 'HIGH',
-        rawPlan.frameRate
+        requestedFPS
       );
       job.renderProfile = profile;
 
@@ -197,6 +200,8 @@ class RenderWorkerManager {
         startTime: Number(rawPlan.startTime || 0),
         duration: expectedDuration,
         qualityMode: profile.qualityMode,
+        targetResolution: targetRes,
+        requestedFPS,
         speakerPosition: rawPlan.speakerPosition || 'center',
         subtitlePath: prepared.subtitleAssPath,
         watermarkText: (rawPlan.brandKit?.enabled && rawPlan.brandKit?.brandName) ? rawPlan.brandKit.brandName : undefined,
@@ -331,8 +336,11 @@ class RenderWorkerManager {
       // Forensic verification with FFprobe
       const outputProbe = await probeSourceMedia(prepared.outputPath);
 
-      if (outputProbe.sourceWidth !== 1080 || outputProbe.sourceHeight !== 1920) {
-        throw new Error(`Output resolution mismatch: expected 1080x1920, got ${outputProbe.sourceWidth}x${outputProbe.sourceHeight}`);
+      const expectedWidth = profile.targetResolution.width;
+      const expectedHeight = profile.targetResolution.height;
+
+      if (outputProbe.sourceWidth !== expectedWidth || outputProbe.sourceHeight !== expectedHeight) {
+        throw new Error(`Output resolution mismatch: expected ${expectedWidth}x${expectedHeight}, got ${outputProbe.sourceWidth}x${outputProbe.sourceHeight}`);
       }
       if (!outputProbe.sourceCodec.toLowerCase().includes('h264')) {
         throw new Error(`Output video codec mismatch: expected h264, got ${outputProbe.sourceCodec}`);
@@ -379,7 +387,7 @@ class RenderWorkerManager {
         fs.mkdirSync(publicExportsDir, { recursive: true });
       }
 
-      const outFileName = `${job.id}_1080x1920.mp4`;
+      const outFileName = `${job.id}_${expectedWidth}x${expectedHeight}.mp4`;
       const finalPublicPath = path.join(publicExportsDir, outFileName);
       fs.copyFileSync(prepared.outputPath, finalPublicPath);
 

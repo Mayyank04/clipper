@@ -152,13 +152,14 @@ export class PostgresDatabase {
   // PROJECT OPERATIONS
   // ============================================================================
 
-  public async getProject(id: string): Promise<any | null> {
+  public async getProject(id: string, workspaceId?: string): Promise<any | null> {
     if (await this.isPostgresActive()) {
       try {
-        const res = await this.pool!.query(
-          'SELECT project_data FROM projects WHERE id = $1',
-          [id]
-        );
+        const query = workspaceId
+          ? "SELECT project_data FROM projects WHERE id = $1 AND (workspace_id = $2 OR workspace_id = 'ws_default')"
+          : 'SELECT project_data FROM projects WHERE id = $1';
+        const params = workspaceId ? [id, workspaceId] : [id];
+        const res = await this.pool!.query(query, params);
         if (res.rows.length > 0) {
           return res.rows[0].project_data;
         }
@@ -171,7 +172,11 @@ export class PostgresDatabase {
     const filePath = path.join(this.projectsDir, `${id}.json`);
     if (fs.existsSync(filePath)) {
       try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (workspaceId && parsed.workspaceId && parsed.workspaceId !== workspaceId && parsed.workspaceId !== 'ws_default') {
+          return null;
+        }
+        return parsed;
       } catch {}
     }
     return null;
@@ -179,6 +184,8 @@ export class PostgresDatabase {
 
   public async saveProject(project: any): Promise<void> {
     if (!project || !project.id) return;
+    const workspaceId = project.workspaceId || 'ws_default';
+    project.workspaceId = workspaceId;
 
     // Always persist to local disk for safety
     try {
@@ -190,11 +197,12 @@ export class PostgresDatabase {
       try {
         const query = `
           INSERT INTO projects (
-            id, user_id, name, source_media_id, original_url,
+            id, user_id, workspace_id, name, source_media_id, original_url,
             duration, width, height, fps, aspect_ratio, status, project_data, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
           ON CONFLICT (id) DO UPDATE SET
+            workspace_id = EXCLUDED.workspace_id,
             name = EXCLUDED.name,
             source_media_id = EXCLUDED.source_media_id,
             duration = EXCLUDED.duration,
@@ -209,6 +217,7 @@ export class PostgresDatabase {
         const params = [
           project.id,
           project.userId || null,
+          workspaceId,
           project.originalTitle || project.title || 'Untitled Project',
           project.sourceMediaId || null,
           project.youtubeUrl || project.videoUrl || null,
@@ -227,13 +236,28 @@ export class PostgresDatabase {
     }
   }
 
-  public async listProjects(userId?: string): Promise<any[]> {
+  public async listProjects(workspaceId?: string, userId?: string): Promise<any[]> {
     if (await this.isPostgresActive()) {
       try {
-        const query = userId
-          ? 'SELECT project_data FROM projects WHERE user_id = $1 ORDER BY updated_at DESC'
-          : 'SELECT project_data FROM projects ORDER BY updated_at DESC';
-        const res = await this.pool!.query(query, userId ? [userId] : []);
+        let query = 'SELECT project_data FROM projects';
+        const params: any[] = [];
+        const conditions: string[] = [];
+
+        if (workspaceId) {
+          params.push(workspaceId);
+          conditions.push(`(workspace_id = $${params.length} OR workspace_id = 'ws_default')`);
+        }
+        if (userId) {
+          params.push(userId);
+          conditions.push(`user_id = $${params.length}`);
+        }
+
+        if (conditions.length > 0) {
+          query += ' WHERE ' + conditions.join(' AND ');
+        }
+        query += ' ORDER BY updated_at DESC';
+
+        const res = await this.pool!.query(query, params);
         return res.rows.map((r) => r.project_data);
       } catch (err) {
         console.warn('[PostgresDatabase] Error listing projects from DB, falling back to disk:', err);
@@ -249,7 +273,15 @@ export class PostgresDatabase {
           try {
             const content = fs.readFileSync(path.join(this.projectsDir, file), 'utf8');
             const parsed = JSON.parse(content);
-            if (parsed && parsed.id) projects.push(parsed);
+            if (parsed && parsed.id) {
+              if (workspaceId && parsed.workspaceId && parsed.workspaceId !== workspaceId && parsed.workspaceId !== 'ws_default') {
+                continue;
+              }
+              if (userId && parsed.userId && parsed.userId !== userId) {
+                continue;
+              }
+              projects.push(parsed);
+            }
           } catch {}
         }
       }
@@ -257,7 +289,7 @@ export class PostgresDatabase {
     return projects;
   }
 
-  public async deleteProject(id: string): Promise<void> {
+  public async deleteProject(id: string, workspaceId?: string): Promise<void> {
     const filePath = path.join(this.projectsDir, `${id}.json`);
     if (fs.existsSync(filePath)) {
       try { fs.unlinkSync(filePath); } catch {}
@@ -265,7 +297,11 @@ export class PostgresDatabase {
 
     if (await this.isPostgresActive()) {
       try {
-        await this.pool!.query('DELETE FROM projects WHERE id = $1', [id]);
+        const query = workspaceId
+          ? 'DELETE FROM projects WHERE id = $1 AND workspace_id = $2'
+          : 'DELETE FROM projects WHERE id = $1';
+        const params = workspaceId ? [id, workspaceId] : [id];
+        await this.pool!.query(query, params);
       } catch (err) {
         console.error(`[PostgresDatabase] Failed to delete project ${id} from DB:`, err);
       }
