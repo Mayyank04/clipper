@@ -144,6 +144,21 @@ export class StorageProvider {
   }
 
   /**
+   * Resolves and verifies that a relative key is strictly contained within the storage root.
+   * Prevents directory traversal attacks escaping the localFallbackDir.
+   */
+  public resolveContainedPath(key: string): string {
+    const cleanKey = key.replace(/^\/+/, '');
+    const rootPath = path.resolve(this.localFallbackDir);
+    const targetPath = path.resolve(rootPath, cleanKey);
+
+    if (targetPath !== rootPath && !targetPath.startsWith(rootPath + path.sep)) {
+      throw new Error(`Access denied: Storage key "${key}" escapes storage root directory`);
+    }
+    return targetPath;
+  }
+
+  /**
    * Upload data directly to storage.
    */
   public async upload(
@@ -173,7 +188,7 @@ export class StorageProvider {
     }
 
     // Local filesystem fallback
-    const targetPath = path.join(this.localFallbackDir, cleanKey);
+    const targetPath = this.resolveContainedPath(cleanKey);
     const parentDir = path.dirname(targetPath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
@@ -241,7 +256,7 @@ export class StorageProvider {
     }
 
     // Local filesystem fallback
-    const sourcePath = path.join(this.localFallbackDir, cleanKey);
+    const sourcePath = this.resolveContainedPath(cleanKey);
     if (!fs.existsSync(sourcePath)) {
       throw new Error(`Object not found on local disk: ${cleanKey}`);
     }
@@ -271,7 +286,7 @@ export class StorageProvider {
       return;
     }
 
-    const targetPath = path.join(this.localFallbackDir, cleanKey);
+    const targetPath = this.resolveContainedPath(cleanKey);
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
     }
@@ -303,7 +318,7 @@ export class StorageProvider {
       }
     }
 
-    const targetPath = path.join(this.localFallbackDir, cleanKey);
+    const targetPath = this.resolveContainedPath(cleanKey);
     return fs.existsSync(targetPath);
   }
 
@@ -399,7 +414,7 @@ export class StorageProvider {
       }
     }
 
-    const targetPath = path.join(this.localFallbackDir, cleanKey);
+    const targetPath = this.resolveContainedPath(cleanKey);
     if (!fs.existsSync(targetPath)) {
       return null;
     }

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { execFile, execSync } from 'child_process';
@@ -560,8 +560,11 @@ app.post('/api/media/:mediaId/complete', async (req: Request, res: Response) => 
   }
 });
 
-// GET: Media record metadata
-app.get('/api/media/:id', async (req: Request, res: Response) => {
+// GET: Media record metadata (bypass specific literal sub-routes like quality-analysis)
+app.get('/api/media/:id', async (req: Request, res: Response, next: NextFunction) => {
+  if (req.params.id === 'quality-analysis') {
+    return next();
+  }
   try {
     const media = (await postgresDb.getMedia(req.params.id)) || mediaStorage.getMedia(req.params.id);
     if (!media) {
@@ -4148,12 +4151,15 @@ app.get('/api/media/quality-analysis', async (req: Request, res: Response) => {
     }
 
     let localPath = rawPath;
-    if (rawPath.startsWith('/uploads/') || rawPath.startsWith('/demo/')) {
+    if (rawPath.startsWith('/uploads/') || rawPath.startsWith('/demo/') || rawPath.startsWith('/exports/')) {
       localPath = path.join(process.cwd(), 'public', rawPath);
     } else if (rawPath.startsWith('/public/')) {
       localPath = path.join(process.cwd(), rawPath);
-    } else if (!path.isAbsolute(rawPath)) {
-      localPath = path.join(process.cwd(), 'public', rawPath);
+    } else if (!path.isAbsolute(rawPath) || !fs.existsSync(localPath)) {
+      const inPublic = path.join(process.cwd(), 'public', rawPath.replace(/^\//, ''));
+      if (fs.existsSync(inPublic)) {
+        localPath = inPublic;
+      }
     }
 
     if (!fs.existsSync(localPath)) {
@@ -4748,59 +4754,54 @@ app.post('/api/voice/dub', async (req: Request, res: Response) => {
       });
     }
 
-    // Multilingual Translation Dictionary / Dynamic Engine
-    const languageTranslations: Record<string, Record<string, string>> = {
-      Hindi: {
-        'welcome': 'स्वागत है',
-        'video': 'वीडियो',
-        'ai': 'AI',
-        'studio': 'स्टूडियो',
-        'create': 'बनाएं',
-        'edit': 'एडिट करें',
-        'shorts': 'शॉर्ट्स',
-        'viral': 'वायरल',
-      },
-      Spanish: {
-        'welcome': 'bienvenido',
-        'video': 'video',
-        'ai': 'IA',
-        'studio': 'estudio',
-        'create': 'crear',
-        'edit': 'editar',
-      },
-    };
-
     const dubEvents: DubEvent[] = [];
     const sideBySide: { original: string; translated: string; start: number; end: number }[] = [];
 
-    for (let i = 0; i < transcript.segments.length; i++) {
-      const seg = transcript.segments[i];
-      const origText = seg.text || '';
-      // Generate translated phrase preserving sentence timing
-      let transText = origText;
-      if (targetLanguage.toLowerCase().includes('hindi')) {
-        transText = `आज के सत्र में: ${origText.split(/\s+/).slice(0, 6).join(' ')} - AI वीडियो संपादन`;
-      } else if (targetLanguage.toLowerCase().includes('spanish')) {
-        transText = `En esta sesión: ${origText.split(/\s+/).slice(0, 6).join(' ')} - edición de video IA`;
-      } else {
-        transText = `[${targetLanguage}] ${origText}`;
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const fullText = transcript.segments.map((s: any) => s.text || '').join('\n');
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `Translate the following video subtitle lines faithfully into ${targetLanguage}, preserving speech rhythm and meaning line by line:\n\n${fullText}`,
+        });
+        const translatedLines = (response.text || '').trim().split('\n').filter(Boolean);
+
+        for (let i = 0; i < transcript.segments.length; i++) {
+          const seg = transcript.segments[i];
+          const origText = seg.text || '';
+          const transText = translatedLines[i] || origText;
+
+          dubEvents.push({
+            id: `dub_${Date.now()}_${i}`,
+            start: seg.start,
+            end: seg.end,
+            originalText: origText,
+            translatedText: transText,
+            targetLanguage,
+            speaker: seg.speaker || 'Speaker 1',
+          });
+
+          sideBySide.push({
+            original: origText,
+            translated: transText,
+            start: seg.start,
+            end: seg.end,
+          });
+        }
+      } catch (geminiErr: any) {
+        console.warn('Gemini translation error:', geminiErr);
+        return res.status(502).json({
+          success: false,
+          code: 'TRANSLATION_API_ERROR',
+          error: `Translation provider error: ${geminiErr.message}`,
+        });
       }
-
-      dubEvents.push({
-        id: `dub_${Date.now()}_${i}`,
-        start: seg.start,
-        end: seg.end,
-        originalText: origText,
-        translatedText: transText,
-        targetLanguage,
-        speaker: seg.speaker || 'Speaker 1',
-      });
-
-      sideBySide.push({
-        original: origText,
-        translated: transText,
-        start: seg.start,
-        end: seg.end,
+    } else {
+      return res.status(400).json({
+        success: false,
+        code: 'TRANSLATION_KEY_REQUIRED',
+        error: 'Multilingual dubbing requires a configured GEMINI_API_KEY for neural translation. Simulated fake replacement is disabled.',
       });
     }
 

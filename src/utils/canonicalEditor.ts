@@ -241,73 +241,94 @@ export function trimEditorProject(
   newStartTime: number,
   newEndTime: number
 ): EditorProject {
-  const safeStart = Math.max(0, newStartTime);
-  const safeEnd = Math.max(safeStart + 1, newEndTime);
-  const newDuration = safeEnd - safeStart;
-
-  const currentClip = editor.videoTracks[0];
+  const currentClip = (editor.videoTracks && editor.videoTracks[0]) || (editor as any).videoClips?.[0];
   const currentSourceStart = currentClip ? currentClip.sourceStart : 0;
-  const delta = safeStart; // timeline shift
+  const currentSourceEnd = currentClip ? currentClip.sourceEnd : (editor.sequence?.duration ?? (editor as any).duration ?? 30);
+
+  let computedSourceStart: number;
+  let computedSourceEnd: number;
+  let delta: number;
+
+  // Determine if caller provided absolute source bounds or sequence-relative bounds
+  if (currentSourceStart > 0 && newStartTime >= currentSourceStart) {
+    // Absolute source time domain (e.g. 125s - 150s on a 120s - 150s clip)
+    computedSourceStart = Math.max(currentSourceStart, newStartTime);
+    computedSourceEnd = Math.max(computedSourceStart + 1, newEndTime);
+    delta = computedSourceStart - currentSourceStart;
+  } else {
+    // Sequence-relative time domain (e.g. 5s - 25s on a 30s sequence, or 0-offset clip)
+    const safeStart = Math.max(0, newStartTime);
+    const safeEnd = Math.max(safeStart + 1, newEndTime);
+    computedSourceStart = currentSourceStart + safeStart;
+    computedSourceEnd = currentSourceStart + safeEnd;
+    delta = safeStart;
+  }
+
+  const newDuration = Math.max(1, Number((computedSourceEnd - computedSourceStart).toFixed(2)));
 
   const updatedVideoTracks: VideoClip[] = [
     {
       id: currentClip ? currentClip.id : `clip_${Date.now()}`,
-      sourceUrl: currentClip ? currentClip.sourceUrl : editor.source.url,
-      sourceStart: currentSourceStart + safeStart,
-      sourceEnd: currentSourceStart + safeEnd,
+      sourceUrl: currentClip ? currentClip.sourceUrl : (editor.source?.url || ''),
+      sourceStart: Number(computedSourceStart.toFixed(2)),
+      sourceEnd: Number(computedSourceEnd.toFixed(2)),
       timelineStart: 0,
       timelineEnd: newDuration,
     },
   ];
 
   // Shift and clamp tracks to new sequence duration
-  const updatedCaptions = editor.captionTrack
-    .map((c) => ({
+  const existingCaptions = editor.captionTrack || (editor as any).captionSegments || [];
+  const updatedCaptions = existingCaptions
+    .map((c: any) => ({
       ...c,
       start: Number((c.start - delta).toFixed(2)),
       end: Number((c.end - delta).toFixed(2)),
-      words: (c.words || []).map((w) => ({
+      words: (c.words || []).map((w: any) => ({
         ...w,
         start: Number((w.start - delta).toFixed(2)),
         end: Number((w.end - delta).toFixed(2)),
-      })).filter((w) => w.end > 0 && w.start < newDuration),
+      })).filter((w: any) => w.end > 0 && w.start < newDuration),
     }))
-    .filter((c) => c.end > 0 && c.start < newDuration)
-    .map((c) => ({
+    .filter((c: any) => c.end > 0 && c.start < newDuration)
+    .map((c: any) => ({
       ...c,
       start: Math.max(0, c.start),
       end: Math.min(newDuration, c.end),
     }));
 
-  const updatedBroll = editor.brollTrack
-    .map((b) => ({
+  const existingBroll = editor.brollTrack || (editor as any).brollClips || [];
+  const updatedBroll = existingBroll
+    .map((b: any) => ({
       ...b,
-      timelineStart: Number((b.timelineStart - delta).toFixed(2)),
-      timelineEnd: Number((b.timelineEnd - delta).toFixed(2)),
+      timelineStart: Number(((b.timelineStart ?? b.start ?? 0) - delta).toFixed(2)),
+      timelineEnd: Number(((b.timelineEnd ?? b.end ?? 0) - delta).toFixed(2)),
     }))
-    .filter((b) => b.timelineEnd > 0 && b.timelineStart < newDuration)
-    .map((b) => ({
+    .filter((b: any) => b.timelineEnd > 0 && b.timelineStart < newDuration)
+    .map((b: any) => ({
       ...b,
       timelineStart: Math.max(0, b.timelineStart),
       timelineEnd: Math.min(newDuration, b.timelineEnd),
     }));
 
-  const updatedSfx = editor.sfxTrack
-    .map((s) => ({
+  const existingSfx = editor.sfxTrack || (editor as any).sfxClips || [];
+  const updatedSfx = existingSfx
+    .map((s: any) => ({
       ...s,
       start: Number((s.start - delta).toFixed(2)),
       end: Number((s.end - delta).toFixed(2)),
     }))
-    .filter((s) => s.start >= 0 && s.start <= newDuration);
+    .filter((s: any) => s.start >= 0 && s.start <= newDuration);
 
-  const updatedVfx = editor.vfxTrack
-    .map((v) => ({
+  const existingVfx = editor.vfxTrack || (editor as any).vfxClips || [];
+  const updatedVfx = existingVfx
+    .map((v: any) => ({
       ...v,
       start: Number((v.start - delta).toFixed(2)),
       end: Number((v.end - delta).toFixed(2)),
     }))
-    .filter((v) => v.end > 0 && v.start < newDuration)
-    .map((v) => ({
+    .filter((v: any) => v.end > 0 && v.start < newDuration)
+    .map((v: any) => ({
       ...v,
       start: Math.max(0, v.start),
       end: Math.min(newDuration, v.end),
@@ -315,16 +336,28 @@ export function trimEditorProject(
 
   return {
     ...editor,
-    sequence: {
+    duration: newDuration,
+    sequence: editor.sequence ? {
       ...editor.sequence,
       duration: newDuration,
+    } : {
+      duration: newDuration,
+      fps: 30,
+      width: 1080,
+      height: 1920,
+      aspectRatio: '9:16',
     },
     videoTracks: updatedVideoTracks,
+    videoClips: updatedVideoTracks,
     captionTrack: updatedCaptions,
+    captionSegments: updatedCaptions,
     brollTrack: updatedBroll,
+    brollClips: updatedBroll,
     sfxTrack: updatedSfx,
+    sfxClips: updatedSfx,
     vfxTrack: updatedVfx,
-  };
+    vfxClips: updatedVfx,
+  } as any;
 }
 
 /**

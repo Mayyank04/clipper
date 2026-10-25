@@ -91,7 +91,7 @@ export const AIEditPlanModal: React.FC<AIEditPlanModalProps> = ({
               <h3 className="text-lg font-bold text-white tracking-tight flex items-center space-x-2">
                 <span>AI Director Edit Plan</span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {plan?.estimatedQualityBoost || '+42% Retention'}
+                  {plan?.estimatedQualityBoost || 'Enhanced Pacing (Heuristic)'}
                 </span>
               </h3>
               <p className="text-xs text-neutral-400">

@@ -9,7 +9,9 @@ import fs from 'fs';
 import path from 'path';
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 import express, { Request, Response } from 'express';
+import { Worker as BullWorker, Job as BullJob } from 'bullmq';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import dotenv from 'dotenv';
@@ -436,35 +438,73 @@ export async function processRenderJob(job: PersistentJobData): Promise<any> {
       workspace
     );
 
+    const renderDuration = Number(renderPlan.duration) > 0
+      ? Number(renderPlan.duration)
+      : (prepared.sourceInfo.sourceDuration || 30);
+
+    const targetRes = renderPlan.exportSettings?.resolution ||
+      renderPlan.targetResolution ||
+      (renderPlan.aspectRatio === '1:1' ? '1080x1080' : renderPlan.aspectRatio === '16:9' ? '1920x1080' : renderPlan.aspectRatio === '4:5' ? '1080x1350' : '1080x1920');
+
     const renderOpts = {
       sourcePath: prepared.sourceLocalPath,
       outputPath: prepared.outputPath,
       sourceInfo: prepared.sourceInfo,
-      startTime: renderPlan.startTime || 0,
-      duration: prepared.sourceInfo.sourceDuration,
-      qualityMode: options?.qualityMode || 'HIGH',
+      startTime: Number(renderPlan.startTime) || 0,
+      duration: renderDuration,
+      qualityMode: options?.qualityMode || renderPlan.qualityMode || 'HIGH',
+      targetResolution: targetRes,
+      requestedFPS: Number(renderPlan.exportSettings?.fps || renderPlan.fps || options?.fps) || undefined,
+      speakerPosition: renderPlan.speakerPosition || 'center',
       subtitlePath: prepared.subtitleAssPath,
       watermarkText: undefined, // Explicit clean unwatermarked export!
+      brollList: prepared.validatedBrolls,
+      sfxList: prepared.validatedSfx,
+      voiceoverList: prepared.validatedVoiceovers,
+      vfxList: renderPlan.vfxList || renderPlan.vfxMarkers || [],
+      colorTreatment: renderPlan.colorTreatment || 'natural_pro',
+      dynamicZooms: renderPlan.dynamicZooms || [],
+      imageOverlays: renderPlan.imageOverlays || [],
     };
 
-    const { args: ffmpegArgs } = buildFFmpegRenderArgs(renderOpts);
+    const { args: ffmpegArgs, profile } = buildFFmpegRenderArgs(renderOpts);
 
-    await queue.updateJobProgress(job.id, 15, 'RENDERING', 'Executing FFmpeg 1080x1920 vertical composition...');
+    await queue.updateJobProgress(job.id, 15, 'RENDERING', `Executing FFmpeg ${targetRes} composition...`);
 
     const child = spawn(ffmpegPath, ffmpegArgs);
     let lastProgress = 15;
+    let stderrBuffer = '';
+
+    const handleProgressData = (data: Buffer) => {
+      const text = data.toString();
+      const timeMatch = text.match(/(?:out_time_us=(\d+)|time=(\d+):(\d+):(\d+\.\d+))/);
+      let currentSec = 0;
+      if (timeMatch) {
+        if (timeMatch[1]) {
+          currentSec = parseInt(timeMatch[1], 10) / 1000000;
+        } else if (timeMatch[2] && timeMatch[3] && timeMatch[4]) {
+          currentSec = parseInt(timeMatch[2], 10) * 3600 + parseInt(timeMatch[3], 10) * 60 + parseFloat(timeMatch[4]);
+        }
+      }
+
+      if (currentSec > 0 && renderDuration > 0) {
+        const pct = Math.min(92, Math.max(15, 15 + Math.round((currentSec / renderDuration) * 75)));
+        if (pct > lastProgress) {
+          lastProgress = pct;
+          queue.updateJobProgress(job.id, pct, 'RENDERING', `Rendering ${targetRes} video... ${pct}%`);
+        }
+      }
+    };
 
     if (child.stdout) {
-      child.stdout.on('data', (data) => {
-        const text = data.toString();
-        const timeMatch = text.match(/out_time_us=(\d+)/);
-        if (timeMatch && prepared.sourceInfo.sourceDuration > 0) {
-          const currentSec = parseInt(timeMatch[1], 10) / 1000000;
-          const pct = Math.min(92, Math.max(15, 15 + Math.round((currentSec / prepared.sourceInfo.sourceDuration) * 75)));
-          if (pct > lastProgress) {
-            lastProgress = pct;
-            queue.updateJobProgress(job.id, pct, 'RENDERING', `Rendering 1080x1920 video... ${pct}%`);
-          }
+      child.stdout.on('data', handleProgressData);
+    }
+    if (child.stderr) {
+      child.stderr.on('data', (chunk) => {
+        handleProgressData(chunk);
+        stderrBuffer += chunk.toString();
+        if (stderrBuffer.length > 8192) {
+          stderrBuffer = stderrBuffer.slice(-4096);
         }
       });
     }
@@ -475,15 +515,18 @@ export async function processRenderJob(job: PersistentJobData): Promise<any> {
     });
 
     if (exitCode !== 0 || !fs.existsSync(prepared.outputPath)) {
-      throw new Error(`FFmpeg exited with error code ${exitCode}`);
+      throw new Error(`FFmpeg exited with error code ${exitCode}. Tail: ${stderrBuffer.slice(-500)}`);
     }
 
     // Post-render forensic verification (verifyExport)
     await queue.updateJobProgress(job.id, 94, 'VERIFYING', 'Running forensic FFprobe on rendered MP4...');
     const verified = await probeSourceMedia(prepared.outputPath);
 
-    if (verified.sourceWidth !== 1080 || verified.sourceHeight !== 1920) {
-      throw new Error(`Output resolution mismatch: expected 1080x1920, got ${verified.sourceWidth}x${verified.sourceHeight}`);
+    const expectedWidth = profile.targetResolution.width;
+    const expectedHeight = profile.targetResolution.height;
+
+    if (verified.sourceWidth !== expectedWidth || verified.sourceHeight !== expectedHeight) {
+      throw new Error(`Output resolution mismatch: expected ${expectedWidth}x${expectedHeight}, got ${verified.sourceWidth}x${verified.sourceHeight}`);
     }
     const hasOutAudio = Boolean(verified.sourceAudioCodec || verified.sourceAudioBitrate);
     const hasOutVideo = Boolean(verified.sourceWidth > 0 && verified.sourceHeight > 0);
@@ -545,17 +588,32 @@ async function executeWorkerJob(
   try {
     await emitJobEvent(jobId, 'job_claimed', 'CLAIMED', 5, `Worker claimed job ${jobId} (${type}).`);
     let result: any;
+    const norm = (type || '').toLowerCase().replace(/_/g, '-');
 
-    if (type === 'TRANSCRIBE') {
+    if (norm === 'media-ingestion' || norm === 'media' || norm === 'ingest') {
+      const qJob: PersistentJobData = {
+        id: jobId,
+        type: 'media-ingestion',
+        status: 'processing',
+        progress: 0,
+        stage: 'DOWNLOADING',
+        message: 'Processing uploaded media...',
+        payload: input,
+        mediaId: options.sourceId || input.mediaId,
+        projectId: options.projectId || input.projectId,
+        createdAt: new Date().toISOString(),
+      };
+      result = await processMediaJob(qJob);
+    } else if (norm === 'transcribe' || norm === 'transcription') {
       const qJob = await queue.addJob('transcription', input, { jobId });
       result = await processTranscriptionJob(qJob);
-    } else if (type === 'RENDER_VIDEO' || type === 'render') {
+    } else if (norm === 'render-video' || norm === 'render') {
       const qJob = await queue.addJob('render', input, { jobId });
       result = await processRenderJob(qJob);
-    } else if (type === 'YOUTUBE_DOWNLOAD' || type === 'youtube-download') {
+    } else if (norm === 'youtube-download' || norm === 'youtube') {
       const qJob = await queue.addJob('youtube-download', input, { jobId });
       result = await processYouTubeJob(qJob);
-    } else if (type === 'GENERATE_SHORTS') {
+    } else if (norm === 'generate-shorts' || norm === 'short-generation') {
       const segments = Array.isArray(input.transcript) ? input.transcript : input.transcript?.segments || [];
       const candidates = findTopHookCandidates(
         segments,
@@ -1064,10 +1122,75 @@ app.post('/api/worker/youtube', requireWorkerAuth, async (req: Request, res: Res
   }
 });
 
+// Initialize BullMQ Workers for durable background job execution
+function initBullWorkers() {
+  const redisConn = queue.getRedisConnection();
+  if (!redisConn) {
+    console.log('[ViralClip Worker] Redis not active. Operating with local HTTP/in-process execution.');
+    return;
+  }
+
+  const queueTypes = [
+    'media-ingestion',
+    'transcription',
+    'short-generation',
+    'render',
+    'youtube-download',
+  ];
+
+  queueTypes.forEach((qType) => {
+    try {
+      const bullWorker = new BullWorker(
+        qType,
+        async (bullJob: BullJob) => {
+          console.log(`[BullMQ Worker] Claimed job ${bullJob.id} from queue '${qType}'`);
+          const payload = bullJob.data.payload || bullJob.data.input || bullJob.data;
+          const jId = bullJob.data.id || bullJob.id || `job_${Date.now()}`;
+          return await executeWorkerJob(jId, qType, payload, {
+            sourceId: bullJob.data.mediaId || bullJob.data.sourceId,
+            projectId: bullJob.data.projectId,
+          });
+        },
+        {
+          connection: redisConn,
+          concurrency: parseInt(process.env.WORKER_CONCURRENCY || '2', 10),
+        }
+      );
+
+      bullWorker.on('completed', (job) => {
+        console.log(`[BullMQ Worker] Job ${job.id} on '${qType}' completed.`);
+      });
+
+      bullWorker.on('failed', (job, err) => {
+        console.error(`[BullMQ Worker] Job ${job?.id} on '${qType}' failed:`, err);
+      });
+
+      console.log(`[BullMQ Worker] Registered consumer for queue: ${qType}`);
+    } catch (err: any) {
+      console.warn(`[BullMQ Worker] Could not start worker for ${qType}: ${err.message}`);
+    }
+  });
+}
+
 // Start Worker Server
-if (require.main === module) {
+const isDirectExecution = () => {
+  if (typeof process === 'undefined' || !process.argv[1]) return false;
+  const scriptArg = path.resolve(process.argv[1]);
+  try {
+    const currentFile = fileURLToPath(import.meta.url);
+    if (currentFile === scriptArg) return true;
+  } catch (_) {}
+  return (
+    scriptArg.endsWith('worker.ts') ||
+    scriptArg.endsWith('worker.cjs') ||
+    scriptArg.endsWith('worker.js')
+  );
+};
+
+if (isDirectExecution() || (typeof require !== 'undefined' && (require as any).main === module)) {
   app.listen(WORKER_PORT, '0.0.0.0', () => {
     console.log(`[ViralClip Worker] Dedicated media processing service listening on port ${WORKER_PORT}`);
     console.log(`[ViralClip Worker] Worker ID: ${WORKER_ID}`);
+    initBullWorkers();
   });
 }

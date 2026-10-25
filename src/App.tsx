@@ -704,6 +704,7 @@ export default function App() {
           videoFileInputRef.current?.click();
         }}
         onRetryWithDemo={isDemoMode ? handleStartDemo : undefined}
+        onRetry={() => handleStartAnalysis(processingUrl, isDemoMode)}
       />
 
       {/* Hidden native video input for [Upload Video Instead] */}

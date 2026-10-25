@@ -279,7 +279,7 @@ export class AIDirector {
       projectId: input.projectId,
       recommendedStyle: style.id,
       summary: `AI Director analyzed ${input.wordTimings.length} words across ${input.totalDurationSeconds.toFixed(1)}s and recommended ${style.name}. ${items.length} high-impact improvements generated.`,
-      estimatedQualityBoost: '+42% Viewer Retention',
+      estimatedQualityBoost: 'Enhanced Pacing & Visual Cadence (Heuristic)',
       items,
       generatedAt: Date.now(),
     };

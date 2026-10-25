@@ -138,6 +138,10 @@ export class QueueService extends EventEmitter {
     return this.isRedisConnected;
   }
 
+  public getRedisConnection(): IORedis | null {
+    return this.redisConnection;
+  }
+
   /**
    * Enqueue a job into durable Redis queue or in-memory queue.
    */

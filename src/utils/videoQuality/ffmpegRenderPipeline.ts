@@ -16,6 +16,8 @@ export interface FFmpegRenderOptions {
   startTime: number;
   duration: number;
   qualityMode?: ExportQualityMode;
+  targetResolution?: string;
+  requestedFPS?: number;
   speakerPosition?: 'center' | 'left' | 'right' | 'auto_switch';
   subtitlePath?: string;
   watermarkText?: string;
@@ -72,15 +74,32 @@ export function getRenderQualityProfile(
       break;
   }
 
-  // Preserve native source FPS (e.g. 29.97, 23.98, 25, 30) unless user explicitly requested 60 FPS
-  const targetFPS = requestedFPS && requestedFPS === 60
-    ? 60
+  // Preserve native source FPS (e.g. 29.97, 23.98, 25, 30) unless user explicitly requested FPS
+  const targetFPS = requestedFPS && requestedFPS > 0
+    ? requestedFPS
     : Number((sourceInfo.sourceFPS || 29.97).toFixed(2));
 
   // Determine subtle sharpening for low-res upscale
   const sharpening = isLowRes ? 'subtle' : (mode === 'MASTER' ? 'subtle' : 'off');
 
-  const [tWidth, tHeight] = targetFormat === '1080x1920' ? [1080, 1920] : [1080, 1920];
+  let tWidth = 1080;
+  let tHeight = 1920;
+  if (targetFormat === '1080x1080' || targetFormat === '1:1') {
+    tWidth = 1080;
+    tHeight = 1080;
+  } else if (targetFormat === '1920x1080' || targetFormat === '16:9') {
+    tWidth = 1920;
+    tHeight = 1080;
+  } else if (targetFormat === '1080x1350' || targetFormat === '4:5') {
+    tWidth = 1080;
+    tHeight = 1350;
+  } else if (targetFormat && targetFormat.includes('x')) {
+    const parts = targetFormat.split('x').map(Number);
+    if (parts[0] > 0 && parts[1] > 0) {
+      tWidth = parts[0];
+      tHeight = parts[1];
+    }
+  }
 
   return {
     qualityMode: mode,
@@ -102,8 +121,10 @@ export function getRenderQualityProfile(
 
 export const buildQualityProfile = (
   mode: ExportQualityMode = 'HIGH',
-  sourceInfo: SourceMediaQualityInfo
-): RenderQualityProfile => getRenderQualityProfile(sourceInfo, '1080x1920', mode);
+  sourceInfo: SourceMediaQualityInfo,
+  targetFormat: string = '1080x1920',
+  requestedFPS?: number
+): RenderQualityProfile => getRenderQualityProfile(sourceInfo, targetFormat, mode, requestedFPS);
 
 
 /**
@@ -117,6 +138,8 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     startTime,
     duration,
     qualityMode = 'HIGH',
+    targetResolution = '1080x1920',
+    requestedFPS,
     speakerPosition = 'center',
     subtitlePath,
     watermarkText,
@@ -132,7 +155,7 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
     isAudioOnly = false,
   } = options;
 
-  const profile = buildQualityProfile(qualityMode, sourceInfo);
+  const profile = buildQualityProfile(qualityMode, sourceInfo, targetResolution, requestedFPS);
 
   const effectiveAudioOnly = isAudioOnly ||
     !sourceInfo.sourceHeight ||
@@ -197,8 +220,36 @@ export function buildFFmpegRenderArgs(options: FFmpegRenderOptions): { args: str
   // Center crop coordinates at median point
   const midCrop = getCropRectAtTime(cropPlan, duration / 2);
 
-  // 2. Build Video Filtergraph with single-pass Lanczos scaler
-  let baseFilters = `crop=${midCrop.width}:${midCrop.height}:${midCrop.x}:${midCrop.y},scale=1080:1920:force_original_aspect_ratio=decrease:flags=${profile.scalingFilter},pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
+  const outW = profile.targetResolution.width;
+  const outH = profile.targetResolution.height;
+
+  // 2. Build Video Filtergraph with profile-aware scaler
+  let baseFilters: string;
+  if (outW === 1920 && outH === 1080) {
+    // 16:9 Landscape
+    baseFilters = `scale=1920:1080:force_original_aspect_ratio=decrease:flags=${profile.scalingFilter},pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black`;
+  } else if (outW === 1080 && outH === 1080) {
+    // 1:1 Square
+    const squareDim = Math.min(sourceInfo.sourceWidth || 1080, sourceInfo.sourceHeight || 1080);
+    const sqX = Math.round(((sourceInfo.sourceWidth || 1080) - squareDim) / 2);
+    const sqY = Math.round(((sourceInfo.sourceHeight || 1080) - squareDim) / 2);
+    baseFilters = `crop=${squareDim}:${squareDim}:${sqX}:${sqY},scale=1080:1080:flags=${profile.scalingFilter}`;
+  } else if (outW === 1080 && outH === 1350) {
+    // 4:5 Social
+    const targetAspect = 4 / 5;
+    let cropW = Math.round((sourceInfo.sourceHeight || 1920) * targetAspect);
+    let cropH = sourceInfo.sourceHeight || 1920;
+    if (cropW > (sourceInfo.sourceWidth || 1080)) {
+      cropW = sourceInfo.sourceWidth || 1080;
+      cropH = Math.round((sourceInfo.sourceWidth || 1080) / targetAspect);
+    }
+    const cropX = Math.round(((sourceInfo.sourceWidth || 1080) - cropW) / 2);
+    const cropY = Math.round(((sourceInfo.sourceHeight || 1920) - cropH) / 2);
+    baseFilters = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=1080:1350:flags=${profile.scalingFilter}`;
+  } else {
+    // 9:16 Portrait default with smart crop
+    baseFilters = `crop=${midCrop.width}:${midCrop.height}:${midCrop.x}:${midCrop.y},scale=${outW}:${outH}:force_original_aspect_ratio=decrease:flags=${profile.scalingFilter},pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2:black`;
+  }
 
   // Subtle unsharp filter for detail enhancement if indicated
   if (profile.sharpening === 'subtle') {

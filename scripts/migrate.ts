@@ -33,6 +33,10 @@ async function runMigrations() {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
   if (!connectionString) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('\n[Migrate] FATAL: Production mode requires a valid DATABASE_URL or POSTGRES_URL. Failing closed.');
+      process.exit(1);
+    }
     console.log('\n[Migrate] NOTICE: No DATABASE_URL or POSTGRES_URL detected.');
     console.log('[Migrate] Application will operate in disk-journaled local fallback mode.');
     console.log('[Migrate] Verifying local fallback storage directories...');
@@ -68,7 +72,10 @@ async function runMigrations() {
     connectionTimeoutMillis: 10000,
   };
 
-  if (process.env.NODE_ENV === 'production' || connectionString.includes('sslmode=require')) {
+  const isExplicitSsl = connectionString.includes('sslmode=require') || process.env.POSTGRES_SSL === 'true';
+  const isCloudProvider = connectionString.includes('neon.tech') || connectionString.includes('supabase.co');
+  const isLocalHost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || connectionString.includes('@postgres:') || connectionString.includes('@db:');
+  if (isExplicitSsl || isCloudProvider || (process.env.NODE_ENV === 'production' && !isLocalHost)) {
     config.ssl = { rejectUnauthorized: false };
   }
 

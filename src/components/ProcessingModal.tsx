@@ -23,6 +23,7 @@ interface ProcessingModalProps {
   onCancel: () => void;
   onUploadVideo?: () => void;
   onRetryWithDemo?: () => void;
+  onRetry?: () => void;
 }
 
 interface LogEntry {
@@ -110,6 +111,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   onCancel,
   onUploadVideo,
   onRetryWithDemo,
+  onRetry,
 }) => {
   const [progress, setProgress] = useState<number>(0);
   const [currentStageText, setCurrentStageText] = useState<string>('Validating source...');
@@ -205,71 +207,47 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
     return pollInterval;
   };
 
-  // Kick off or resume processing
-  const initiateProcessing = async () => {
-    setErrorMessage(null);
-    setErrorCode(null);
-    setProgress(0);
-    setStatus('validating');
-    setCurrentStageText('Validating source input...');
-
-    try {
-      if (activeJobId) {
-        pollJobStatus(activeJobId, projectId);
-        return;
-      }
-
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          youtubeUrl: videoUrl,
-          isDemo: isDemoMode,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setErrorMessage(data.error || data.message || 'Failed to initiate processing job on backend');
-        setErrorCode(data.code || null);
-        setAuthConfigured(Boolean(data.authConfigured));
-        return;
-      }
-
-      const newJobId = data.jobId;
-      setActiveJobId(newJobId);
-      pollJobStatus(newJobId, data.projectId || projectId);
-    } catch (err: any) {
-      console.error('Job initiation error:', err);
-      setErrorMessage(err.message || 'Failed to initiate processing job on backend');
-    }
-  };
-
+  // Observe or resume processing
   useEffect(() => {
     if (!isOpen) {
       isPollingRef.current = false;
+      setActiveJobId(null);
+      setProgress(0);
+      setLogs([]);
+      setErrorMessage(null);
+      setErrorCode(null);
       return;
     }
 
     if (initialError) {
+      setErrorMessage(initialError);
       return;
     }
 
-    initiateProcessing();
+    if (activeJobId) {
+      pollJobStatus(activeJobId, projectId);
+    } else {
+      setCurrentStageText('Connecting to server processing pipeline...');
+      setStatus('validating');
+    }
 
     return () => {
       isPollingRef.current = false;
     };
-  }, [isOpen, activeJobId, projectId]);
+  }, [isOpen, activeJobId, projectId, initialError]);
 
   if (!isOpen) return null;
 
   const handleRetry = async () => {
     setIsRetrying(true);
     setErrorMessage(null);
+    setErrorCode(null);
     setActiveJobId(null);
-    await initiateProcessing();
+    if (onRetry) {
+      onRetry();
+    } else if (isDemoMode && onRetryWithDemo) {
+      onRetryWithDemo();
+    }
     setIsRetrying(false);
   };
 

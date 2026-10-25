@@ -72,14 +72,21 @@ export class PostgresDatabase {
         connectionTimeoutMillis: 5000,
       };
 
-      // SSL configuration for production cloud providers (Neon/Supabase)
-      if (process.env.NODE_ENV === 'production' || connectionString.includes('sslmode=require')) {
+      // SSL configuration: only enable if explicitly requested or if connecting to cloud provider (not localhost/127.0.0.1/postgres docker without SSL)
+      const isExplicitSsl = connectionString.includes('sslmode=require') || process.env.POSTGRES_SSL === 'true';
+      const isCloudProvider = connectionString.includes('neon.tech') || connectionString.includes('supabase.co');
+      const isLocalHost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || connectionString.includes('@postgres:') || connectionString.includes('@db:');
+      if (isExplicitSsl || isCloudProvider || (process.env.NODE_ENV === 'production' && !isLocalHost)) {
         config.ssl = { rejectUnauthorized: false };
       }
 
       this.pool = new Pool(config);
       this.initPromise = this.initSchema();
     } else {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[PostgresDatabase] FATAL: Production requires DATABASE_URL or POSTGRES_URL. Disk fallback disabled.');
+        throw new Error('Production requires DATABASE_URL or POSTGRES_URL. Local disk journal mode is disabled in production.');
+      }
       console.log('[PostgresDatabase] No DATABASE_URL found. Operating in local disk-journaled mode.');
     }
   }
@@ -96,7 +103,10 @@ export class PostgresDatabase {
     try {
       const client = await this.pool.connect();
       try {
-        const schemaPath = path.join(__dirname, 'schema.sql');
+        const schemaPath = fs.existsSync(path.join(__dirname, 'schema.sql'))
+          ? path.join(__dirname, 'schema.sql')
+          : path.resolve(process.cwd(), 'src/services/database/schema.sql');
+
         if (fs.existsSync(schemaPath)) {
           const sql = fs.readFileSync(schemaPath, 'utf8');
           await client.query(sql);
@@ -111,6 +121,11 @@ export class PostgresDatabase {
         client.release();
       }
     } catch (err: any) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error(`[PostgresDatabase] FATAL: Production PostgreSQL connection failed: ${err.message}. Fail-closed active.`);
+        this.isConnected = false;
+        throw new Error(`Production database connection failed: ${err.message}`);
+      }
       console.warn(`[PostgresDatabase] PostgreSQL connection failed: ${err.message}. Falling back to disk storage.`);
       this.isConnected = false;
       return false;

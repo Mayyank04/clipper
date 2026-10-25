@@ -115,6 +115,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   }>({ loading: false });
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const currentShortIdRef = useRef<string | null>(null);
+
+  // Scope UI state by clip ID & cancel in-flight polling on clip switch
+  useEffect(() => {
+    if (!isOpen || !short) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    if (currentShortIdRef.current !== short.id) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      currentShortIdRef.current = short.id;
+      setRenderResult(null);
+      setActiveJobId(null);
+      setRenderProgress(0);
+      setRenderStage('Preparing render worker...');
+      setRenderError(null);
+      setIsRendering(false);
+      setIsCancelling(false);
+    }
+  }, [isOpen, short?.id]);
 
   // Clean up polling timer on unmount
   useEffect(() => {

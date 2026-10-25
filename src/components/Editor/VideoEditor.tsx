@@ -183,7 +183,37 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   const [inspectorMode, setInspectorMode] = useState<'typography' | 'tracks'>('typography');
   const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState<boolean>(false);
   const [isBrandKitModalOpen, setIsBrandKitModalOpen] = useState<boolean>(false);
+  const [currentBrandKit, setCurrentBrandKit] = useState<BrandKit>(brandKit);
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('saved');
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const saveToServer = useCallback((shortToSave: ShortCandidate) => {
+    if (!project?.id) return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        setAutosaveStatus('saving');
+        const updatedShorts = (project.shorts || []).map((s) => (s.id === shortToSave.id ? shortToSave : s));
+        const updatedProject = { ...project, shorts: updatedShorts };
+        const res = await fetch(`/api/projects/${project.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project: updatedProject }),
+        });
+        if (res.ok) {
+          setAutosaveStatus('saved');
+        } else {
+          setAutosaveStatus('unsaved');
+        }
+      } catch (err) {
+        console.warn('[VideoEditor] Autosave error:', err);
+        setAutosaveStatus('unsaved');
+      }
+    }, 400);
+  }, [project]);
 
   // History stack for Undo/Redo
   const [history, setHistory] = useState<ShortCandidate[]>([normalizedInitial]);
@@ -239,7 +269,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     setHistoryIndex(updatedHistory.length - 1);
     setCurrentShort(newShort);
     onUpdateShort?.(newShort);
-    setTimeout(() => setAutosaveStatus('saved'), 600);
+    saveToServer(newShort);
   };
 
   const handleUndo = () => {
@@ -303,12 +333,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
   const handleCaptionConfigChange = useCallback((newCfg: CaptionCustomization) => {
     setCaptionConfig(newCfg);
-    setCurrentShort((prev) => ({
-      ...prev,
-      captionCustomization: newCfg,
-      captionConfig: newCfg,
-    }));
-  }, []);
+    setCurrentShort((prev) => {
+      const updated = {
+        ...prev,
+        captionCustomization: newCfg,
+        captionConfig: newCfg,
+      };
+      saveToServer(updated);
+      onUpdateShort?.(updated);
+      return updated;
+    });
+  }, [saveToServer, onUpdateShort]);
 
   // Safe Area overlay state (lifted for header & canvas sync)
   const [safeAreaEnabled, setSafeAreaEnabled] = useState<boolean>(true);
@@ -2162,8 +2197,14 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
       {/* Brand Kit Modal */}
       <BrandKitModal
         isOpen={isBrandKitModalOpen}
-        brandKit={brandKit}
-        onSave={() => {
+        brandKit={currentBrandKit}
+        onSave={(savedKit) => {
+          if (savedKit) {
+            setCurrentBrandKit(savedKit);
+            try {
+              localStorage.setItem('viralclip_brand_kit', JSON.stringify(savedKit));
+            } catch (_) {}
+          }
           setIsBrandKitModalOpen(false);
         }}
         onApplyToProject={(kit) => {

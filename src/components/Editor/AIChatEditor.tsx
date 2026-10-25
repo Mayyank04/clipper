@@ -112,13 +112,12 @@ export const AIChatEditor: React.FC<AIChatEditorProps> = ({
         updatedShort = {
           ...updatedShort,
           captionCustomization: {
-            ...basePreset,
             ...(updatedShort.captionCustomization || {}),
+            ...basePreset,
             style: styleName as any,
           },
         };
       } else if (item.type === 'add_broll') {
-        // Insert sample broll cutaway into brollSuggestions
         const newBRoll = {
           id: `broll_chat_${Date.now()}`,
           timestamp: Math.max(1, currentTime),
@@ -134,10 +133,8 @@ export const AIChatEditor: React.FC<AIChatEditorProps> = ({
           brollSuggestions: [...(updatedShort.brollSuggestions || []), newBRoll],
         };
       } else if (item.type === 'translate') {
-        updatedShort = {
-          ...updatedShort,
-          detectedLanguage: 'Hindi',
-        };
+        // Translation should be reviewed in Voice Studio
+        console.log('[AIChatEditor] Translation command flagged for review in Voice Studio');
       }
     }
 
