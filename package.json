@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "viralclip-studio",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -36,8 +36,8 @@
     "pg": "^8.23.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3",
-    "wavefile": "^11.0.0"
+    "wavefile": "^11.0.0",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

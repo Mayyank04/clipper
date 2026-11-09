@@ -100,7 +100,8 @@ export class StorageProvider {
       forcePathStyle,
     };
 
-    this.localFallbackDir = path.resolve(process.cwd(), 'data', 'storage');
+    const baseDataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR, 'data') : path.resolve(process.cwd(), 'data');
+    this.localFallbackDir = path.resolve(baseDataDir, 'storage');
 
     if (this.config.bucket) {
       const clientConfig: S3ClientConfig = {
@@ -121,8 +122,16 @@ export class StorageProvider {
       console.log(`[StorageProvider] Configured S3 storage (bucket: ${this.config.bucket}, region: ${this.config.region})`);
     } else {
       this.isConfiguredS3 = false;
-      if (!fs.existsSync(this.localFallbackDir)) {
-        fs.mkdirSync(this.localFallbackDir, { recursive: true });
+      try {
+        if (!fs.existsSync(this.localFallbackDir)) {
+          fs.mkdirSync(this.localFallbackDir, { recursive: true });
+        }
+        fs.accessSync(this.localFallbackDir, fs.constants.W_OK);
+      } catch {
+        this.localFallbackDir = path.join('/tmp', 'viralclip', 'storage');
+        if (!fs.existsSync(this.localFallbackDir)) {
+          fs.mkdirSync(this.localFallbackDir, { recursive: true });
+        }
       }
       console.log(`[StorageProvider] Running in local filesystem mode (dir: ${this.localFallbackDir})`);
     }

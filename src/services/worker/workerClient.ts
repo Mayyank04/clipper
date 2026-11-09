@@ -4,6 +4,7 @@
  */
 
 import { WorkerHealth, ProcessingJobRecord } from './types';
+import { parseSafeApiResponse } from '../../utils/safeResponseHelper';
 
 export class WorkerClient {
   private baseUrl: string;
@@ -61,12 +62,7 @@ export class WorkerClient {
 
         clearTimeout(timer);
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Worker HTTP ${response.status}: ${errText || response.statusText}`);
-        }
-
-        return (await response.json()) as T;
+        return await parseSafeApiResponse<T>(response);
       } catch (err: any) {
         lastError = err;
         if (attempt < retries) {

@@ -60,6 +60,27 @@ export interface ManagerTranscribeResult {
   fromCache?: boolean;
 }
 
+function getAudioCacheDir(): string {
+  if (process.env.DATA_DIR) {
+    const target = path.join(process.env.DATA_DIR, 'audio', 'extracted_cache');
+    try {
+      if (!fs.existsSync(target)) fs.mkdirSync(target, { recursive: true });
+      fs.accessSync(target, fs.constants.W_OK);
+      return target;
+    } catch {}
+  }
+  const cwdTarget = path.join(process.cwd(), 'public', 'audio', 'extracted_cache');
+  try {
+    if (!fs.existsSync(cwdTarget)) fs.mkdirSync(cwdTarget, { recursive: true });
+    fs.accessSync(cwdTarget, fs.constants.W_OK);
+    return cwdTarget;
+  } catch {
+    const tmpTarget = path.join('/tmp', 'viralclip', 'audio', 'extracted_cache');
+    if (!fs.existsSync(tmpTarget)) fs.mkdirSync(tmpTarget, { recursive: true });
+    return tmpTarget;
+  }
+}
+
 export class TranscriptionManager {
   private static instance: TranscriptionManager | null = null;
 
@@ -176,10 +197,7 @@ export class TranscriptionManager {
     const hashPayload = `${sourceMediaPath}_${fileStats.size}_${fileStats.mtimeMs}_${startTime.toFixed(2)}_${durStr}`;
     const cacheKey = crypto.createHash('sha256').update(hashPayload).digest('hex');
 
-    const cacheDir = path.join(process.cwd(), 'public', 'audio', 'extracted_cache');
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
+    const cacheDir = getAudioCacheDir();
 
     const cachedFilePath = path.join(cacheDir, `audio_${cacheKey}.wav`);
 
@@ -255,7 +273,7 @@ export class TranscriptionManager {
       .digest('hex');
 
     const transcriptCacheKey = `${sourceHash}_${startTime.toFixed(2)}_${duration.toFixed(2)}_${language}`;
-    const cacheDir = path.join(process.cwd(), 'public', 'audio', 'extracted_cache');
+    const cacheDir = getAudioCacheDir();
     const diskTranscriptPath = path.join(cacheDir, `transcript_${transcriptCacheKey}.json`);
 
     if (!options.forceRefresh) {

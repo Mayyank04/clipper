@@ -10,14 +10,18 @@ import {
   Upload,
   X,
   Globe,
+  Copy,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
+import { parseSafeApiResponse, ApiError } from '../utils/safeResponseHelper';
 
 interface ProcessingModalProps {
   isOpen: boolean;
   projectId: string | null;
   jobId?: string | null;
   videoUrl: string;
-  initialError?: string | null;
+  initialError?: string | any | null;
   isDemoMode?: boolean;
   onComplete: (projectData: any) => void;
   onCancel: () => void;
@@ -31,6 +35,93 @@ interface LogEntry {
   message: string;
   type: 'info' | 'success' | 'warn' | 'error';
 }
+
+const ERROR_DESCRIPTIONS: Record<string, { title: string; defaultMessage: string; defaultAction: string; retryable: boolean }> = {
+  INVALID_YOUTUBE_URL: {
+    title: 'Invalid YouTube URL',
+    defaultMessage: 'The provided link is not a recognized YouTube URL. Supported formats: youtube.com/watch?v=..., youtu.be/..., or youtube.com/shorts/...',
+    defaultAction: 'Please verify the link format or upload the video directly.',
+    retryable: false,
+  },
+  VIDEO_NOT_FOUND: {
+    title: 'YouTube Video Not Found',
+    defaultMessage: 'This YouTube video was not found or has been removed. Check the link or upload the video directly.',
+    defaultAction: 'Verify that the video is public on YouTube, or upload the MP4/MOV file.',
+    retryable: false,
+  },
+  VIDEO_PRIVATE: {
+    title: 'Private YouTube Video',
+    defaultMessage: 'This YouTube video is set to Private or Members-Only by its owner and cannot be accessed publicly.',
+    defaultAction: 'Change the video privacy on YouTube Studio or upload the video directly.',
+    retryable: false,
+  },
+  VIDEO_RESTRICTED: {
+    title: 'YouTube Video Restricted',
+    defaultMessage: 'This video is restricted by YouTube (due to age restrictions, regional licensing, or channel membership).',
+    defaultAction: 'Download the video in your authenticated browser and upload the video file directly.',
+    retryable: false,
+  },
+  AUTHENTICATION_REQUIRED: {
+    title: 'YouTube Authentication Required',
+    defaultMessage: 'YouTube requires signed-in authentication credentials or session cookies to access this video.',
+    defaultAction: 'Upload the video file directly using the button below.',
+    retryable: false,
+  },
+  YOUTUBE_CHALLENGE_REQUIRED: {
+    title: 'YouTube Bot Challenge Encountered',
+    defaultMessage: 'YouTube triggered bot verification (Proof-of-Origin token or CAPTCHA) for this download stream.',
+    defaultAction: 'Upload the video file directly from your device to proceed immediately.',
+    retryable: false,
+  },
+  YOUTUBE_RATE_LIMITED: {
+    title: 'YouTube Rate Limited',
+    defaultMessage: 'YouTube has temporarily rate-limited download requests from this server.',
+    defaultAction: 'Please wait a few minutes and click Retry, or upload the video directly.',
+    retryable: true,
+  },
+  FORMAT_UNAVAILABLE: {
+    title: 'Compatible Format Unavailable',
+    defaultMessage: 'No compatible video stream format could be extracted from YouTube for this video.',
+    defaultAction: 'Upload the video file directly as an MP4 or MOV.',
+    retryable: false,
+  },
+  DOWNLOAD_TIMEOUT: {
+    title: 'Download Timed Out',
+    defaultMessage: 'The download process timed out before completion. The video may be too long or the network was interrupted.',
+    defaultAction: 'Retry the download, or upload the video directly.',
+    retryable: true,
+  },
+  NETWORK_ERROR: {
+    title: 'Network Connectivity Error',
+    defaultMessage: 'The server encountered a network or DNS error while connecting to YouTube servers.',
+    defaultAction: 'Check your connection and click Retry, or upload the video directly.',
+    retryable: true,
+  },
+  WORKER_UNAVAILABLE: {
+    title: 'Downloader Worker Unavailable',
+    defaultMessage: 'The media processing service is temporarily restarting or unreachable.',
+    defaultAction: 'Wait 15 seconds and click Retry, or upload the video directly.',
+    retryable: true,
+  },
+  STORAGE_UPLOAD_FAILED: {
+    title: 'Media Storage Failed',
+    defaultMessage: 'Failed to write downloaded media into server storage.',
+    defaultAction: 'Click Retry in a moment, or check server disk permissions.',
+    retryable: true,
+  },
+  MEDIA_VALIDATION_FAILED: {
+    title: 'Media Validation Failed',
+    defaultMessage: 'The downloaded media failed FFprobe validation (corrupted container or missing video stream).',
+    defaultAction: 'Upload the video file directly in MP4 or MOV format.',
+    retryable: false,
+  },
+  UNKNOWN_INGESTION_ERROR: {
+    title: 'Media Ingestion Error',
+    defaultMessage: 'An unexpected error occurred during media download or preparation.',
+    defaultAction: 'Please retry processing or upload the video file directly.',
+    retryable: true,
+  },
+};
 
 const CHECKLIST_STAGES = [
   {
@@ -118,8 +209,14 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
   const [status, setStatus] = useState<string>('validating');
   const [transcriptionMetrics, setTranscriptionMetrics] = useState<TranscriptionMetrics | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(initialError || null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [failedStage, setFailedStage] = useState<string>('validating');
+  const [retryable, setRetryable] = useState<boolean>(true);
+  const [suggestedAction, setSuggestedAction] = useState<string | null>(null);
+  const [technicalDetails, setTechnicalDetails] = useState<any | null>(null);
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
+  const [copiedDiag, setCopiedDiag] = useState<boolean>(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [languageConfidence, setLanguageConfidence] = useState<number | null>(null);
   const [authConfigured, setAuthConfigured] = useState<boolean>(false);
@@ -129,9 +226,31 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
 
   useEffect(() => {
     if (initialError) {
-      setErrorMessage(initialError);
+      if (typeof initialError === 'object' && initialError !== null) {
+        setErrorMessage(initialError.message || 'Processing failed.');
+        setErrorCode(initialError.code || 'UNKNOWN_INGESTION_ERROR');
+        setFailedStage(initialError.stage || 'validating');
+        setRetryable(initialError.retryable ?? true);
+        setSuggestedAction(initialError.suggestedAction || null);
+        setTechnicalDetails(initialError.details || initialError.rawResponseExcerpt || initialError.stack);
+        setDiagnosticId(initialError.diagnosticId || null);
+      } else {
+        const str = String(initialError);
+        setErrorMessage(str);
+        setErrorCode(str.includes('not found') ? 'VIDEO_NOT_FOUND' : 'UNKNOWN_INGESTION_ERROR');
+      }
+      setLogs((prev) => {
+        if (prev.length === 0) {
+          const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+          return [
+            { time: now, message: `Started pipeline validation for: ${videoUrl || 'submitted source'}`, type: 'info' },
+            { time: now, message: `Pipeline stopped: ${typeof initialError === 'object' ? initialError.message : initialError}`, type: 'error' },
+          ];
+        }
+        return prev;
+      });
     }
-  }, [initialError]);
+  }, [initialError, videoUrl]);
 
   useEffect(() => {
     if (jobId) {
@@ -151,12 +270,8 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
       try {
         const endpoint = targetJobId ? `/api/process/${targetJobId}` : `/api/projects/${targetProjId}/status`;
         const statusRes = await fetch(endpoint);
-        if (!statusRes.ok) {
-          const errJson = await statusRes.json().catch(() => ({}));
-          throw new Error(errJson.error || errJson.message || 'Could not fetch job status');
-        }
+        const statusData = await parseSafeApiResponse<any>(statusRes);
 
-        const statusData = await statusRes.json();
         setProgress(statusData.progress ?? 0);
         setStatus(statusData.status || 'validating');
         if (statusData.currentStage) {
@@ -171,7 +286,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
         if (statusData.languageConfidence !== undefined && statusData.languageConfidence !== null) {
           setLanguageConfidence(statusData.languageConfidence);
         }
-        if (Array.isArray(statusData.logs)) {
+        if (Array.isArray(statusData.logs) && statusData.logs.length > 0) {
           setLogs(statusData.logs);
         }
 
@@ -184,15 +299,25 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
             const finalProjId = statusData.projectId || targetProjId;
             const projRes = await fetch(`/api/projects/${finalProjId}`);
             if (projRes.ok) {
-              const projData = await projRes.json();
+              const projData = await parseSafeApiResponse<any>(projRes);
               onComplete(projData.project);
             }
           }
-        } else if (statusData.status === 'failed') {
+        } else if (statusData.status === 'failed' || statusData.success === false) {
           clearInterval(pollInterval);
           isPollingRef.current = false;
-          setErrorMessage(statusData.error || 'The video processing job failed on the backend.');
-          setErrorCode(statusData.errorCode || null);
+          const errObj = typeof statusData.error === 'object' && statusData.error !== null ? statusData.error : null;
+          const resolvedMsg = errObj?.message || (typeof statusData.error === 'string' ? statusData.error : null) || statusData.message || 'Video processing failed.';
+          const resolvedCode = errObj?.code || statusData.errorCode || (statusData.classifiedError?.code) || 'UNKNOWN_INGESTION_ERROR';
+          const resolvedRetryable = typeof errObj?.retryable === 'boolean' ? errObj.retryable : (statusData.classifiedError ? statusData.classifiedError.retryable : true);
+          const resolvedAction = errObj?.suggestedAction || statusData.classifiedError?.suggestedAction;
+
+          setErrorMessage(resolvedMsg);
+          setErrorCode(resolvedCode);
+          setFailedStage(statusData.stage || statusData.status || 'ingesting');
+          setRetryable(resolvedRetryable);
+          setSuggestedAction(resolvedAction || null);
+          setTechnicalDetails(statusData.classifiedError || statusData.error || statusData);
           setAuthConfigured(Boolean(statusData.authConfigured));
         } else if (statusData.status === 'cancelled') {
           clearInterval(pollInterval);
@@ -200,9 +325,15 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
           setCurrentStageText('Processing cancelled.');
         }
       } catch (pollErr: any) {
-        console.warn('Status polling error:', pollErr);
+        console.warn('Status polling notice:', pollErr);
+        if (pollErr instanceof ApiError) {
+          setLogs((prev) => [
+            ...prev,
+            { time: new Date().toLocaleTimeString('en-US', { hour12: false }), message: `Notice: ${pollErr.message}`, type: 'warn' },
+          ]);
+        }
       }
-    }, 500);
+    }, 600);
 
     return pollInterval;
   };
@@ -216,19 +347,20 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
       setLogs([]);
       setErrorMessage(null);
       setErrorCode(null);
-      return;
-    }
-
-    if (initialError) {
-      setErrorMessage(initialError);
+      setTechnicalDetails(null);
+      setDiagnosticId(null);
       return;
     }
 
     if (activeJobId) {
       pollJobStatus(activeJobId, projectId);
-    } else {
+    } else if (!initialError) {
       setCurrentStageText('Connecting to server processing pipeline...');
       setStatus('validating');
+      const now = new Date().toLocaleTimeString('en-US', { hour12: false });
+      setLogs([
+        { time: now, message: `Connecting to server pipeline for: ${videoUrl || 'media source'}`, type: 'info' },
+      ]);
     }
 
     return () => {
@@ -238,10 +370,32 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleCopyDiagnostics = () => {
+    const diagData = {
+      jobId: activeJobId,
+      projectId,
+      url: videoUrl,
+      errorCode,
+      failedStage,
+      errorMessage,
+      retryable,
+      suggestedAction,
+      diagnosticId,
+      timestamp: new Date().toISOString(),
+      logs,
+      technicalDetails,
+    };
+    navigator.clipboard?.writeText(JSON.stringify(diagData, null, 2)).then(() => {
+      setCopiedDiag(true);
+      setTimeout(() => setCopiedDiag(false), 2000);
+    }).catch(() => {});
+  };
+
   const handleRetry = async () => {
     setIsRetrying(true);
     setErrorMessage(null);
     setErrorCode(null);
+    setTechnicalDetails(null);
     setActiveJobId(null);
     if (onRetry) {
       onRetry();
@@ -326,61 +480,123 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
         <div className="p-6 space-y-5">
           {/* Error Banner if Failed */}
           {errorMessage ? (() => {
+            const mappedInfo = errorCode && ERROR_DESCRIPTIONS[errorCode]
+              ? ERROR_DESCRIPTIONS[errorCode]
+              : null;
+
             const isAuthError =
+              errorCode === 'AUTHENTICATION_REQUIRED' ||
+              errorCode === 'VIDEO_RESTRICTED' ||
               errorCode === 'YOUTUBE_AGE_RESTRICTED' ||
-              errorCode === 'YOUTUBE_LOGIN_REQUIRED' ||
-              errorCode === 'YOUTUBE_COOKIE_REQUIRED' ||
-              Boolean(errorMessage && (
-                errorMessage.toLowerCase().includes('age-restricted') ||
-                errorMessage.toLowerCase().includes('confirm your age') ||
-                errorMessage.toLowerCase().includes('requires authentication')
-              ));
+              errorCode === 'YOUTUBE_LOGIN_REQUIRED';
 
-            let errorTitle = 'Media Ingestion Error';
-            let errorDisplayMsg = errorMessage;
-
-            if (errorCode === 'YOUTUBE_AGE_RESTRICTED' || (errorMessage && errorMessage.toLowerCase().includes('confirm your age'))) {
-              errorTitle = 'YouTube Video Requires Authentication';
-              errorDisplayMsg = 'This video is age-restricted or requires a signed-in YouTube session. ViralClip Studio could not access it with the current server configuration.';
-            } else if (errorCode === 'YOUTUBE_PRIVATE' || (errorMessage && errorMessage.toLowerCase().includes('private video'))) {
-              errorTitle = 'Private YouTube Video';
-              errorDisplayMsg = 'This video is private or members-only. Upload the video file instead.';
-            } else if (errorCode === 'YOUTUBE_NOT_FOUND' || (errorMessage && (errorMessage.toLowerCase().includes('unavailable') || errorMessage.toLowerCase().includes('not exist')))) {
-              errorTitle = 'Video Unavailable';
-              errorDisplayMsg = 'This YouTube video was not found or has been removed. Check the link or upload the video directly.';
-            } else if (errorCode === 'YOUTUBE_GEO_BLOCKED') {
-              errorTitle = 'Geographically Restricted';
-              errorDisplayMsg = 'This YouTube video is geographically restricted in this server’s region. Upload the video file instead.';
-            } else if (errorCode === 'YOUTUBE_RATE_LIMITED') {
-              errorTitle = 'YouTube Rate Limited';
-              errorDisplayMsg = 'YouTube has temporarily rate-limited requests from this server. Please try again later or upload the video file directly.';
-            } else if (errorCode === 'YOUTUBE_PO_TOKEN_REQUIRED') {
-              errorTitle = 'YouTube Stream Verification Required';
-              errorDisplayMsg = 'YouTube restricted download stream due to Proof-of-Origin token verification. Upload the video file instead.';
-            }
+            const displayTitle = mappedInfo?.title || 'Media Ingestion Error';
+            const displayExplanation = errorMessage || mappedInfo?.defaultMessage || 'The pipeline stopped because the input could not be processed.';
+            const actionText = suggestedAction || mappedInfo?.defaultAction || 'Please retry or upload the video directly.';
+            const canRetry = retryable && (!isAuthError || authConfigured);
 
             return (
-              <div className="p-5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 space-y-4">
+              <div className="p-5 rounded-2xl bg-neutral-950 border border-rose-500/30 text-rose-200 space-y-4 shadow-xl">
+                {/* Header & Badges */}
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-6 h-6 text-rose-400 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-1.5 flex-1">
-                    <div className="text-sm font-bold text-rose-100 flex items-center justify-between">
-                      <span>{errorTitle}</span>
-                      {errorCode && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
-                          {errorCode}
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex-shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-rose-400" />
+                  </div>
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-rose-100">{displayTitle}</h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {errorCode && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold">
+                            {errorCode}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700">
+                          Stage: {failedStage}
                         </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-rose-300 leading-relaxed font-mono">{errorDisplayMsg}</div>
-                    {!authConfigured && isAuthError && (
-                      <div className="p-2.5 rounded-lg bg-neutral-900/80 border border-amber-500/30 text-[11px] text-amber-300/90 font-mono">
-                        Authenticated YouTube import is not configured on this server.
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                            canRetry
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                          }`}
+                        >
+                          {canRetry ? 'Retryable' : 'Non-Retryable'}
+                        </span>
                       </div>
-                    )}
+                    </div>
+                    <p className="text-xs text-rose-300/90 leading-relaxed font-mono">
+                      {displayExplanation}
+                    </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-rose-500/20">
+
+                {/* Job ID Bar if available */}
+                {activeJobId && (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-mono">
+                    <span className="text-neutral-400">
+                      Job ID: <span className="text-amber-400 font-bold">{activeJobId}</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(activeJobId);
+                      }}
+                      className="text-[11px] text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                      title="Copy Job ID"
+                    >
+                      Copy ID
+                    </button>
+                  </div>
+                )}
+
+                {/* Suggested Action Box */}
+                <div className="p-3 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-200/90 space-y-1 text-xs">
+                  <div className="font-bold text-amber-300 text-[11px] uppercase tracking-wide">
+                    Suggested Action
+                  </div>
+                  <div className="text-amber-200 leading-relaxed">
+                    {actionText}
+                  </div>
+                </div>
+
+                {/* Expandable Technical Details */}
+                {(technicalDetails || diagnosticId || errorCode) && (
+                  <details className="group rounded-xl bg-neutral-900/90 border border-neutral-800 overflow-hidden">
+                    <summary className="px-3.5 py-2.5 text-xs text-neutral-400 hover:text-neutral-200 cursor-pointer select-none flex items-center justify-between font-mono">
+                      <span>Technical Diagnostic Details</span>
+                      <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="p-3.5 pt-1 text-[11px] font-mono text-neutral-300 border-t border-neutral-800/80 space-y-2 bg-neutral-950/40">
+                      {diagnosticId && (
+                        <div>
+                          <span className="text-neutral-500">Diagnostic ID: </span>
+                          <span className="text-amber-400">{diagnosticId}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-neutral-500">Pipeline Stage: </span>
+                        <span>{failedStage}</span>
+                      </div>
+                      <div>
+                        <span className="text-neutral-500">Target Source: </span>
+                        <span className="break-all">{videoUrl}</span>
+                      </div>
+                      {technicalDetails && (
+                        <div>
+                          <div className="text-neutral-500 mb-1">Server Diagnostics / Stack:</div>
+                          <pre className="p-2 rounded bg-neutral-900 border border-neutral-800 text-[10px] text-neutral-400 overflow-x-auto whitespace-pre-wrap max-h-40">
+                            {typeof technicalDetails === 'string'
+                              ? technicalDetails
+                              : JSON.stringify(technicalDetails, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-neutral-800">
                   {onUploadVideo && (
                     <button
                       onClick={onUploadVideo}
@@ -393,15 +609,23 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
                   <button
                     onClick={handleRetry}
                     disabled={isRetrying || (isAuthError && !authConfigured)}
-                    title={isAuthError && !authConfigured ? 'Authentication is required before retrying.' : 'Retry processing'}
+                    title={isAuthError && !authConfigured ? 'Authentication required to retry.' : 'Retry processing'}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors ${
                       isAuthError && !authConfigured
-                        ? 'bg-neutral-800/80 text-neutral-500 cursor-not-allowed border border-neutral-700'
+                        ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-700'
                         : 'bg-rose-500 hover:bg-rose-600 text-white cursor-pointer'
                     }`}
                   >
                     <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
                     <span>{isAuthError && !authConfigured ? 'Auth Required to Retry' : 'Retry'}</span>
+                  </button>
+                  <button
+                    onClick={handleCopyDiagnostics}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-colors cursor-pointer border border-neutral-700"
+                    title="Copy diagnostic information to clipboard"
+                  >
+                    {copiedDiag ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
+                    <span>{copiedDiag ? 'Copied Diagnostics' : 'Copy Diagnostics'}</span>
                   </button>
                   {isDemoMode && onRetryWithDemo && (
                     <button
@@ -409,14 +633,14 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold transition-colors cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Try Demo Mode</span>
+                      <span>Try Demo</span>
                     </button>
                   )}
                   <button
                     onClick={handleCancelJob}
                     className="px-3.5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white text-xs font-bold transition-colors cursor-pointer ml-auto"
                   >
-                    Cancel
+                    Cancel Job
                   </button>
                 </div>
               </div>

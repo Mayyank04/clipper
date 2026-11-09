@@ -4,6 +4,8 @@
  * Provides authenticated workspace namespaces (/api/v1/workspaces/:workspaceId).
  */
 
+import { parseSafeApiResponse } from '../utils/safeResponseHelper';
+
 let activeWorkspaceId = 'ws_default';
 let activeAuthToken: string | null = null;
 
@@ -56,17 +58,7 @@ export async function apiRequest<T = any>(
     headers,
   });
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const message = errorData.message || errorData.error || `Request to ${endpoint} failed with HTTP ${res.status}`;
-    const error: any = new Error(message);
-    error.status = res.status;
-    error.code = errorData.code;
-    error.details = errorData;
-    throw error;
-  }
-
-  return res.json();
+  return parseSafeApiResponse<T>(res);
 }
 
 /**

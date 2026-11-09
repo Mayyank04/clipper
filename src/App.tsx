@@ -31,6 +31,7 @@ import { ShortUnavailableRecovery } from './components/ShortUnavailableRecovery'
 import { AppShell, AppShellNavView } from './components/AppShell';
 import { NewProjectView } from './components/NewProjectView';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
+import { parseSafeApiResponse } from './utils/safeResponseHelper';
 
 export default function App() {
   const [projects, setProjects] = useState<VideoProject[]>(() => loadStoredProjects());
@@ -49,7 +50,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingProjectId, setProcessingProjectId] = useState<string | null>(null);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
-  const [processingError, setProcessingError] = useState<string | null>(null);
+  const [processingError, setProcessingError] = useState<any>(null);
   const [processingUrl, setProcessingUrl] = useState<string>('');
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [exportingShort, setExportingShort] = useState<ShortCandidate | null>(null);
@@ -119,16 +120,12 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || 'Failed to initiate processing job on backend');
-      }
-
+      const data = await parseSafeApiResponse<any>(res);
       setProcessingProjectId(data.projectId);
       setProcessingJobId(data.jobId);
     } catch (err: any) {
       console.error('Processing initiation error:', err);
-      setProcessingError(err.message || 'Failed to connect to backend processing pipeline');
+      setProcessingError(err);
     }
   };
 
@@ -196,15 +193,12 @@ export default function App() {
             language,
           }),
         });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Failed to initiate processing for imported video');
-        }
+        const data = await parseSafeApiResponse<any>(res);
         setProcessingProjectId(data.projectId);
         setProcessingJobId(data.jobId);
       } catch (e: any) {
         console.error('Import processing error:', e);
-        setProcessingError(e.message || 'Error processing imported video');
+        setProcessingError(e);
       }
     };
 

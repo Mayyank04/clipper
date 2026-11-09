@@ -53,6 +53,17 @@ export class PythonWhisperProvider implements TranscriptionProvider {
    */
   async health(): Promise<ProviderHealth> {
     try {
+      try {
+        execSync('python3 --version', { stdio: 'ignore', timeout: 1000 });
+      } catch {
+        return {
+          id: this.id,
+          name: this.name,
+          status: 'UNAVAILABLE',
+          error: 'python3 runtime is not available',
+        };
+      }
+
       const scriptPath = path.join(process.cwd(), 'workers', 'worker_health.py');
       if (!fs.existsSync(scriptPath)) {
         return {
@@ -69,22 +80,43 @@ export class PythonWhisperProvider implements TranscriptionProvider {
       };
 
       const result = await new Promise<any>((resolve, reject) => {
+        let settled = false;
+        const timeout = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            try { proc.kill('SIGKILL'); } catch (_) {}
+            reject(new Error('Worker health check timed out after 3500ms'));
+          }
+        }, 3500);
+
         const proc = spawn('python3', [scriptPath], { env });
         let stdout = '';
         let stderr = '';
+
+        proc.on('error', (err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout);
+            reject(err);
+          }
+        });
 
         proc.stdout.on('data', (d) => (stdout += d.toString()));
         proc.stderr.on('data', (d) => (stderr += d.toString()));
 
         proc.on('close', (code) => {
-          if (code === 0 && stdout) {
-            try {
-              resolve(JSON.parse(stdout));
-            } catch (e) {
-              reject(new Error(`Failed to parse worker health: ${stdout}`));
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout);
+            if (code === 0 && stdout) {
+              try {
+                resolve(JSON.parse(stdout));
+              } catch (e) {
+                reject(new Error(`Failed to parse worker health: ${stdout}`));
+              }
+            } else {
+              reject(new Error(stderr || `Worker health exited with code ${code}`));
             }
-          } else {
-            reject(new Error(stderr || `Worker health exited with code ${code}`));
           }
         });
       });

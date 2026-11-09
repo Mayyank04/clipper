@@ -36,16 +36,27 @@ export class PostgresDatabase {
   private processingJobEventsDir: string;
 
   constructor() {
-    this.projectsDir = path.resolve(process.cwd(), '.projects');
-    this.jobsDir = path.resolve(process.cwd(), 'data', 'jobs');
-    this.mediaDir = path.resolve(process.cwd(), 'data', 'media');
-    this.presetSourcesDir = path.resolve(process.cwd(), 'data', 'caption_sources');
-    this.presetsDir = path.resolve(process.cwd(), 'data', 'caption_presets');
-    this.presetFontsDir = path.resolve(process.cwd(), 'data', 'caption_fonts');
-    this.importJobsDir = path.resolve(process.cwd(), 'data', 'caption_import_jobs');
-    this.importErrorsDir = path.resolve(process.cwd(), 'data', 'caption_import_errors');
-    this.processingJobsDir = path.resolve(process.cwd(), 'data', 'processing_jobs');
-    this.processingJobEventsDir = path.resolve(process.cwd(), 'data', 'processing_job_events');
+    let baseDir = process.env.DATA_DIR;
+    if (!baseDir) {
+      try {
+        const testDir = path.resolve(process.cwd(), '.projects');
+        if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+        fs.accessSync(testDir, fs.constants.W_OK);
+        baseDir = process.cwd();
+      } catch {
+        baseDir = path.join('/tmp', 'viralclip');
+      }
+    }
+    this.projectsDir = path.resolve(baseDir, '.projects');
+    this.jobsDir = path.resolve(baseDir, 'data', 'jobs');
+    this.mediaDir = path.resolve(baseDir, 'data', 'media');
+    this.presetSourcesDir = path.resolve(baseDir, 'data', 'caption_sources');
+    this.presetsDir = path.resolve(baseDir, 'data', 'caption_presets');
+    this.presetFontsDir = path.resolve(baseDir, 'data', 'caption_fonts');
+    this.importJobsDir = path.resolve(baseDir, 'data', 'caption_import_jobs');
+    this.importErrorsDir = path.resolve(baseDir, 'data', 'caption_import_errors');
+    this.processingJobsDir = path.resolve(baseDir, 'data', 'processing_jobs');
+    this.processingJobEventsDir = path.resolve(baseDir, 'data', 'processing_job_events');
 
     [
       this.projectsDir,
@@ -59,7 +70,11 @@ export class PostgresDatabase {
       this.processingJobsDir,
       this.processingJobEventsDir,
     ].forEach((dir) => {
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      try {
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      } catch (err) {
+        console.warn(`[PostgresDatabase] Directory creation skipped for ${dir}`);
+      }
     });
 
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
@@ -83,7 +98,7 @@ export class PostgresDatabase {
       this.pool = new Pool(config);
       this.initPromise = this.initSchema();
     } else {
-      if (process.env.NODE_ENV === 'production') {
+      if (process.env.NODE_ENV === 'production' && !process.env.DATA_DIR && process.env.REQUIRE_POSTGRES === 'true') {
         console.error('[PostgresDatabase] FATAL: Production requires DATABASE_URL or POSTGRES_URL. Disk fallback disabled.');
         throw new Error('Production requires DATABASE_URL or POSTGRES_URL. Local disk journal mode is disabled in production.');
       }

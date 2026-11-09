@@ -55,7 +55,9 @@ export interface SourceMediaValidation {
 // Global MEDIA_ROOT configuration (Part 5)
 export const MEDIA_ROOT = process.env.MEDIA_ROOT
   ? path.resolve(process.env.MEDIA_ROOT)
-  : path.resolve(process.cwd(), 'data', 'media');
+  : (process.env.DATA_DIR
+      ? path.resolve(process.env.DATA_DIR, 'data', 'media')
+      : path.resolve(process.cwd(), 'data', 'media'));
 
 export class MediaStorage {
   private static instance: MediaStorage | null = null;
@@ -63,19 +65,22 @@ export class MediaStorage {
   private metadataFile: string;
 
   public constructor(private rootDir: string = MEDIA_ROOT) {
-    if (!fs.existsSync(this.rootDir)) {
-      fs.mkdirSync(this.rootDir, { recursive: true });
-    }
-
-    // Verify write permissions on startup (Part 5)
     try {
+      if (!fs.existsSync(this.rootDir)) {
+        fs.mkdirSync(this.rootDir, { recursive: true });
+      }
       const testFile = path.join(this.rootDir, `.write_test_${Date.now()}`);
       fs.writeFileSync(testFile, 'test');
       fs.unlinkSync(testFile);
       console.log(`[MediaStorage] Initialized MEDIA_ROOT at: ${this.rootDir} (writable: true)`);
     } catch (err: any) {
-      console.error(`[MediaStorage] FATAL: MEDIA_ROOT at ${this.rootDir} is NOT writable!`, err);
-      throw new Error(`MEDIA_ROOT at ${this.rootDir} is not writable: ${err.message}`);
+      console.warn(`[MediaStorage] MEDIA_ROOT at ${this.rootDir} not writable, falling back to /tmp/viralclip/media`);
+      const fallbackDir = path.join('/tmp', 'viralclip', 'media');
+      if (!fs.existsSync(fallbackDir)) {
+        fs.mkdirSync(fallbackDir, { recursive: true });
+      }
+      this.rootDir = fallbackDir;
+      console.log(`[MediaStorage] Using fallback MEDIA_ROOT at: ${this.rootDir}`);
     }
 
     this.metadataFile = path.join(this.rootDir, 'media_index.json');
@@ -495,8 +500,8 @@ export async function validateSourceMedia(sourceMediaOrId: any): Promise<SourceM
     if (duration <= 0) {
       return {
         ok: false,
-        code: 'MEDIA_PROBE_FAILED',
-        message: 'Could not determine media duration from file container.',
+        code: 'MEDIA_VALIDATION_FAILED',
+        message: 'Could not determine media duration from file container. Video file may be corrupt or incomplete.',
         path: resolvedPath,
       };
     }
@@ -522,7 +527,7 @@ export async function validateSourceMedia(sourceMediaOrId: any): Promise<SourceM
   } catch (err: any) {
     return {
       ok: false,
-      code: 'MEDIA_CORRUPT',
+      code: 'MEDIA_VALIDATION_FAILED',
       message: `Failed to probe media file: ${err.message}`,
       path: resolvedPath,
     };

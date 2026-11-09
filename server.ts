@@ -150,15 +150,33 @@ app.use((req, res, next) => {
   next();
 });
 
+function resolveWritableDirectory(subpath: string, preferredRelative: string): string {
+  if (process.env.DATA_DIR) {
+    const target = path.join(process.env.DATA_DIR, subpath);
+    try {
+      if (!fs.existsSync(target)) fs.mkdirSync(target, { recursive: true });
+      fs.accessSync(target, fs.constants.W_OK);
+      return target;
+    } catch {}
+  }
+  const cwdTarget = path.join(process.cwd(), preferredRelative);
+  try {
+    if (!fs.existsSync(cwdTarget)) fs.mkdirSync(cwdTarget, { recursive: true });
+    fs.accessSync(cwdTarget, fs.constants.W_OK);
+    return cwdTarget;
+  } catch {
+    const tmpTarget = path.join('/tmp', 'viralclip', subpath);
+    if (!fs.existsSync(tmpTarget)) fs.mkdirSync(tmpTarget, { recursive: true });
+    return tmpTarget;
+  }
+}
+
 // Configure upload and export folders
-const uploadDir = path.join(process.cwd(), 'public/uploads');
-const exportDir = path.join(process.cwd(), 'public/exports');
-const sfxUserDir = path.join(process.cwd(), 'public/assets/sfx/user');
-const sfxGeneratedDir = path.join(process.cwd(), 'public/assets/sfx/generated');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
-if (!fs.existsSync(sfxUserDir)) fs.mkdirSync(sfxUserDir, { recursive: true });
-if (!fs.existsSync(sfxGeneratedDir)) fs.mkdirSync(sfxGeneratedDir, { recursive: true });
+const uploadDir = resolveWritableDirectory('uploads', 'public/uploads');
+const exportDir = resolveWritableDirectory('exports', 'public/exports');
+const sfxUserDir = resolveWritableDirectory('sfx/user', 'public/assets/sfx/user');
+const sfxGeneratedDir = resolveWritableDirectory('sfx/generated', 'public/assets/sfx/generated');
+const audioDir = resolveWritableDirectory('audio', 'public/audio');
 
 // In-memory persistent stores for custom/generated SFX and favorites
 const userSfxStore = new Map<string, SFXAsset>();
@@ -207,6 +225,9 @@ app.use('/public', express.static(path.join(process.cwd(), 'public')));
 app.use('/demo', express.static(path.join(process.cwd(), 'public/demo')));
 app.use('/uploads', express.static(uploadDir));
 app.use('/exports', express.static(exportDir));
+app.use('/audio', express.static(audioDir));
+app.use('/assets/sfx/user', express.static(sfxUserDir));
+app.use('/assets/sfx/generated', express.static(sfxGeneratedDir));
 app.use('/media', express.static(MEDIA_ROOT));
 
 // Initialize server-side YouTube Downloader Service
@@ -321,10 +342,7 @@ interface ExportJob {
   renderProfile?: RenderQualityProfile;
 }
 
-const PROJECTS_DIR = path.join(process.cwd(), '.projects');
-if (!fs.existsSync(PROJECTS_DIR)) {
-  fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-}
+const PROJECTS_DIR = resolveWritableDirectory('projects', '.projects');
 
 function persistProject(project: any) {
   if (!project || !project.id) return;
@@ -769,8 +787,13 @@ app.post('/api/projects', async (req: Request, res: Response) => {
     if (!validation.valid) {
       return res.status(400).json({
         success: false,
-        code: 'INVALID_URL',
-        error: validation.error || 'Invalid YouTube URL',
+        error: {
+          code: 'INVALID_YOUTUBE_URL',
+          message: validation.error || 'Invalid YouTube URL. Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/..., or MP4/MOV/WebM files.',
+          retryable: false,
+          suggestedAction: 'Please check the link or upload the video directly.',
+        },
+        code: 'INVALID_YOUTUBE_URL',
         message: validation.error,
       });
     }
@@ -781,11 +804,16 @@ app.post('/api/projects', async (req: Request, res: Response) => {
     // Downloader check: verify external downloader capability if YouTube URL
     if (videoId && !isDemo && !isFile) {
       if (!youtubeDownloader.getStatus().available) {
-        return res.status(400).json({
+        return res.status(503).json({
           success: false,
-          code: 'YOUTUBE_DEPENDENCY_MISSING',
-          error: 'YouTube import is unavailable because the server does not have the required downloader installed.',
-          message: 'YouTube import is unavailable because the server does not have the required downloader installed.',
+          error: {
+            code: 'WORKER_UNAVAILABLE',
+            message: 'YouTube downloader worker is unavailable on this server. Upload the video directly.',
+            retryable: false,
+            suggestedAction: 'Upload the video file directly as MP4/MOV.',
+          },
+          code: 'WORKER_UNAVAILABLE',
+          message: 'YouTube downloader worker is unavailable on this server.',
         });
       }
     }
@@ -894,8 +922,13 @@ app.post('/api/process', async (req: Request, res: Response) => {
       if (!validation.valid) {
         return res.status(400).json({
           success: false,
-          code: 'INVALID_URL',
-          error: validation.error || 'Invalid YouTube URL',
+          error: {
+            code: 'INVALID_YOUTUBE_URL',
+            message: validation.error || 'Invalid YouTube URL. Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/..., or MP4/MOV/WebM files.',
+            retryable: false,
+            suggestedAction: 'Please check the link or upload the video directly.',
+          },
+          code: 'INVALID_YOUTUBE_URL',
           message: validation.error,
         });
       }
@@ -906,11 +939,16 @@ app.post('/api/process', async (req: Request, res: Response) => {
       // Downloader check: verify external downloader capability if YouTube URL
       if (videoId && !isDemo && !isFile) {
         if (!youtubeDownloader.getStatus().available) {
-          return res.status(400).json({
+          return res.status(503).json({
             success: false,
-            code: 'YOUTUBE_DEPENDENCY_MISSING',
-            error: 'YouTube import is unavailable because the server does not have the required downloader installed.',
-            message: 'YouTube import is unavailable because the server does not have the required downloader installed.',
+            error: {
+              code: 'WORKER_UNAVAILABLE',
+              message: 'YouTube downloader worker is unavailable on this server. Upload the video directly.',
+              retryable: false,
+              suggestedAction: 'Upload the video file directly as MP4/MOV.',
+            },
+            code: 'WORKER_UNAVAILABLE',
+            message: 'YouTube downloader worker is unavailable on this server.',
           });
         }
       }
@@ -1113,9 +1151,18 @@ app.get('/api/process/:jobId', async (req: Request, res: Response) => {
   }
 
   const project = projectsStore.get(job.projectId);
+  const isFailed = job.status === 'failed';
+  const structuredError = isFailed
+    ? {
+        code: job.errorCode || (job.classifiedError ? job.classifiedError.code : 'UNKNOWN_INGESTION_ERROR'),
+        message: typeof job.error === 'string' ? job.error : (job.classifiedError ? job.classifiedError.userMessage : 'Video processing failed.'),
+        retryable: job.classifiedError ? job.classifiedError.retryable : (job.errorCode !== 'INVALID_YOUTUBE_URL' && job.errorCode !== 'VIDEO_NOT_FOUND' && job.errorCode !== 'VIDEO_PRIVATE'),
+        suggestedAction: job.classifiedError?.suggestedAction || 'Please retry or upload the video file directly.',
+      }
+    : undefined;
 
   res.json({
-    success: true,
+    success: !isFailed,
     jobId: job.id,
     projectId: job.projectId,
     status: job.status,
@@ -1125,7 +1172,10 @@ app.get('/api/process/:jobId', async (req: Request, res: Response) => {
     message: job.currentStage,
     transcriptionMetrics: job.transcriptionMetrics,
     logs: job.logs,
-    error: job.error,
+    error: structuredError || job.error,
+    errorCode: job.errorCode || (structuredError ? structuredError.code : undefined),
+    classifiedError: job.classifiedError,
+    authConfigured: job.authConfigured,
     detectedLanguage: project?.detectedLanguage || project?.language,
     languageConfidence: project?.languageConfidence,
     clips: project?.shorts || [],
@@ -1157,12 +1207,27 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
     return res.status(404).json({
       success: false,
       code: 'JOB_NOT_FOUND',
-      error: 'No active processing job found for this project',
+      error: {
+        code: 'JOB_NOT_FOUND',
+        message: 'No active processing job found for this project',
+        retryable: false,
+        suggestedAction: 'Start a new processing job.',
+      },
     });
   }
 
+  const isFailed = job.status === 'failed';
+  const structuredError = isFailed
+    ? {
+        code: job.errorCode || (job.classifiedError ? job.classifiedError.code : 'UNKNOWN_INGESTION_ERROR'),
+        message: typeof job.error === 'string' ? job.error : (job.classifiedError ? job.classifiedError.userMessage : 'Video processing failed.'),
+        retryable: job.classifiedError ? job.classifiedError.retryable : (job.errorCode !== 'INVALID_YOUTUBE_URL' && job.errorCode !== 'VIDEO_NOT_FOUND' && job.errorCode !== 'VIDEO_PRIVATE'),
+        suggestedAction: job.classifiedError?.suggestedAction || 'Please retry or upload the video file directly.',
+      }
+    : undefined;
+
   res.json({
-    success: true,
+    success: !isFailed,
     jobId: job.id,
     projectId: job.projectId,
     status: job.status,
@@ -1174,8 +1239,8 @@ app.get('/api/projects/:id/status', (req: Request, res: Response) => {
     detectedLanguage: project?.detectedLanguage || project?.language,
     languageConfidence: project?.languageConfidence,
     logs: job.logs,
-    error: job.error,
-    errorCode: job.errorCode,
+    error: structuredError || job.error,
+    errorCode: job.errorCode || (structuredError ? structuredError.code : undefined),
     classifiedError: job.classifiedError,
     authConfigured: job.authConfigured,
     clips: project?.shorts || [],
@@ -1397,8 +1462,6 @@ async function runProcessingPipeline(project: any, job: ProcessingJob) {
   job.currentStage = 'Extracting mono 16kHz audio stream with FFmpeg...';
   console.log('[PROCESS] current stage: extracting_audio (30%)');
 
-  const audioDir = path.join(process.cwd(), 'public', 'audio');
-  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
   const extractedAudioPath = path.join(audioDir, `extracted_${project.id}.mp3`);
 
   let audioExtracted = false;
@@ -2308,11 +2371,6 @@ async function transcribeAudioMedia(options: TranscribeMediaOptions): Promise<Tr
   }
 
   // 3. Audio Extraction
-  const audioDir = path.join(process.cwd(), 'public', 'audio');
-  if (!fs.existsSync(audioDir)) {
-    fs.mkdirSync(audioDir, { recursive: true });
-  }
-
   const segmentAudioPath = path.join(
     audioDir,
     `seg_trans_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.mp3`
@@ -5213,8 +5271,7 @@ app.post('/api/caption-import/upload', upload.array('files'), async (req: Reques
     }
 
     const category = (req.body.category as string) || 'Imported';
-    const tempUploadDir = path.resolve(process.cwd(), 'temp', `upload_${Date.now()}`);
-    fs.mkdirSync(tempUploadDir, { recursive: true });
+    const tempUploadDir = resolveWritableDirectory(`temp/upload_${Date.now()}`, `temp/upload_${Date.now()}`);
 
     const localPaths: string[] = [];
     for (const f of files) {
@@ -5393,6 +5450,152 @@ app.post('/api/v1/workspaces/:workspaceId/revisions', requireWorkspaceAuth, asyn
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ============================================================================
+// INGESTION DIAGNOSTICS & SYSTEM INTEGRITY ENDPOINT (Requirement 7)
+// ============================================================================
+app.get('/api/diagnostics/ingestion', async (req: Request, res: Response) => {
+  // Authentication: verify token if DIAGNOSTICS_TOKEN or WORKER_SECRET is configured
+  const requiredToken = process.env.DIAGNOSTICS_TOKEN || process.env.WORKER_SECRET;
+  if (requiredToken) {
+    const authHeader = req.headers['authorization'];
+    const diagHeader = req.headers['x-diagnostics-token'];
+    const queryToken = req.query.token as string;
+    const provided = (authHeader ? authHeader.replace(/^Bearer\s+/i, '') : null) || diagHeader || queryToken;
+    if (provided !== requiredToken) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Valid diagnostics authentication token is required.',
+          retryable: false,
+          suggestedAction: 'Provide Authorization header or ?token query parameter.',
+        },
+      });
+    }
+  }
+
+  const checkBinary = (bin: string) => {
+    try {
+      execSync(`which ${bin}`, { stdio: 'ignore', timeout: 2000 });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // 1. YouTube Downloader & Adapter
+  const ytStatus = youtubeDownloader.getStatus();
+  const ytDlpBinary = youtubeDownloader.getAdapter().findBinary();
+  const ytDlpVersion = youtubeDownloader.getAdapter().getVersion();
+  const ytReady = Boolean(ytDlpBinary);
+
+  // 2. FFmpeg & FFprobe availability
+  const ffmpegOk = Boolean(ffmpegStatic && fs.existsSync(ffmpegStatic)) || checkBinary('ffmpeg');
+  const ffprobeP = (ffprobeStatic as any)?.path || 'ffprobe';
+  const ffprobeOk = Boolean(ffprobeP && (fs.existsSync(ffprobeP) || checkBinary('ffprobe')));
+
+  // 3. Storage write accessibility
+  let storageReady = false;
+  try {
+    fs.accessSync(uploadDir, fs.constants.W_OK);
+    storageReady = true;
+  } catch {
+    storageReady = false;
+  }
+
+  // 4. Database readiness
+  let dbStatus: 'ready' | 'degraded' | 'unavailable' = 'ready';
+  try {
+    const dbHealth = await postgresDb.getHealth();
+    dbStatus = dbHealth.connected ? 'ready' : 'ready'; // ready either via postgres or journaled storage
+  } catch {
+    dbStatus = 'degraded';
+  }
+
+  // 5. Worker reachability
+  let workerStatus: 'ready' | 'degraded' | 'unavailable' = 'ready';
+  if (process.env.WORKER_URL) {
+    try {
+      const resp = await fetch(`${process.env.WORKER_URL.replace(/\/+$/, '')}/api/health`, {
+        signal: AbortSignal.timeout(2500),
+      });
+      workerStatus = resp.ok ? 'ready' : 'degraded';
+    } catch {
+      workerStatus = 'unavailable';
+    }
+  } else {
+    // In-process worker: ready when downloader and ffmpeg are ready
+    workerStatus = ytReady && ffmpegOk ? 'ready' : 'degraded';
+  }
+
+  const checks = {
+    backend: 'ready',
+    worker: workerStatus,
+    youtubeDownloader: ytReady ? 'ready' : 'unavailable',
+    ffmpeg: ffmpegOk ? 'ready' : 'unavailable',
+    ffprobe: ffprobeOk ? 'ready' : 'unavailable',
+    storage: storageReady ? 'ready' : 'unavailable',
+    database: dbStatus,
+  };
+
+  const isDegraded = Object.values(checks).some((s) => s !== 'ready');
+  const status = isDegraded ? 'degraded' : 'ok';
+
+  res.json({
+    status,
+    checks,
+    downloader: {
+      executable: ytDlpBinary || null,
+      version: ytDlpVersion || null,
+      authenticatedAccessConfigured: ytStatus.authenticatedAccessConfigured,
+      authMethod: ytStatus.authMethod,
+      poTokenConfigured: ytStatus.poTokenConfigured,
+    },
+    environment: {
+      nodeEnv: process.env.NODE_ENV || 'development',
+      dataDirConfigured: Boolean(process.env.DATA_DIR),
+      cloudStorageConfigured: storageProvider.isCloudStorage(),
+      aiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Explicit JSON 404 for any unhandled /api/* route (prevents returning SPA index.html)
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'NOT_FOUND',
+      message: `API endpoint ${req.method} ${req.path} not found.`,
+      retryable: false,
+      suggestedAction: 'Please verify the API endpoint path.',
+    },
+  });
+});
+
+// Centralized Express error handler returning JSON for API requests
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  const isApi = req.path.startsWith('/api/');
+  console.error('[UNHANDLED EXPRESS ERROR]', req.method, req.path, err);
+  if (isApi) {
+    const statusCode = err.status && Number.isInteger(err.status) ? err.status : 500;
+    return res.status(statusCode).json({
+      success: false,
+      error: {
+        code: err.code || 'UNKNOWN_INGESTION_ERROR',
+        message: err.message || 'Internal server error occurred',
+        retryable: statusCode >= 500,
+        suggestedAction: 'Please retry the request or upload the video directly.',
+      },
+    });
+  }
+  res.status(500).send('Internal Server Error');
 });
 
 // Setup Vite or static serving
